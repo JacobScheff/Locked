@@ -14,7 +14,7 @@ final class ScreenTime {
     var lastOpened: Date?
     var totalScreenTime: Double
     
-    init(appName: string) {
+    init(appName: String) {
         self.appName = appName
         self.totalScreenTime = 0
     }
