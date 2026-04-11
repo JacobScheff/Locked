@@ -11,11 +11,12 @@ import SwiftData
 @Model
 final class ScreenTime {
     var appName: String
-    var lastOpened: Date?
+    var lastOpened: Date
     var totalScreenTime: Double
     
     init(appName: String) {
         self.appName = appName
+        self.lastOpened = .distantPast
         self.totalScreenTime = 0
     }
 }

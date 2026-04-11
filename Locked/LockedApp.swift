@@ -7,14 +7,18 @@
 
 import SwiftUI
 import SwiftData
+import AppIntents
 
 @main
 struct LockedApp: App {
+    init() {
+        LibraryAppShortcuts.updateAppShortcutParameters()
+    }
+    
     var body: some Scene {
         WindowGroup {
             ContentView()
         }
-        // Use the extension here too!
         .modelContainer(ModelContainer.forLockedApp())
     }
 }

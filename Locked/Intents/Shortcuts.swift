@@ -16,5 +16,13 @@ struct LibraryAppShortcuts: AppShortcutsProvider {
             phrases: ["On ${applicationName} Open"],
             systemImageName: "checkmark.circle"
         )
+        
+        AppShortcut(
+            intent: OnAppClose(),
+            phrases: [
+                "On \(.applicationName) Close"
+            ],
+            systemImageName: "xmark.circle"
+        )
     }
 }

@@ -9,8 +9,8 @@ import Foundation
 import AppIntents
 import SwiftData
 
-struct OnAppOpen: AppIntent {
-    static var title: LocalizedStringResource = "On App Open"
+struct OnAppClose: AppIntent {
+    static var title: LocalizedStringResource = "On App Close"
     
     @Parameter(title: "App Name")
     var appName: String
@@ -30,11 +30,9 @@ struct OnAppOpen: AppIntent {
             let results = try context.fetch(fetchDescriptor)
             
             if let existingApp = results.first {
-                existingApp.lastOpened = Date()
-            } else {
-                let newApp = ScreenTime(appName: name)
-                newApp.lastOpened = Date()
-                context.insert(newApp)
+                let passedTime = Date().timeIntervalSince(existingApp.lastOpened)
+                
+                existingApp.totalScreenTime += passedTime
             }
             
             try context.save()

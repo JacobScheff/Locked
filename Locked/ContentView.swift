@@ -11,8 +11,8 @@ import SwiftData
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     
-    // Sort the list so the most recently opened apps show up at the top
-    @Query(sort: \ScreenTime.lastOpened, order: .reverse) private var screenTimes: [ScreenTime]
+    // Updated to sort by totalScreenTime (highest time at the top)
+    @Query(sort: \ScreenTime.totalScreenTime, order: .reverse) private var screenTimes: [ScreenTime]
     
     @AppStorage("keys") var keys: Int = 0
     @AppStorage("karma") var karma: Int = 0
@@ -59,16 +59,11 @@ struct ContentView: View {
                                     
                                     Spacer()
                                     
-                                    // Handle the optional Date
-                                    if let lastOpened = screenTime.lastOpened {
-                                        Text(lastOpened.formatted(date: .abbreviated, time: .shortened))
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    } else {
-                                        Text("Never")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
+                                    // Display the total screen time (formatted cleanly)
+                                    // You can change "min" to "sec" or whatever unit you decide to track
+                                    Text("\(screenTime.totalScreenTime, specifier: "%.0f") s")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
                                 }
                             }
                         }
