@@ -1,21 +1,18 @@
-//
-//  ContentView.swift
-//  Locked
-//
-//  Created by Jacob Scheff on 4/10/26.
-//
-
 import SwiftUI
 import SwiftData
+import WidgetKit // Required to trigger widget updates
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     
-    // Updated to sort by totalScreenTime (highest time at the top)
     @Query(sort: \ScreenTime.totalScreenTime, order: .reverse) private var screenTimes: [ScreenTime]
     
-    @AppStorage("keys") var keys: Int = 0
-    @AppStorage("karma") var karma: Int = 0
+    // Shared App Group storage
+    @AppStorage("keys", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    var keys: Int = 0
+    
+    @AppStorage("karma", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    var karma: Int = 0
     
     var body: some View {
         NavigationStack {
@@ -23,6 +20,7 @@ struct ContentView: View {
                 
                 // MARK: - Top Stats (Karma & Keys)
                 HStack(spacing: 40) {
+                    // Karma Controls
                     VStack {
                         Text("Karma")
                             .font(.subheadline)
@@ -30,8 +28,21 @@ struct ContentView: View {
                         Text("\(karma)")
                             .font(.largeTitle)
                             .bold()
+                        
+                        HStack {
+                            Button("-") {
+                                karma -= 1
+                                updateWidget()
+                            }.buttonStyle(.bordered)
+                            
+                            Button("+") {
+                                karma += 1
+                                updateWidget()
+                            }.buttonStyle(.bordered)
+                        }
                     }
                     
+                    // Keys Controls
                     VStack {
                         Text("Keys")
                             .font(.subheadline)
@@ -39,6 +50,18 @@ struct ContentView: View {
                         Text("\(keys)")
                             .font(.largeTitle)
                             .bold()
+                        
+                        HStack {
+                            Button("-") {
+                                keys -= 1
+                                updateWidget()
+                            }.buttonStyle(.bordered)
+                            
+                            Button("+") {
+                                keys += 1
+                                updateWidget()
+                            }.buttonStyle(.bordered)
+                        }
                     }
                 }
                 .padding()
@@ -59,8 +82,6 @@ struct ContentView: View {
                                     
                                     Spacer()
                                     
-                                    // Display the total screen time (formatted cleanly)
-                                    // You can change "min" to "sec" or whatever unit you decide to track
                                     Text("\(screenTime.totalScreenTime, specifier: "%.0f") s")
                                         .font(.subheadline)
                                         .foregroundStyle(.secondary)
@@ -72,6 +93,11 @@ struct ContentView: View {
             }
             .navigationTitle("Dashboard")
         }
+    }
+    
+    // This tells the OS to refresh the widget immediately
+    func updateWidget() {
+        WidgetCenter.shared.reloadTimelines(ofKind: "Locked_Widget")
     }
 }
 

@@ -17,11 +17,12 @@ struct OnAppClose: AppIntent {
     
     @MainActor
     func perform() async throws -> some IntentResult {
+        let name = appName
+        guard !name.isEmpty else { return .result() }
+
         let container = ModelContainer.forLockedApp()
         let context = container.mainContext
-        
-        let name = appName
-        
+                
         let fetchDescriptor = FetchDescriptor<ScreenTime>(
             predicate: #Predicate { $0.appName == name }
         )
@@ -32,7 +33,11 @@ struct OnAppClose: AppIntent {
             if let existingApp = results.first {
                 let passedTime = Date().timeIntervalSince(existingApp.lastOpened)
                 
-                existingApp.totalScreenTime += passedTime
+                if passedTime > 0 {
+                    existingApp.totalScreenTime += passedTime
+                }
+                
+                existingApp.lastOpened = Date()
             }
             
             try context.save()

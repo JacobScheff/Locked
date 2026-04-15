@@ -9,12 +9,14 @@ import Foundation
 import SwiftData
 
 extension ModelContainer {
-    // A shared singleton to ensure the App and Intents use the exact same DB connection
     static let sharedLockedApp: ModelContainer = {
-        let schema = Schema([
-            ScreenTime.self
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        let schema = Schema([ScreenTime.self])
+        
+        // Ensure SwiftData uses your shared App Group container
+        let groupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.Jacob-Scheff.Locked")!
+        let dbURL = groupURL.appendingPathComponent("Locked.sqlite")
+        
+        let modelConfiguration = ModelConfiguration(schema: schema, url: dbURL)
 
         do {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])
@@ -23,7 +25,6 @@ extension ModelContainer {
         }
     }()
     
-    // The method your AppIntent is looking for
     static func forLockedApp() -> ModelContainer {
         return sharedLockedApp
     }
