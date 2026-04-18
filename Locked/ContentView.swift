@@ -7,7 +7,6 @@ struct ContentView: View {
             // Home Page
             NavigationStack {
                 MainPage()
-                    .navigationTitle("Home")
             }
             .tabItem {
                 Label("Home", systemImage: "house")
