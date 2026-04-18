@@ -7,6 +7,7 @@
 
 import Foundation
 import AppIntents
+import SwiftUI
 import SwiftData
 
 struct OnAppOpen: AppIntent {
@@ -17,10 +18,14 @@ struct OnAppOpen: AppIntent {
     
     @MainActor
     func perform() async throws -> some IntentResult {
+        @AppStorage("openedApp", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+        var openedApp: String = ""
+        
         let container = ModelContainer.forLockedApp()
         let context = container.mainContext
         
         let name = appName
+        openedApp = name
         
         let fetchDescriptor = FetchDescriptor<ScreenTime>(
             predicate: #Predicate { $0.appName == name }

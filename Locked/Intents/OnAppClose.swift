@@ -7,17 +7,17 @@
 
 import Foundation
 import AppIntents
+import SwiftUI
 import SwiftData
 
 struct OnAppClose: AppIntent {
     static var title: LocalizedStringResource = "On App Close"
-    
-    @Parameter(title: "App Name")
-    var appName: String
-    
+        
     @MainActor
     func perform() async throws -> some IntentResult {
-        let name = appName
+        @AppStorage("openedApp", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+        var name: String = ""
+        
         guard !name.isEmpty else { return .result() }
 
         let container = ModelContainer.forLockedApp()
