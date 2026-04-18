@@ -12,13 +12,22 @@ import SwiftData
 
 struct OnAppOpen: AppIntent {
     static var title: LocalizedStringResource = "On App Open"
+    
+    @Parameter(title: "App Name")
+    var appName: String
         
     @MainActor
     func perform() async throws -> some IntentResult {
         @AppStorage("startTimes", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
         var startTimes: [Date] = []
         
-        startTimes.append(Date())
+        @AppStorage("appCounts", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+        var appCounts: [String: Int] = [:]
+        
+        let startTime: Date = Date()
+        
+        startTimes.append(startTime)
+        appCounts[appName] = (appCounts[appName] ?? 0) + 1
         
         return .result()
     }
