@@ -19,65 +19,66 @@ struct MainPage: View {
     var karma: Int = 0
     
     var body: some View {
-        NavigationStack {
-            List { // Using List for a cleaner look with dictionary items
-                Section("Screen Time") {
-                    Text("\(days) days, \(hours) hours, \(minutes) minutes")
-                }
-
-                Section("App Open Counts") {
-                    // Sorting the keys so the list stays in order
-                    ForEach(appCounts.keys.sorted(), id: \.self) { name in
-                        HStack {
-                            Text(name)
-                            Spacer()
-                            Text("\(appCounts[name] ?? 0)")
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
-
-                            // Button to increment for testing
-                            Button {
-                                appCounts[name] = (appCounts[name] ?? 0) + 1
-                                updateWidget()
-                            } label: {
-                                Image(systemName: "plus.circle")
-                            }
-                            .buttonStyle(.borderless)
-                        }
-                    }
-                }
-
-                Section("Stats") {
+        List { // Using List for a cleaner look with dictionary items
+            Section("Screen Time") {
+                Text("\(days) days, \(hours) hours, \(minutes) minutes")
+            }
+            
+            Section("App Open Counts") {
+                // Sorting the keys so the list stays in order
+                ForEach(appCounts.keys.sorted(), id: \.self) { name in
                     HStack {
-                        VStack {
-                            Text("Karma").font(.caption)
-                            Text("\(karma)").font(.title2).bold()
-                            HStack {
-                                Button("-") { karma -= 1; updateWidget() }
-                                Button("+") { karma += 1; updateWidget() }
-                            }.buttonStyle(.bordered)
+                        Text(name)
+                        Spacer()
+                        Text("\(appCounts[name] ?? 0)")
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                        
+                        // Button to increment for testing
+                        Button {
+                            appCounts[name] = (appCounts[name] ?? 0) + 1
+                            updateWidget()
+                        } label: {
+                            Image(systemName: "plus.circle")
                         }
-                        .frame(maxWidth: .infinity)
-
-                        Divider()
-
-                        VStack {
-                            Text("Keys").font(.caption)
-                            Text("\(keys)").font(.title2).bold()
-                            HStack {
-                                Button("-") { keys -= 1; updateWidget() }
-                                Button("+") { keys += 1; updateWidget() }
-                            }.buttonStyle(.bordered)
-                        }
-                        .frame(maxWidth: .infinity)
+                        .buttonStyle(.borderless)
                     }
                 }
             }
-            .navigationTitle("Dashboard")
+            
+            Section("Stats") {
+                HStack {
+                    VStack {
+                        Text("Karma").font(.caption)
+                        Text("\(karma)").font(.title2).bold()
+                        HStack {
+                            Button("-") { karma -= 1; updateWidget() }
+                            Button("+") { karma += 1; updateWidget() }
+                        }.buttonStyle(.bordered)
+                    }
+                    .frame(maxWidth: .infinity)
+                    
+                    Divider()
+                    
+                    VStack {
+                        Text("Keys").font(.caption)
+                        Text("\(keys)").font(.title2).bold()
+                        HStack {
+                            Button("-") { keys -= 1; updateWidget() }
+                            Button("+") { keys += 1; updateWidget() }
+                        }.buttonStyle(.bordered)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
         }
     }
     
     func updateWidget() {
         WidgetCenter.shared.reloadTimelines(ofKind: "Locked_Widget")
     }
+}
+
+#Preview {
+    MainPage()
 }
