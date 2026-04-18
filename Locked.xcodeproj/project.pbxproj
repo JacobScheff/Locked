@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		3A8DF90A2F89DFA600279855 /* ModelContainer+Ext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A8DF9092F89DFA200279855 /* ModelContainer+Ext.swift */; };
 		3A8DF9992F89F2B900279855 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3A8DF9982F89F2B900279855 /* WidgetKit.framework */; };
 		3A8DF99B2F89F2B900279855 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3A8DF99A2F89F2B900279855 /* SwiftUI.framework */; };
 		3A8DF9A62F89F2BB00279855 /* Locked-WidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 3A8DF9962F89F2B900279855 /* Locked-WidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -40,7 +39,6 @@
 /* Begin PBXFileReference section */
 		3A31934A2F8F0FC30092411E /* Locked-WidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Locked-WidgetExtension.entitlements"; sourceTree = "<group>"; };
 		3A8DF8ED2F89D52F00279855 /* Locked.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Locked.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		3A8DF9092F89DFA200279855 /* ModelContainer+Ext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ModelContainer+Ext.swift"; sourceTree = "<group>"; };
 		3A8DF9962F89F2B900279855 /* Locked-WidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Locked-WidgetExtension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
 		3A8DF9982F89F2B900279855 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		3A8DF99A2F89F2B900279855 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
@@ -100,7 +98,6 @@
 				3A8DF99C2F89F2B900279855 /* Locked-Widget */,
 				3A8DF9972F89F2B900279855 /* Frameworks */,
 				3A8DF8EE2F89D52F00279855 /* Products */,
-				3A8DF9092F89DFA200279855 /* ModelContainer+Ext.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -231,7 +228,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				3A8DF90A2F89DFA600279855 /* ModelContainer+Ext.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

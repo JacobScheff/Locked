@@ -15,35 +15,16 @@ struct OnAppClose: AppIntent {
         
     @MainActor
     func perform() async throws -> some IntentResult {
-        @AppStorage("openedApp", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
-        var name: String = ""
+        @AppStorage("startTimes", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+        var startTimes: [Date] = []
         
-        guard !name.isEmpty else { return .result() }
-
-        let container = ModelContainer.forLockedApp()
-        let context = container.mainContext
-                
-        let fetchDescriptor = FetchDescriptor<ScreenTime>(
-            predicate: #Predicate { $0.appName == name }
-        )
+        var startTime = startTimes.popLast()
         
-        do {
-            let results = try context.fetch(fetchDescriptor)
+        if startTime != nil {
+            @AppStorage("screentime", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+            var screentime: Int = 0
             
-            if let existingApp = results.first {
-                let passedTime = Date().timeIntervalSince(existingApp.lastOpened)
-                
-                if passedTime > 0 {
-                    existingApp.totalScreenTime += passedTime
-                }
-                
-                existingApp.lastOpened = Date()
-            }
-            
-            try context.save()
-            
-        } catch {
-            print("Failed to fetch or save ScreenTime: \(error)")
+            screentime += Int(Date().timeIntervalSince(startTime!))
         }
         
         return .result()

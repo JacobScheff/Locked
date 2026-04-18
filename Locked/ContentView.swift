@@ -1,13 +1,17 @@
 import SwiftUI
-import SwiftData
-import WidgetKit // Required to trigger widget updates
+import WidgetKit
 
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
+    @AppStorage("screentime", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    var screentime: Int = 0 // Seconds
     
-    @Query(sort: \ScreenTime.totalScreenTime, order: .reverse) private var screenTimes: [ScreenTime]
+    var days: Int { screentime / 86400 }
+    var hours: Int { (screentime % 86400) / 3600 }
+    var minutes: Int { (screentime % 3600) / 60 }
     
-    // Shared App Group storage
+    @AppStorage("startTimes", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    var startTimes: [Date] = []
+    
     @AppStorage("keys", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var keys: Int = 0
     
@@ -17,6 +21,10 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                
+                // MARK: - Screen Time
+                Text("Screen Time")
+                Text("\(days) days, \(hours) hours, \(minutes) minutes")
                 
                 // MARK: - Top Stats (Karma & Keys)
                 HStack(spacing: 40) {
@@ -67,30 +75,7 @@ struct ContentView: View {
                 .padding()
                 .frame(maxWidth: .infinity)
                 .background(Color(UIColor.secondarySystemBackground))
-                
-                // MARK: - App List
-                List {
-                    Section("Opened Apps") {
-                        if screenTimes.isEmpty {
-                            Text("No apps opened yet.")
-                                .foregroundStyle(.secondary)
-                        } else {
-                            ForEach(screenTimes) { screenTime in
-                                HStack {
-                                    Text(screenTime.appName)
-                                        .font(.headline)
-                                    
-                                    Spacer()
-                                    
-                                    Text("\(screenTime.totalScreenTime, specifier: "%.0f") s")
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                }
                             }
-                        }
-                    }
-                }
-            }
             .navigationTitle("Dashboard")
         }
     }
@@ -103,5 +88,4 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-        .modelContainer(for: ScreenTime.self, inMemory: true)
 }
