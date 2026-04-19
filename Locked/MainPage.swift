@@ -10,7 +10,7 @@ struct MainPage: View {
     
     @AppStorage("appCounts", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var appCounts: [String: Int] = [:]
-    
+        
     // Stores the custom user ranking order
     @AppStorage("appOrder", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var appOrder: [String] = []

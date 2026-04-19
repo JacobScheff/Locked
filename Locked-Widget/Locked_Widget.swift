@@ -1,23 +1,6 @@
 import WidgetKit
 import SwiftUI
-import AppIntents // 1. Import AppIntents
-
-// MARK: - App Intent
-struct IncrementKeysIntent: AppIntent {
-    static var title: LocalizedStringResource = "Increment Keys"
-    
-    // This function runs when the button is pressed
-    func perform() async throws -> some IntentResult {
-        let sharedDefaults = UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked")
-        let currentKeys = sharedDefaults?.integer(forKey: "keys") ?? 0
-        sharedDefaults?.set(currentKeys + 1, forKey: "keys")
-        
-        // This tells WidgetKit to update the UI immediately
-        WidgetCenter.shared.reloadTimelines(ofKind: "Locked_Widget")
-        
-        return .result()
-    }
-}
+import AppIntents
 
 // MARK: - Provider
 struct Provider: TimelineProvider {
@@ -28,8 +11,8 @@ struct Provider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (SimpleEntry) -> ()) {
-        let keys = sharedDefaults?.integer(forKey: "keys") ?? 5
-        let karma = sharedDefaults?.integer(forKey: "karma") ?? 12
+        let keys = sharedDefaults?.integer(forKey: "keys") ?? 0
+        let karma = sharedDefaults?.integer(forKey: "karma") ?? 0
         let entry = SimpleEntry(date: Date(), keys: keys, karma: karma)
         completion(entry)
     }
@@ -60,13 +43,13 @@ struct Locked_WidgetEntryView : View {
                 HStack(spacing: 24) {
                     karmaStat
                     Divider().frame(height: 50).opacity(0.5)
-                    keysStatWithButton // Use the version with the button
+                    keysStat
                 }
                 .padding(.horizontal)
             } else {
                 VStack(alignment: .leading, spacing: 16) {
                     karmaStat
-                    keysStatWithButton // Use the version with the button
+                    keysStat
                 }
             }
         }
@@ -76,22 +59,8 @@ struct Locked_WidgetEntryView : View {
         StatItemView(icon: "sparkles", color: .purple, title: "Karma", value: entry.karma)
     }
     
-    // This section adds the interactive button
-    private var keysStatWithButton: some View {
-        HStack {
-            StatItemView(icon: "key.fill", color: .orange, title: "Keys", value: entry.keys)
-            
-            // 2. The Interactive Button
-            Button(intent: IncrementKeysIntent()) {
-                Image(systemName: "plus")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 28, height: 28)
-                    .background(Color.orange.gradient)
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.plain) // Essential for widgets to prevent default button styling
-        }
+    private var keysStat: some View {
+        StatItemView(icon: "key.fill", color: .orange, title: "Keys", value: entry.keys)
     }
 }
 
