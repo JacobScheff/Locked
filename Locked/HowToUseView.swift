@@ -83,9 +83,13 @@ struct HowToUseView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         SectionHeader(title: "App Ranking", icon: "slider.horizontal.3", color: .indigo)
                         
-                        Text("If you ever want to override the ranking of your app popularities, you can do so manually in the app Settings.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                        (
+                            Text("If you ever want to override the ranking of your app popularities, you can do so manually by clicking on the ") +
+                            Text(Image(systemName: "slider.horizontal.3")).foregroundStyle(.indigo) +
+                            Text(" button in the App Rankings section.")
+                        )
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                     }
                     .padding(20)
                     .frame(maxWidth: .infinity, alignment: .leading)
