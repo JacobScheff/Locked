@@ -226,7 +226,7 @@ struct KeysCard: View {
     }
 }
 
-// MARK: - App Counts Card (With Custom Reordering Logic)
+// MARK: - App Counts Card
 
 struct AppCountsCard: View {
     @Binding var appCounts: [String: Int]
@@ -237,14 +237,11 @@ struct AppCountsCard: View {
     
     @State private var isEditing = false
     @State private var draftOrder: [String] = []
-    
-    // Custom drag gesture state
     @State private var draggedItem: String? = nil
     
     var activeOrder: [String] {
         var current = appOrder.filter { appCounts.keys.contains($0) }
         let missing = appCounts.keys.filter { !current.contains($0) }
-        
         let sortedMissing = missing.sorted { (appCounts[$0] ?? 0) > (appCounts[$1] ?? 0) }
         current.append(contentsOf: sortedMissing)
         return current
@@ -256,14 +253,13 @@ struct AppCountsCard: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // MARK: - Header
+            // Header
             HStack {
-                Image(systemName: "square.grid.2x2.fill")
+                Image(systemName: "chart.bar.fill")
                     .foregroundStyle(.pink)
-                Text(isEditing ? "Edit Rankings" : "App Usage Rankings")
+                Text(isEditing ? "Edit Rankings" : "App Usage")
                     .font(.headline)
                     .foregroundStyle(.secondary)
-                    .contentTransition(.interpolate)
                 
                 Spacer()
                 
@@ -272,7 +268,6 @@ struct AppCountsCard: View {
                         draftOrder = activeOrder
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                             isEditing = true
-                            appCounts.removeValue(forKey: "") // Prevent empty rows
                         }
                     } label: {
                         Image(systemName: "slider.horizontal.3")
@@ -283,14 +278,14 @@ struct AppCountsCard: View {
                             .background(Color(UIColor.tertiarySystemGroupedBackground))
                             .clipShape(Circle())
                     }
-                    .transition(.scale.combined(with: .opacity))
                 }
             }
             .padding(20)
             
             // MARK: - Edit Action Buttons
             if isEditing {
-                HStack {
+                HStack(spacing: 10) {
+                    // Discard Button
                     Button(role: .destructive) {
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                             isEditing = false
@@ -302,6 +297,7 @@ struct AppCountsCard: View {
                     .buttonStyle(.borderedProminent)
                     .tint(Color.red.opacity(0.8))
                     
+                    // Re-added Default Button
                     Button {
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                             draftOrder = draftOrder.sorted { a, b in
@@ -317,6 +313,7 @@ struct AppCountsCard: View {
                     .buttonStyle(.bordered)
                     .tint(.orange)
                     
+                    // Save Button
                     Button {
                         appOrder = draftOrder
                         updateWidget()
@@ -335,7 +332,7 @@ struct AppCountsCard: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
             
-            // MARK: - List
+            // List Section
             if appCounts.isEmpty {
                 Text("No apps recorded yet.")
                     .font(.subheadline)
@@ -347,75 +344,32 @@ struct AppCountsCard: View {
                     ForEach(Array(displayOrder.enumerated()), id: \.element) { index, name in
                         VStack(spacing: 0) {
                             HStack(spacing: 12) {
-                                
-                                
                                 Text("#\(index + 1)")
-                                    .font(.system(.body, design: .rounded, weight: .bold))
+                                    .font(.system(.subheadline, design: .rounded, weight: .bold))
                                     .foregroundStyle(.tertiary)
-                                    .frame(width: 40, alignment: .leading)
+                                    .frame(width: 30, alignment: .leading)
                                 
                                 Text(name)
                                     .font(.system(.body, design: .rounded, weight: .medium))
-                                    .layoutPriority(1)
+                                    .lineLimit(1)
                                 
                                 Spacer()
                                 
                                 if isEditing {
-                                    Image(systemName: "line.3.horizontal")
-                                        .font(.title3)
-                                        .foregroundStyle(.secondary)
-                                        .frame(width: 40, height: 40) // Generous touch target
-                                        .contentShape(Rectangle())
-                                        .gesture(
-                                            DragGesture(minimumDistance: 3, coordinateSpace: .named("ListArea"))
-                                                .onChanged { value in
-                                                    if draggedItem == nil {
-                                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                                            draggedItem = name
-                                                        }
-                                                    }
-                                                    
-                                                    let rowHeight: CGFloat = 53
-                                                    let rawIndex = Int(value.location.y / rowHeight)
-                                                    let clampedIndex = max(0, min(draftOrder.count - 1, rawIndex))
-                                                    
-                                                    // Trigger the slide
-                                                    if let currentIdx = draftOrder.firstIndex(of: name), currentIdx != clampedIndex {
-                                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                                            draftOrder.move(fromOffsets: IndexSet(integer: currentIdx),
-                                                                            toOffset: clampedIndex > currentIdx ? clampedIndex + 1 : clampedIndex)
-                                                        }
-                                                    }
-                                                }
-                                                .onEnded { _ in
-                                                    // Clear state on let go
-                                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                                        draggedItem = nil
-                                                    }
-                                                }
-                                        )
-                                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                                    reorderHandle(for: name)
                                 } else {
-                                    Text("\(((Double(appCounts[name] ?? 0) / totalAppCounts * 100 * 100).rounded() / 100.0).formatted())%")
-                                        .font(.system(.title3, design: .rounded, weight: .semibold))
-                                        .foregroundStyle(.secondary)
-                                        .frame(minWidth: 30, alignment: .trailing)
-                                        .transition(.opacity)
+                                    let count = Double(appCounts[name] ?? 0)
+                                    let percentage = totalAppCounts > 0 ? count / totalAppCounts : 0
+                                    
+                                    AppUsageBar(percentage: percentage)
+                                        .frame(width: 140)
                                 }
                             }
                             .padding(.horizontal, 20)
                             .frame(height: 52)
                             
-                            // Separators
                             if name != displayOrder.last {
-                                Rectangle()
-                                    .fill(Color.gray.opacity(0.3))
-                                    .frame(height: 1)
-                                    // 20 (horizontal padding) + 40 (rank width) + 12 (HStack spacing) = 72
-                                    .padding(.leading, 72)
-                            } else {
-                                // Keeps the absolute row height perfectly uniform for the bottom element
-                                Color.clear.frame(height: 1)
+                                Divider().padding(.leading, 62)
                             }
                         }
                         .background(Color(UIColor.secondarySystemGroupedBackground))
@@ -430,5 +384,57 @@ struct AppCountsCard: View {
         .background(Color(UIColor.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .shadow(color: .black.opacity(0.04), radius: 8, x: 0, y: 4)
+    }
+
+    private func reorderHandle(for name: String) -> some View {
+        Image(systemName: "line.3.horizontal")
+            .font(.title3)
+            .foregroundStyle(.secondary)
+            .frame(width: 40, height: 40)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 3, coordinateSpace: .named("ListArea"))
+                    .onChanged { value in
+                        if draggedItem == nil { draggedItem = name }
+                        let rowHeight: CGFloat = 53
+                        let clampedIndex = max(0, min(draftOrder.count - 1, Int(value.location.y / rowHeight)))
+                        if let currentIdx = draftOrder.firstIndex(of: name), currentIdx != clampedIndex {
+                            withAnimation(.spring(response: 0.3)) {
+                                draftOrder.move(fromOffsets: IndexSet(integer: currentIdx), toOffset: clampedIndex > currentIdx ? clampedIndex + 1 : clampedIndex)
+                            }
+                        }
+                    }
+                    .onEnded { _ in draggedItem = nil }
+            )
+    }
+}
+
+struct AppUsageBar: View {
+    let percentage: Double
+    
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            GeometryReader { geo in
+                ZStack(alignment: .trailing) {
+                    Capsule()
+                        .fill(Color.gray.opacity(0.1))
+                    
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [.pink.opacity(0.8), .pink],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: max(geo.size.width * CGFloat(percentage), 4))
+                }
+            }
+            .frame(height: 8)
+            
+            Text("\(Int(percentage * 100))%")
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundStyle(.secondary)
+        }
     }
 }
