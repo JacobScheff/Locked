@@ -270,6 +270,7 @@ struct AppCountsCard: View {
                         draftOrder = activeOrder
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                             isEditing = true
+                            appCounts.removeValue(forKey: "") // Prevent empty rows
                         }
                     } label: {
                         Image(systemName: "slider.horizontal.3")
