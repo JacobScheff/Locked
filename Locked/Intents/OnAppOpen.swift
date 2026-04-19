@@ -18,17 +18,26 @@ struct OnAppOpen: AppIntent {
         
     @MainActor
     func perform() async throws -> some IntentResult {
-        @AppStorage("startTimes", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
-        var startTimes: [Date] = []
-        
         @AppStorage("appCounts", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
         var appCounts: [String: Int] = [:]
-        
-        let startTime: Date = Date()
-        
-        startTimes.append(startTime)
         appCounts[appName] = (appCounts[appName] ?? 0) + 1
+
+        @AppStorage("eventState", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+        var eventState: String = "closed"
         
+        // Open --> Open: Do Nothing
+        // Close --> Open: Store new lastOpened
+        
+        if eventState == "Open" {
+            return .result()
+        }
+        
+        @AppStorage("lastOpened", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+        var lastOpened: Date = Date()
+                
+        lastOpened = Date()
+        eventState = "Open"
+                
         return .result()
     }
 }

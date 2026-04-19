@@ -32,7 +32,7 @@ struct MainPage: View {
                     }
                     
                     AppCountsCard(appCounts: $appCounts, updateWidget: updateWidget)
-                    
+                                        
                 }
                 .padding(.horizontal)
                 .padding(.bottom, 40)

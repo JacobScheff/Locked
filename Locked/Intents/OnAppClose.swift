@@ -15,18 +15,26 @@ struct OnAppClose: AppIntent {
         
     @MainActor
     func perform() async throws -> some IntentResult {
-        @AppStorage("startTimes", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
-        var startTimes: [Date] = []
+        @AppStorage("eventState", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+        var eventState: String = "closed"
         
-        var startTime = startTimes.popLast()
+        // Open --> Close: time += e - s
+        // Close --> Close: Do Nothing
         
-        if startTime != nil {
-            @AppStorage("screentime", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
-            var screentime: Int = 0
-            
-            screentime += Int(Date().timeIntervalSince(startTime!))
+        if eventState == "Close" {
+            return .result()
         }
         
+        @AppStorage("lastOpened", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+        var lastOpened: Date = Date()
+        
+        @AppStorage("screentime", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+        var screentime: Int = 0
+        
+        screentime += Int(Date().timeIntervalSince(lastOpened))
+    
+        eventState = "Close"
+
         return .result()
     }
 }
