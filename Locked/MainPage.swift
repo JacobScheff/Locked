@@ -233,6 +233,8 @@ struct AppCountsCard: View {
     @Binding var appOrder: [String]
     var updateWidget: () -> Void
     
+    var totalAppCounts: Double { Double(appCounts.values.reduce(0, +)) }
+    
     @State private var isEditing = false
     @State private var draftOrder: [String] = []
     
@@ -394,7 +396,7 @@ struct AppCountsCard: View {
                                         )
                                         .transition(.move(edge: .trailing).combined(with: .opacity))
                                 } else {
-                                    Text("\(appCounts[name] ?? 0)")
+                                    Text("\(((Double(appCounts[name] ?? 0) / totalAppCounts * 100 * 100).rounded() / 100.0).formatted())%")
                                         .font(.system(.title3, design: .rounded, weight: .semibold))
                                         .foregroundStyle(.secondary)
                                         .frame(minWidth: 30, alignment: .trailing)
