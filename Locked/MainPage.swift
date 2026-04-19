@@ -11,11 +11,17 @@ struct MainPage: View {
     @AppStorage("appCounts", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var appCounts: [String: Int] = [:]
     
+    // Stores the custom user ranking order
+    @AppStorage("appOrder", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    var appOrder: [String] = []
+    
     @AppStorage("keys", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var keys: Int = 0
     
     @AppStorage("karma", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var karma: Int = 0
+    
+    @State private var showingHowToUse = false
         
     var body: some View {
         NavigationStack {
@@ -31,13 +37,31 @@ struct MainPage: View {
                         KeysCard(keys: $keys, updateWidget: updateWidget)
                     }
                     
-                    AppCountsCard(appCounts: $appCounts, updateWidget: updateWidget)
+                    AppCountsCard(
+                        appCounts: $appCounts,
+                        appOrder: $appOrder,
+                        updateWidget: updateWidget
+                    )
                                         
                 }
                 .padding(.horizontal)
                 .padding(.bottom, 40)
             }
             .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showingHowToUse = true
+                    } label: {
+                        Image(systemName: "questionmark.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(.indigo)
+                    }
+                }
+            }
+            .sheet(isPresented: $showingHowToUse) {
+                HowToUseView()
+            }
         }
     }
     
@@ -138,11 +162,9 @@ struct KarmaCard: View {
             Spacer()
             
             ZStack {
-                // Background Track
                 Circle()
                     .stroke(Color.gray.opacity(0.15), lineWidth: 12)
                 
-                // Progress Bar
                 Circle()
                     .trim(from: 0, to: progress)
                     .stroke(
@@ -152,7 +174,6 @@ struct KarmaCard: View {
                     .rotationEffect(.degrees(-90))
                     .animation(.spring(response: 0.6, dampingFraction: 0.8), value: progress)
                 
-                // Inner Text
                 VStack(spacing: -2) {
                     Text("\(karma)")
                         .font(.system(size: 30, weight: .bold, design: .rounded))
@@ -237,25 +258,117 @@ struct ControlButton: View {
                 .foregroundStyle(.primary)
                 .clipShape(Circle())
         }
-        .buttonStyle(.plain) // Prevents highlighting the whole card
+        .buttonStyle(.plain)
     }
 }
 
+// MARK: - App Counts Card (With Custom Reordering Logic)
+
 struct AppCountsCard: View {
     @Binding var appCounts: [String: Int]
+    @Binding var appOrder: [String]
     var updateWidget: () -> Void
+    
+    @State private var isEditing = false
+    @State private var draftOrder: [String] = []
+    
+    // Custom drag gesture state
+    @State private var draggedItem: String? = nil
+    
+    var activeOrder: [String] {
+        var current = appOrder.filter { appCounts.keys.contains($0) }
+        let missing = appCounts.keys.filter { !current.contains($0) }
+        
+        let sortedMissing = missing.sorted { (appCounts[$0] ?? 0) > (appCounts[$1] ?? 0) }
+        current.append(contentsOf: sortedMissing)
+        return current
+    }
+    
+    var displayOrder: [String] {
+        isEditing ? draftOrder : activeOrder
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // MARK: - Header
             HStack {
                 Image(systemName: "square.grid.2x2.fill")
                     .foregroundStyle(.pink)
-                Text("App Open Counts")
+                Text(isEditing ? "Edit Rankings" : "App Usage Rankings")
                     .font(.headline)
                     .foregroundStyle(.secondary)
+                    .contentTransition(.interpolate)
+                
+                Spacer()
+                
+                if !isEditing && !appCounts.isEmpty {
+                    Button {
+                        draftOrder = activeOrder
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            isEditing = true
+                        }
+                    } label: {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.body)
+                            .fontWeight(.bold)
+                            .foregroundStyle(.indigo)
+                            .padding(8)
+                            .background(Color(UIColor.tertiarySystemGroupedBackground))
+                            .clipShape(Circle())
+                    }
+                    .transition(.scale.combined(with: .opacity))
+                }
             }
             .padding(20)
             
+            // MARK: - Edit Action Buttons
+            if isEditing {
+                HStack {
+                    Button(role: .destructive) {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            isEditing = false
+                        }
+                    } label: {
+                        Text("Discard").font(.subheadline.bold())
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Color.red.opacity(0.8))
+                    
+                    Button {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            draftOrder = draftOrder.sorted { a, b in
+                                let countA = appCounts[a] ?? 0
+                                let countB = appCounts[b] ?? 0
+                                return countA == countB ? a < b : countA > countB
+                            }
+                        }
+                    } label: {
+                        Text("Reset").font(.subheadline.bold())
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.orange)
+                    
+                    Button {
+                        appOrder = draftOrder
+                        updateWidget()
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            isEditing = false
+                        }
+                    } label: {
+                        Text("Save").font(.subheadline.bold())
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Color.green)
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 12)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+            
+            // MARK: - List
             if appCounts.isEmpty {
                 Text("No apps recorded yet.")
                     .font(.subheadline)
@@ -264,36 +377,98 @@ struct AppCountsCard: View {
                     .padding(.bottom, 20)
             } else {
                 VStack(spacing: 0) {
-                    ForEach(Array(appCounts.keys.sorted()), id: \.self) { name in
-                        HStack {
-                            Text(name)
-                                .font(.system(.body, design: .rounded, weight: .medium))
-                            Spacer()
-                            Text("\(appCounts[name] ?? 0)")
-                                .font(.system(.title3, design: .rounded, weight: .semibold))
-                                .foregroundStyle(.secondary)
-                                .frame(minWidth: 30, alignment: .trailing)
-                            
-                            Button {
-                                appCounts[name] = (appCounts[name] ?? 0) + 1
-                                updateWidget()
-                            } label: {
-                                Image(systemName: "plus.circle.fill")
-                                    .font(.title2)
-                                    .foregroundStyle(Color(UIColor.tertiaryLabel))
+                    ForEach(Array(displayOrder.enumerated()), id: \.element) { index, name in
+                        VStack(spacing: 0) {
+                            HStack(spacing: 12) {
+                                
+                                
+                                Text("#\(index + 1)")
+                                    .font(.system(.body, design: .rounded, weight: .bold))
+                                    .foregroundStyle(.tertiary)
+                                    .frame(width: 40, alignment: .leading)
+                                
+                                Text(name)
+                                    .font(.system(.body, design: .rounded, weight: .medium))
+                                    .layoutPriority(1)
+                                
+                                Spacer()
+                                
+                                if isEditing {
+                                    Image(systemName: "line.3.horizontal")
+                                        .font(.title3)
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 40, height: 40) // Generous touch target
+                                        .contentShape(Rectangle())
+                                        .gesture(
+                                            DragGesture(minimumDistance: 3, coordinateSpace: .named("ListArea"))
+                                                .onChanged { value in
+                                                    if draggedItem == nil {
+                                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                                            draggedItem = name
+                                                        }
+                                                    }
+                                                    
+                                                    let rowHeight: CGFloat = 53
+                                                    let rawIndex = Int(value.location.y / rowHeight)
+                                                    let clampedIndex = max(0, min(draftOrder.count - 1, rawIndex))
+                                                    
+                                                    // Trigger the slide
+                                                    if let currentIdx = draftOrder.firstIndex(of: name), currentIdx != clampedIndex {
+                                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                                            draftOrder.move(fromOffsets: IndexSet(integer: currentIdx),
+                                                                            toOffset: clampedIndex > currentIdx ? clampedIndex + 1 : clampedIndex)
+                                                        }
+                                                    }
+                                                }
+                                                .onEnded { _ in
+                                                    // Clear state on let go
+                                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                                        draggedItem = nil
+                                                    }
+                                                }
+                                        )
+                                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                                } else {
+                                    Text("\(appCounts[name] ?? 0)")
+                                        .font(.system(.title3, design: .rounded, weight: .semibold))
+                                        .foregroundStyle(.secondary)
+                                        .frame(minWidth: 30, alignment: .trailing)
+                                        .transition(.opacity)
+                                    
+                                    Button {
+                                        appCounts[name] = (appCounts[name] ?? 0) + 1
+                                        updateWidget()
+                                    } label: {
+                                        Image(systemName: "plus.circle.fill")
+                                            .font(.title2)
+                                            .foregroundStyle(Color(UIColor.tertiaryLabel))
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .padding(.leading, 8)
+                                    .transition(.opacity)
+                                }
                             }
-                            .buttonStyle(.borderless)
-                            .padding(.leading, 8)
+                            .padding(.horizontal, 20)
+                            .frame(height: 52)
+                            
+                            // Separators
+                            if name != displayOrder.last {
+                                Rectangle()
+                                    .fill(Color.gray.opacity(0.3))
+                                    .frame(height: 1)
+                                    // 20 (horizontal padding) + 40 (rank width) + 12 (HStack spacing) = 72
+                                    .padding(.leading, 72)
+                            } else {
+                                // Keeps the absolute row height perfectly uniform for the bottom element
+                                Color.clear.frame(height: 1)
+                            }
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 14)
-                        
-                        if name != appCounts.keys.sorted().last {
-                            Divider()
-                                .padding(.leading, 20)
-                        }
+                        .background(Color(UIColor.secondarySystemGroupedBackground))
+                        .opacity(draggedItem == name ? 0.5 : 1.0)
+                        .zIndex(draggedItem == name ? 1 : 0)
                     }
                 }
+                .coordinateSpace(name: "ListArea")
                 .padding(.bottom, 8)
             }
         }
