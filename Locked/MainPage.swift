@@ -178,21 +178,10 @@ struct KarmaCard: View {
                     Text("\(karma)")
                         .font(.system(size: 30, weight: .bold, design: .rounded))
                         .contentTransition(.numericText())
-                    Text("Karma")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .textCase(.uppercase)
                 }
             }
             .frame(height: 110)
             .padding(.vertical, 10)
-            
-            Spacer()
-            
-            HStack(spacing: 12) {
-                ControlButton(icon: "minus", action: { karma -= 1; updateWidget() })
-                ControlButton(icon: "plus", action: { karma += 1; updateWidget() })
-            }
         }
         .padding(20)
         .frame(maxWidth: .infinity)
@@ -228,37 +217,12 @@ struct KeysCard: View {
                     .contentTransition(.numericText())
             }
             .padding(.vertical, 10)
-            
-            Spacer()
-            
-            HStack(spacing: 12) {
-                ControlButton(icon: "minus", action: { keys -= 1; updateWidget() })
-                ControlButton(icon: "plus", action: { keys += 1; updateWidget() })
-            }
         }
         .padding(20)
         .frame(maxWidth: .infinity)
         .background(Color(UIColor.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .shadow(color: .black.opacity(0.04), radius: 8, x: 0, y: 4)
-    }
-}
-
-// TODO: Delete Me!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-struct ControlButton: View {
-    let icon: String
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 16, weight: .bold))
-                .frame(width: 36, height: 36)
-                .background(Color(UIColor.tertiarySystemGroupedBackground))
-                .foregroundStyle(.primary)
-                .clipShape(Circle())
-        }
-        .buttonStyle(.plain)
     }
 }
 
@@ -344,7 +308,7 @@ struct AppCountsCard: View {
                             }
                         }
                     } label: {
-                        Text("Reset").font(.subheadline.bold())
+                        Text("Default").font(.subheadline.bold())
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
@@ -434,18 +398,6 @@ struct AppCountsCard: View {
                                         .foregroundStyle(.secondary)
                                         .frame(minWidth: 30, alignment: .trailing)
                                         .transition(.opacity)
-                                    
-                                    Button {
-                                        appCounts[name] = (appCounts[name] ?? 0) + 1
-                                        updateWidget()
-                                    } label: {
-                                        Image(systemName: "plus.circle.fill")
-                                            .font(.title2)
-                                            .foregroundStyle(Color(UIColor.tertiaryLabel))
-                                    }
-                                    .buttonStyle(.borderless)
-                                    .padding(.leading, 8)
-                                    .transition(.opacity)
                                 }
                             }
                             .padding(.horizontal, 20)
