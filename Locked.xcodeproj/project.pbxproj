@@ -10,6 +10,7 @@
 		3A8DF9992F89F2B900279855 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3A8DF9982F89F2B900279855 /* WidgetKit.framework */; };
 		3A8DF99B2F89F2B900279855 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3A8DF99A2F89F2B900279855 /* SwiftUI.framework */; };
 		3A8DF9A62F89F2BB00279855 /* Locked-WidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 3A8DF9962F89F2B900279855 /* Locked-WidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		3AB6FF602F96CC9F00606D95 /* Logic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AB6FF5F2F96CC9D00606D95 /* Logic.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -42,6 +43,7 @@
 		3A8DF9962F89F2B900279855 /* Locked-WidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Locked-WidgetExtension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
 		3A8DF9982F89F2B900279855 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		3A8DF99A2F89F2B900279855 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		3AB6FF5F2F96CC9D00606D95 /* Logic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logic.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -98,6 +100,7 @@
 				3A8DF99C2F89F2B900279855 /* Locked-Widget */,
 				3A8DF9972F89F2B900279855 /* Frameworks */,
 				3A8DF8EE2F89D52F00279855 /* Products */,
+				3AB6FF5F2F96CC9D00606D95 /* Logic.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -228,6 +231,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3AB6FF602F96CC9F00606D95 /* Logic.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

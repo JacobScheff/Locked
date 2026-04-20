@@ -31,7 +31,8 @@ struct OnAppClose: AppIntent {
         @AppStorage("screentime", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
         var screentime: Int = 0
         
-        screentime += Int(Date().timeIntervalSince(lastOpened))
+        // 25% chance of Close-->Close. In this case, data is lost. So, divide by 0.75 to account for this
+        screentime += Int(Double(Date().timeIntervalSince(lastOpened)) / 0.75)
     
         eventState = "Close"
 
