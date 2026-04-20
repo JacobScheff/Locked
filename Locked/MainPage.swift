@@ -347,11 +347,16 @@ struct AppCountsCard: View {
                                 Text("#\(index + 1)")
                                     .font(.system(.subheadline, design: .rounded, weight: .bold))
                                     .foregroundStyle(.tertiary)
-                                    .frame(width: 30, alignment: .leading)
+                                    .frame(width: 36, alignment: .leading)
+                                
+                                AppIconView(appName: name)
+                                    .frame(width: 32, height: 32)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
                                 
                                 Text(name)
                                     .font(.system(.body, design: .rounded, weight: .medium))
                                     .lineLimit(1)
+                                    .padding(.horizontal, 0)
                                 
                                 Spacer()
                                 
@@ -362,10 +367,10 @@ struct AppCountsCard: View {
                                     let percentage = totalAppCounts > 0 ? count / totalAppCounts : 0
                                     
                                     AppUsageBar(percentage: percentage)
-                                        .frame(width: 140)
+                                        .frame(width: 130)
                                 }
                             }
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, 15)
                             .frame(height: 52)
                             
                             if name != displayOrder.last {
@@ -438,3 +443,4 @@ struct AppUsageBar: View {
         }
     }
 }
+
