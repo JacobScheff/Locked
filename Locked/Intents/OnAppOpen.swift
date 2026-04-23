@@ -20,24 +20,35 @@ struct OnAppOpen: AppIntent {
     func perform() async throws -> some IntentResult {
         @AppStorage("appCounts", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
         var appCounts: [String: Int] = [:]
-        appCounts[appName] = (appCounts[appName] ?? 0) + 1
-
+        appCounts[appName] = appCounts[appName] ?? 0
+        
+        @AppStorage("lastOpenedApp", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+        var lastOpenedApp: String = ""
+        
         @AppStorage("eventState", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
-        var eventState: String = "closed"
+        var eventState: String = "Close"
         
         // Open --> Open: Do Nothing
         // Close --> Open: Store new lastOpened
         
-        if eventState == "Open" {
-            return .result()
-        }
-        
         @AppStorage("lastOpened", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
         var lastOpened: Date = Date()
-                
-        lastOpened = Date()
+        
+        let now = Date()
+        
+        if eventState == "Open" {
+            let timeSpent = now.timeIntervalSince(lastOpened)
+            if timeSpent > 0 {
+                // Add time to the previous app's total
+                appCounts[lastOpenedApp, default: 0] += Int(Double(timeSpent) / 0.75)
+            }
+        }
+        
+        
+        lastOpened = now
+        lastOpenedApp = appName
         eventState = "Open"
-                
+        
         return .result()
     }
 }

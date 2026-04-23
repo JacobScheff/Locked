@@ -12,11 +12,11 @@ import SwiftData
 
 struct OnAppClose: AppIntent {
     static var title: LocalizedStringResource = "On App Close"
-        
+            
     @MainActor
     func perform() async throws -> some IntentResult {
         @AppStorage("eventState", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
-        var eventState: String = "closed"
+        var eventState: String = "Close"
         
         // Open --> Close: time += e - s
         // Close --> Close: Do Nothing
@@ -28,12 +28,21 @@ struct OnAppClose: AppIntent {
         @AppStorage("lastOpened", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
         var lastOpened: Date = Date()
         
+        @AppStorage("lastOpenedApp", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+        var lastOpenedApp: String = ""
+        
+        @AppStorage("appCounts", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+        var appCounts: [String: Int] = [:]
+        appCounts[lastOpenedApp] = appCounts[lastOpenedApp] ?? 0
+        
         @AppStorage("screentime", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
         var screentime: Int = 0
         
         // 25% chance of Close-->Close. In this case, data is lost. So, divide by 0.75 to account for this
-        screentime += Int(Double(Date().timeIntervalSince(lastOpened)) / 0.75)
-    
+        let timeDelta = Int(Double(Date().timeIntervalSince(lastOpened)) / 0.75)
+        screentime += timeDelta
+        appCounts[lastOpenedApp, default: 0] += timeDelta
+            
         eventState = "Close"
 
         return .result()
