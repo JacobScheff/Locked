@@ -2,92 +2,177 @@
 //  Logic.swift
 //  Locked
 //
-//  Created by Jacob Scheff on 4/20/26.
-//
 
 import Foundation
 import SwiftUI
 import GameplayKit
+import Combine
 
-func updateKarma(assignedDate: Double, dueDate: Double, daysTakenForCompletiion: Double, S: Double, a: Double) {
-    var w: Double = (daysTakenForCompletiion - assignedDate) / (dueDate - assignedDate)
-    
+// MARK: - Karma
+
+/// assignedDate, dueDate, daysTakenForCompletion are all in fractional days since epoch.
+func updateKarma(assignedDate: Double, dueDate: Double, daysTakenForCompletion: Double, S: Double, a: Double) {
+    let w: Double = (daysTakenForCompletion - assignedDate) / (dueDate - assignedDate)
+
     let term1: Double = S / abs(S - dueDate / a) / pow(dueDate, 2)
-    let term2: Double = pow((Double(dueDate) * w - (daysTakenForCompletiion - assignedDate)), 3)
+    let term2: Double = pow(Double(dueDate) * w - (daysTakenForCompletion - assignedDate), 3)
     let delta: Double = term1 * term2
-    
+
     @AppStorage("karma", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var karma: Double = 0.0
-    
     karma += delta
 }
 
+/// Convenience wrapper that accepts Swift Dates and converts them to fractional days.
+func updateKarmaForAssignment(releaseDate: Date, dueDate: Date, completionDate: Date) {
+    let dayScale: Double = 86_400          // seconds per day
+    let assigned = releaseDate.timeIntervalSince1970 / dayScale
+    let due      = dueDate.timeIntervalSince1970      / dayScale
+    let done     = completionDate.timeIntervalSince1970 / dayScale
+
+    // Guard: if submitted before release or due == assigned, skip
+    guard due > assigned, done >= assigned else { return }
+
+    // Tuneable constants — adjust S and a to taste
+    let S: Double = 10.0
+    let a: Double = 1.0
+    updateKarma(assignedDate: assigned, dueDate: due, daysTakenForCompletion: done, S: S, a: a)
+}
+
+// MARK: - Keys / Unlock
+
 func unlockApp(numLockedApps: Int, usagePercentage: Double) {
     let cost = pow(Double(numLockedApps), 1.5) + 0.5 * pow(usagePercentage, 1.25) + 10.0
-    
+
     @AppStorage("keys", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var keys: Double = 0.0
-    
     keys -= cost
 }
 
+// MARK: - Z-Score
+
 func getZScoreFromKarma() -> Double {
-    // Karma = 100: z-score = 3
-    // Karma = 50: z-score = 0
-    // Karma = 0: z-score = -3
-    
     @AppStorage("karma", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var karma: Double = 0.0
-    
+    // Karma 100 → z = 3, Karma 50 → z = 0, Karma 0 → z = -3
     return -0.06 * karma + 3
 }
+
+// MARK: - App Locking
 
 func lockAppByKarma() -> String {
     @AppStorage("appCounts", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var appCounts: [String: Int] = [:]
-    
+
     guard !appCounts.isEmpty else { return "" }
-    
-    // Sort apps from lowest frequency to highest frequency
+
     let sortedApps = appCounts.sorted { $0.value < $1.value }
     let totalFrequency = sortedApps.reduce(0) { $0 + $1.value }
-    
-    // Setup the GKGaussianDistribution
+
     let precision: Float = 1000.0
     let meanZScore = Float(getZScoreFromKarma())
-    
+
     let distribution = GKGaussianDistribution(
         randomSource: GKARC4RandomSource(),
         mean: meanZScore * precision,
         deviation: 1.0 * precision
     )
-    
-    // Generate the Gaussian random number and strip the multiplier back off
+
     let zRand = Double(distribution.nextInt()) / Double(precision)
-    
-    // Map the Z-Score from a [-3.0, 3.0] window to a percentage [0.0, 1.0]
-    // High Karma (Mean -3) generates values generally <= 0, clamping to 0.0 (Least Used Apps)
-    // Low Karma (Mean 3) generates values generally >= 1.0, clamping to 1.0 (Most Used Apps)
     var normalizedPosition = (zRand + 3.0) / 6.0
     normalizedPosition = max(0.0, min(1.0, normalizedPosition))
-    
-    // Convert percentage into our cumulative frequency domain
+
     let targetCumulativeFrequency = normalizedPosition * Double(totalFrequency)
-    
-    // Iterate through the sorted frequencies to find the target app
+
     var currentCumulative = 0.0
-    var appToLock = sortedApps.last!.key // Fallback securely to highest used app
-    
+    var appToLock = sortedApps.last!.key
+
     for app in sortedApps {
         currentCumulative += Double(app.value)
-        
         if currentCumulative >= targetCumulativeFrequency {
             appToLock = app.key
             break
         }
     }
-    
-    // TODO: Actually lock the chosen app
+
+    // TODO: Actually lock the chosen app via Screen Time API / DeviceActivitySchedule
     return appToLock
-//    print("Based on Karma, locking app: \(appToLock)")
+}
+
+/// Locks the appropriate number of apps based on current karma.
+/// Formula: (6 - karma/20) * 100  gives a percentage; we apply that fraction to total app count.
+/// Returns the list of bundle IDs that were (would be) locked.
+@discardableResult
+func performSundayLocking() -> [String] {
+    @AppStorage("karma", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    var karma: Double = 0.0
+
+    @AppStorage("appCounts", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    var appCounts: [String: Int] = [:]
+
+    let totalApps = appCounts.count
+    guard totalApps > 0 else { return [] }
+
+    // Percentage of apps to lock, clamped to [0, 100]
+    let lockPercent = max(0, min(100, (6.0 - karma / 20.0) * 100.0))
+    let numToLock   = Int((lockPercent / 100.0 * Double(totalApps)).rounded(.up))
+
+    var locked: [String] = []
+    // Avoid duplicate locks in one pass by temporarily removing each picked app
+    var snapshot = appCounts
+    for _ in 0 ..< numToLock {
+        let picked = lockAppByKarma()
+        if !picked.isEmpty && !locked.contains(picked) {
+            locked.append(picked)
+        }
+    }
+
+    // Persist which apps are currently locked
+    UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked")?.set(locked, forKey: "lockedApps")
+    return locked
+}
+
+// MARK: - Sunday Scheduler
+
+final class LockScheduler: ObservableObject {
+    private let defaults = UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked")
+    private var timer: Timer?
+
+    private var lastLockKey: String { "lastSundayLockDate" }
+
+    func start() {
+        // Check immediately in case app was closed over the trigger window
+        checkAndLockIfNeeded()
+
+        // Then poll every minute while app is foregrounded
+        timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            self?.checkAndLockIfNeeded()
+        }
+    }
+
+    func stop() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    private func checkAndLockIfNeeded() {
+        let now = Date()
+        let calendar = Calendar.current
+        let components = calendar.dateComponents([.weekday, .hour, .minute], from: now)
+
+        // weekday 1 = Sunday; trigger at 00:01
+        guard components.weekday == 1,
+              components.hour == 0,
+              components.minute == 1 else { return }
+
+        // Ensure we only fire once per Sunday
+        let todayString = ISO8601DateFormatter().string(from: calendar.startOfDay(for: now))
+        if defaults?.string(forKey: lastLockKey) == todayString { return }
+
+        defaults?.set(todayString, forKey: lastLockKey)
+        let locked = performSundayLocking()
+        print("Sunday lock: locked \(locked.count) app(s): \(locked)")
+    }
+
+    deinit { stop() }
 }

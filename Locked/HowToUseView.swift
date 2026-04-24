@@ -58,7 +58,10 @@ struct HowToUseView: View {
                                 "Select which apps you want to be part of the Locked experience.",
                                 "In the shortcut, add the **\"Get Current App\"** block.",
                                 "Next, add the **\"On App Open\"** block provided by the Locked app.",
-                                "Set the *App Name* parameter to the *Current App* variable."
+                                "Set the *App Name* parameter to the *Current App* variable.",
+                                "Add an **\"If\"** statement block directly below it.",
+                                "Set the condition: **If** *On App Open Result* is **True**.",
+                                "Inside the If statement, add the **\"Go to Home Screen\"** action. This ensures you get kicked out if an app is locked!"
                             ]
                         )
                         

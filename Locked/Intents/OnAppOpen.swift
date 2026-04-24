@@ -17,7 +17,15 @@ struct OnAppOpen: AppIntent {
     var appName: String
         
     @MainActor
-    func perform() async throws -> some IntentResult {
+    func perform() async throws -> some IntentResult & ReturnsValue<Bool> {
+        // Check if app is locked
+        let defaults = UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked")
+        let lockedApps = defaults?.stringArray(forKey: "lockedApps") ?? []
+        
+        if lockedApps.contains(appName) {
+            return .result(value: true)
+        }
+        
         @AppStorage("appCounts", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
         var appCounts: [String: Int] = [:]
         appCounts[appName] = appCounts[appName] ?? 0
@@ -49,6 +57,6 @@ struct OnAppOpen: AppIntent {
         lastOpenedApp = appName
         eventState = "Open"
         
-        return .result()
+        return .result(value: false)
     }
 }

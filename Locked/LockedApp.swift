@@ -52,6 +52,8 @@ extension Dictionary: @retroactive RawRepresentable where Key == String, Value: 
 
 @main
 struct LockedApp: App {
+    @StateObject private var lockScheduler = LockScheduler()
+    
     init() {
         LibraryAppShortcuts.updateAppShortcutParameters()
     }
@@ -59,6 +61,8 @@ struct LockedApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .onAppear { lockScheduler.start() }
+                .onDisappear { lockScheduler.stop() }
         }
     }
 }

@@ -348,6 +348,13 @@ struct CourseDetailView: View {
         var updated = assignment
         updated.completionDate = .now
         saveAssignment(updated)
+
+        // Update karma based on how early/late this was completed
+        updateKarmaForAssignment(
+            releaseDate: assignment.releaseDate,
+            dueDate: assignment.dueDate,
+            completionDate: .now
+        )
     }
     
     private func markIncomplete(_ assignment: Assignment) {
