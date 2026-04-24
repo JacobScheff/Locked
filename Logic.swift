@@ -8,6 +8,26 @@ import SwiftUI
 import GameplayKit
 import Combine
 
+// MARK: - Shared Storage
+/// Centralized AppStorage prevents local property wrapper leaks that freeze the application
+final class LogicStore {
+    static let shared = LogicStore()
+    
+    @AppStorage("karma", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    var karma: Double = 0.0
+
+    @AppStorage("keys", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    var keys: Double = 0.0
+
+    @AppStorage("appCounts", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    var appCounts: [String: Int] = [:]
+
+    @AppStorage("lockedApps", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    var lockedApps: [String] = []
+
+    private init() {}
+}
+
 // MARK: - Karma
 
 /// assignedDate, dueDate, daysTakenForCompletion are all in fractional days since epoch.
@@ -18,9 +38,7 @@ func updateKarma(assignedDate: Double, dueDate: Double, daysTakenForCompletion: 
     let term2: Double = pow(Double(dueDate) * w - (daysTakenForCompletion - assignedDate), 3)
     let delta: Double = term1 * term2
 
-    @AppStorage("karma", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
-    var karma: Double = 0.0
-    karma += delta
+    LogicStore.shared.karma += delta
 }
 
 /// Convenience wrapper that accepts Swift Dates and converts them to fractional days.
@@ -44,29 +62,23 @@ func updateKarmaForAssignment(releaseDate: Date, dueDate: Date, completionDate: 
 func unlockApp(numLockedApps: Int, usagePercentage: Double) {
     let cost = pow(Double(numLockedApps), 1.5) + 0.5 * pow(usagePercentage, 1.25) + 10.0
 
-    @AppStorage("keys", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
-    var keys: Double = 0.0
-    keys -= cost
+    LogicStore.shared.keys -= cost
 }
 
 // MARK: - Z-Score
 
 func getZScoreFromKarma() -> Double {
-    @AppStorage("karma", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
-    var karma: Double = 0.0
-    // Karma 100 → z = 3, Karma 50 → z = 0, Karma 0 → z = -3
+    let karma = LogicStore.shared.karma
+    // Karma 100 → z = -3, Karma 50 → z = 0, Karma 0 → z = 3
     return -0.06 * karma + 3
 }
 
 // MARK: - App Locking
 
-func lockAppByKarma() -> String {
-    @AppStorage("appCounts", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
-    var appCounts: [String: Int] = [:]
+func lockAppByKarma(from snapshot: [String: Int]) -> String {
+    guard !snapshot.isEmpty else { return "" }
 
-    guard !appCounts.isEmpty else { return "" }
-
-    let sortedApps = appCounts.sorted { $0.value < $1.value }
+    let sortedApps = snapshot.sorted { $0.value < $1.value }
     let totalFrequency = sortedApps.reduce(0) { $0 + $1.value }
 
     let precision: Float = 1000.0
@@ -99,38 +111,40 @@ func lockAppByKarma() -> String {
 }
 
 /// Locks the appropriate number of apps based on current karma.
-/// Formula: (6 - karma/20) * 100  gives a percentage; we apply that fraction to total app count.
-/// Returns the list of bundle IDs that were (would be) locked.
+/// Returns the list of bundle IDs/names that were (would be) locked.
 @discardableResult
 func performSundayLocking() -> [String] {
-    @AppStorage("karma", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
-    var karma: Double = 0.0
-
-    @AppStorage("appCounts", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
-    var appCounts: [String: Int] = [:]
-
-    @AppStorage("lockedApps", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
-    var lockedApps: [String] = []
-
-    let totalApps = appCounts.count
+    let store = LogicStore.shared
+    let karma = store.karma
+    
+    // Copy app counts to a working snapshot
+    var snapshot = store.appCounts
+    
+    // Prevent the app itself ("Locked") from ever being locked
+    snapshot.removeValue(forKey: "Locked")
+    
+    let totalApps = snapshot.count
     guard totalApps > 0 else { return [] }
 
-    // Percentage of apps to lock, clamped to [0, 100]
-    let lockPercent = max(0, min(100, (6.0 - karma / 20.0) * 100.0))
-    let numToLock   = Int((lockPercent / 100.0 * Double(totalApps)).rounded(.up))
+    // Corrected lock formula:
+    // 100 Karma = 0% locked. 77 Karma = 23% locked. 0 Karma = 100% locked.
+    let lockPercent = max(0.0, min(100.0, 100.0 - karma))
+    
+    // Calculate raw number of apps to lock, rounding up to ensure at least 1 app locks if lockPercent > 0
+    let numToLock = Int((lockPercent / 100.0 * Double(totalApps)).rounded(.up))
 
     var locked: [String] = []
-    // Avoid duplicate locks in one pass by temporarily removing each picked app
-    var snapshot = appCounts
+    
     for _ in 0 ..< numToLock {
-        let picked = lockAppByKarma()
+        // Pass the updated snapshot to ensure we don't pick the same app twice
+        let picked = lockAppByKarma(from: snapshot)
         if !picked.isEmpty && !locked.contains(picked) {
             locked.append(picked)
-            availableApps.removeValue(forKey: picked)
+            snapshot.removeValue(forKey: picked) // Remove so it isn't picked again
         }
     }
 
-    lockedApps = locked
+    store.lockedApps = locked
     return locked
 }
 

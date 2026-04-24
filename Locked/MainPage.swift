@@ -50,7 +50,7 @@ struct MainPage: View {
                     
                     // MARK: - TEMPORARY TEST BUTTON
                     // (Small, separate, and easy to delete later)
-                    Button("Test Lock Apps") {
+                    Button("Run Unscheduled App Locking") {
                         performSundayLocking()
                         updateWidget()
                     }
