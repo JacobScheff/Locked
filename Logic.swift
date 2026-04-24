@@ -9,9 +9,11 @@ import GameplayKit
 import Combine
 
 // MARK: - Shared Storage
-/// Centralized AppStorage prevents local property wrapper leaks that freeze the application
 final class LogicStore {
     static let shared = LogicStore()
+    
+    // Using @AppStorage inside the logic class directly uses your custom extension!
+    // This perfectly prevents UserDefaults decoding failures and data wiping.
     
     @AppStorage("karma", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var karma: Double = 0.0
@@ -31,39 +33,36 @@ final class LogicStore {
     @AppStorage("eventState", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var eventState: String = "Close"
     
-    @AppStorage("lastOpened", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
-    var lastOpened: Date = Date()
+    // Dates still rely on the standard defaults.object fallback
+    private let defaults = UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked")!
+    
+    var lastOpened: Date {
+        get { defaults.object(forKey: "lastOpened") as? Date ?? Date() }
+        set { defaults.set(newValue, forKey: "lastOpened") }
+    }
     
     private init() {}
 }
 
 // MARK: - Karma
 
-/// assignedDate, dueDate, daysTakenForCompletion are all in fractional days since epoch.
-func updateKarma(assignedDate: Double, dueDate: Double, daysTakenForCompletion: Double, S: Double, a: Double) {
-    let w: Double = (daysTakenForCompletion - assignedDate) / (dueDate - assignedDate)
+// MARK: - Karma
 
-    let term1: Double = S / abs(S - dueDate / a) / pow(dueDate, 2)
-    let term2: Double = pow(Double(dueDate) * w - (daysTakenForCompletion - assignedDate), 3)
-    let delta: Double = term1 * term2
-
-    LogicStore.shared.karma += delta
-}
-
-/// Convenience wrapper that accepts Swift Dates and converts them to fractional days.
-func updateKarmaForAssignment(releaseDate: Date, dueDate: Date, completionDate: Date) {
+func calculateKarmaDelta(releaseDate: Date, dueDate: Date, completionDate: Date) -> Double {
     let dayScale: Double = 86_400          // seconds per day
     let assigned = releaseDate.timeIntervalSince1970 / dayScale
     let due      = dueDate.timeIntervalSince1970      / dayScale
     let done     = completionDate.timeIntervalSince1970 / dayScale
 
-    // Guard: if submitted before release or due == assigned, skip
-    guard due > assigned, done >= assigned else { return }
+    guard due > assigned else { return 0.0 }
 
-    // Tuneable constants — adjust S and a to taste
-    let S: Double = 10.0
-    let a: Double = 1.0
-    updateKarma(assignedDate: assigned, dueDate: due, daysTakenForCompletion: done, S: S, a: a)
+    // Calculate how much time they had total, and how early they submitted
+    let totalDuration = due - assigned
+    let timeEarly = due - done
+    
+    // Ex: +100 Karma for completing instantly, 0 for exactly on time, negative if late.
+    let maxKarmaBonus = 100.0
+    return (timeEarly / totalDuration) * maxKarmaBonus
 }
 
 // MARK: - Keys / Unlock

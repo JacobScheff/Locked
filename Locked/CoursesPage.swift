@@ -161,12 +161,15 @@ struct CourseRowView: View {
 struct CourseDetailView: View {
     @Binding var courses: [Course]
     let courseID: UUID
-
+    
+    @AppStorage("keys", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked")) var keys: Double = 0.0
+    @AppStorage("karma", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked")) var karma: Double = 0.0
+    
     @State private var editingAssignment: Assignment?
     @State private var assignmentToDelete: Assignment?
     @State private var assignmentToComplete: Assignment?
     @State private var assignmentToUncomplete: Assignment?
-
+    
     private var courseIndex: Int? { courses.firstIndex { $0.id == courseID } }
     private var course: Course? { courseIndex != nil ? courses[courseIndex!] : nil }
     
@@ -177,7 +180,7 @@ struct CourseDetailView: View {
     private var completedAssignments: [Assignment] {
         course?.assignments.filter { $0.isCompleted }.sorted { $0.completionDate ?? .now > $1.completionDate ?? .now } ?? []
     }
-
+    
     var body: some View {
         Group {
             if let course {
@@ -314,59 +317,74 @@ struct CourseDetailView: View {
     }
     
     // MARK: Actions
-    
-    // In CourseDetailView - deleteAndEditActions
-    @ViewBuilder
-    private func deleteAndEditActions(for assignment: Assignment) -> some View {
-        Button {
-            assignmentToDelete = assignment
-        } label: {
-            Label("Delete", systemImage: "trash")
-        }
-        .tint(.red)  // manually set red since we dropped the destructive role
         
-        Button {
-            editingAssignment = assignment
-        } label: {
-            Label("Edit", systemImage: "pencil")
+        @ViewBuilder
+        private func deleteAndEditActions(for assignment: Assignment) -> some View {
+            Button {
+                assignmentToDelete = assignment
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+            .tint(.red)
+            
+            Button {
+                editingAssignment = assignment
+            } label: {
+                Label("Edit", systemImage: "pencil")
+            }
+            .tint(.orange)
         }
-        .tint(.orange)
-    }
-    
-    private func saveAssignment(_ savedAssignment: Assignment) {
-        guard let courseIndex else { return }
-        withAnimation {
-            if let assignmentIndex = courses[courseIndex].assignments.firstIndex(where: { $0.id == savedAssignment.id }) {
-                courses[courseIndex].assignments[assignmentIndex] = savedAssignment
-            } else {
-                courses[courseIndex].assignments.append(savedAssignment)
+        
+        private func saveAssignment(_ savedAssignment: Assignment) {
+            guard let courseIndex else { return }
+            
+            // 1. Check if the assignment is transitioning from Pending -> Completed
+            let assignmentIndex = courses[courseIndex].assignments.firstIndex(where: { $0.id == savedAssignment.id })
+            let wasCompleted = assignmentIndex != nil ? courses[courseIndex].assignments[assignmentIndex!].isCompleted : false
+            
+            if !wasCompleted && savedAssignment.isCompleted {
+                // Calculate and Add Karma directly to AppStorage
+                let karmaDelta = calculateKarmaDelta(
+                    releaseDate: savedAssignment.releaseDate,
+                    dueDate: savedAssignment.dueDate,
+                    completionDate: savedAssignment.completionDate ?? .now
+                )
+                karma += karmaDelta
+                
+                if karma < 0 {
+                    karma = 0
+                } else if karma > 100 {
+                    karma = 100
+                }
+                
+                // Grant Keys directly to AppStorage
+                let baseKeys = 10.0
+                let pointBonus = savedAssignment.pointsPossible ?? 0.0
+                keys += (baseKeys + pointBonus)
+            }
+            
+            // 2. Save the updated assignment
+            withAnimation {
+                if let index = assignmentIndex {
+                    courses[courseIndex].assignments[index] = savedAssignment
+                } else {
+                    courses[courseIndex].assignments.append(savedAssignment)
+                }
             }
         }
-    }
         
-    private func markCompleted(_ assignment: Assignment) {
+        private func markCompleted(_ assignment: Assignment) {
             var updated = assignment
             updated.completionDate = .now
+            // saveAssignment now natively handles granting keys and karma!
             saveAssignment(updated)
-
-            // 1. Update Karma based on how early/late this was completed
-            updateKarmaForAssignment(
-                releaseDate: assignment.releaseDate,
-                dueDate: assignment.dueDate,
-                completionDate: .now
-            )
-            
-            // 2. Grant Keys (e.g., 5 base keys + whatever points the assignment was worth)
-            let baseKeys = 5.0
-            let pointBonus = assignment.pointsPossible ?? 0.0
-            LogicStore.shared.keys += (baseKeys + pointBonus)
         }
-    
-    private func markIncomplete(_ assignment: Assignment) {
-        var updated = assignment
-        updated.completionDate = nil
-        saveAssignment(updated)
-    }
+        
+        private func markIncomplete(_ assignment: Assignment) {
+            var updated = assignment
+            updated.completionDate = nil
+            saveAssignment(updated)
+        }
 }
 
 // MARK: - Assignment Row View

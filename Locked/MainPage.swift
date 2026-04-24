@@ -16,10 +16,10 @@ struct MainPage: View {
     var appOrder: [String] = []
     
     @AppStorage("keys", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
-    var keys: Int = 0
-    
+    var keys: Double = 0.0
+        
     @AppStorage("karma", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
-    var karma: Int = 0
+    var karma: Double = 0.0
     
     @AppStorage("lockedApps", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var lockedApps: [String] = []
@@ -163,7 +163,7 @@ struct TimeBlock: View {
 }
 
 struct KarmaCard: View {
-    @Binding var karma: Int
+    @Binding var karma: Double
     var updateWidget: () -> Void
     
     var progress: Double {
@@ -193,7 +193,7 @@ struct KarmaCard: View {
                     .animation(.spring(response: 0.6, dampingFraction: 0.8), value: progress)
                 
                 VStack(spacing: -2) {
-                    Text("\(karma)")
+                    Text("\(Int(karma))")
                         .font(.system(size: 30, weight: .bold, design: .rounded))
                         .contentTransition(.numericText())
                 }
@@ -210,7 +210,7 @@ struct KarmaCard: View {
 }
 
 struct KeysCard: View {
-    @Binding var keys: Int
+    @Binding var keys: Double
     var updateWidget: () -> Void
     
     var body: some View {
@@ -230,7 +230,7 @@ struct KeysCard: View {
                     )
                     .shadow(color: .orange.opacity(0.3), radius: 5, x: 0, y: 3)
                 
-                Text("\(keys)")
+                Text("\(Int(keys))")
                     .font(.system(size: 36, weight: .bold, design: .rounded))
                     .contentTransition(.numericText())
             }
@@ -249,7 +249,7 @@ struct KeysCard: View {
 struct AppCountsCard: View {
     @Binding var appCounts: [String: Int]
     @Binding var appOrder: [String]
-    @Binding var keys: Int
+    @Binding var keys: Double
     @Binding var lockedApps: [String]
     var updateWidget: () -> Void
     
@@ -431,9 +431,9 @@ struct AppCountsCard: View {
         .shadow(color: .black.opacity(0.04), radius: 8, x: 0, y: 4)
         // MARK: - Unlock Alert
         .alert("Unlock App", isPresented: $showUnlockAlert, presenting: appToUnlock) { app in
-            if keys >= unlockCost {
+            if keys >= Double(unlockCost) {
                 Button("Unlock (\(unlockCost) Keys)") {
-                    keys -= unlockCost
+                    keys -= Double(unlockCost)
                     lockedApps.removeAll { $0 == app }
                     updateWidget()
                 }
@@ -442,10 +442,10 @@ struct AppCountsCard: View {
                 Button("OK", role: .cancel) { }
             }
         } message: { app in
-            if keys >= unlockCost {
+            if keys >= Double(unlockCost) {
                 Text("Unlocking \(app) will cost \(unlockCost) keys. Do you want to proceed?")
             } else {
-                Text("Unlocking \(app) requires \(unlockCost) keys, but you only have \(keys). Keep studying to earn more keys!")
+                Text("Unlocking \(app) requires \(unlockCost) keys, but you only have \(Int(keys)). Keep studying to earn more keys!")
             }
         }
     }
