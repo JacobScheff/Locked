@@ -21,6 +21,9 @@ struct MainPage: View {
     @AppStorage("karma", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var karma: Int = 0
     
+    @AppStorage("lockedApps", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    var lockedApps: [String] = []
+    
     @State private var showingHowToUse = false
         
     var body: some View {
@@ -40,9 +43,24 @@ struct MainPage: View {
                     AppCountsCard(
                         appCounts: $appCounts,
                         appOrder: $appOrder,
+                        keys: $keys,
+                        lockedApps: $lockedApps,
                         updateWidget: updateWidget
                     )
-                                        
+                    
+                    // MARK: - TEMPORARY TEST BUTTON
+                    // (Small, separate, and easy to delete later)
+                    Button("Test Lock Apps") {
+                        performSundayLocking()
+                        updateWidget()
+                    }
+                    .font(.caption.bold())
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 16)
+                    .background(Color.red.opacity(0.15))
+                    .foregroundStyle(.red)
+                    .clipShape(Capsule())
+                    
                 }
                 .padding(.horizontal)
                 .padding(.bottom, 40)
@@ -231,6 +249,8 @@ struct KeysCard: View {
 struct AppCountsCard: View {
     @Binding var appCounts: [String: Int]
     @Binding var appOrder: [String]
+    @Binding var keys: Int
+    @Binding var lockedApps: [String]
     var updateWidget: () -> Void
     
     var totalAppCounts: Double { Double(appCounts.values.reduce(0, +)) }
@@ -238,6 +258,11 @@ struct AppCountsCard: View {
     @State private var isEditing = false
     @State private var draftOrder: [String] = []
     @State private var draggedItem: String? = nil
+    
+    // Unlock Alert State
+    @State private var showUnlockAlert = false
+    @State private var appToUnlock: String?
+    @State private var unlockCost: Int = 0
     
     var activeOrder: [String] {
         var current = appOrder.filter { appCounts.keys.contains($0) }
@@ -342,6 +367,8 @@ struct AppCountsCard: View {
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(displayOrder.enumerated()), id: \.element) { index, name in
+                        let isLocked = lockedApps.contains(name)
+                        
                         VStack(spacing: 0) {
                             HStack(spacing: 12) {
                                 Text("#\(index + 1)")
@@ -363,22 +390,35 @@ struct AppCountsCard: View {
                                 if isEditing {
                                     reorderHandle(for: name)
                                 } else {
-                                    let count = Double(appCounts[name] ?? 0)
-                                    let percentage = totalAppCounts > 0 ? count / totalAppCounts : 0
-                                    
-                                    AppUsageBar(percentage: percentage)
-                                        .frame(width: 130)
+                                    if isLocked {
+                                        Button("Unlock") {
+                                            appToUnlock = name
+                                            unlockCost = calculateUnlockCost(for: name)
+                                            showUnlockAlert = true
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .tint(.blue)
+                                        .controlSize(.small)
+                                    } else {
+                                        let count = Double(appCounts[name] ?? 0)
+                                        let percentage = totalAppCounts > 0 ? count / totalAppCounts : 0
+                                        
+                                        AppUsageBar(percentage: percentage)
+                                            .frame(width: 130)
+                                    }
                                 }
                             }
                             .padding(.horizontal, 15)
                             .frame(height: 52)
+                            // Gray out if locked
+                            .grayscale(isLocked ? 1.0 : 0.0)
+                            .opacity(isLocked ? 0.5 : (draggedItem == name ? 0.5 : 1.0))
                             
                             if name != displayOrder.last {
                                 Divider().padding(.leading, 62)
                             }
                         }
                         .background(Color(UIColor.secondarySystemGroupedBackground))
-                        .opacity(draggedItem == name ? 0.5 : 1.0)
                         .zIndex(draggedItem == name ? 1 : 0)
                     }
                 }
@@ -389,6 +429,17 @@ struct AppCountsCard: View {
         .background(Color(UIColor.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .shadow(color: .black.opacity(0.04), radius: 8, x: 0, y: 4)
+        // MARK: - Unlock Alert
+        .alert("Unlock App", isPresented: $showUnlockAlert, presenting: appToUnlock) { app in
+            Button("Unlock (\(unlockCost) Keys)") {
+                keys -= unlockCost
+                lockedApps.removeAll { $0 == app }
+                updateWidget()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: { app in
+            Text("Unlocking \(app) will cost \(unlockCost) keys. Do you want to proceed?")
+        }
     }
 
     private func reorderHandle(for name: String) -> some View {
@@ -411,6 +462,16 @@ struct AppCountsCard: View {
                     }
                     .onEnded { _ in draggedItem = nil }
             )
+    }
+    
+    // Calculates unlock cost in Keys based on logic file formula
+    private func calculateUnlockCost(for app: String) -> Int {
+        let totalUsage = Double(appCounts.values.reduce(0, +))
+        let appUsage = Double(appCounts[app] ?? 0)
+        let usagePercentage = totalUsage > 0 ? (appUsage / totalUsage) * 100.0 : 0.0
+        
+        let cost = pow(Double(lockedApps.count), 1.5) + 0.5 * pow(usagePercentage, 1.25) + 10.0
+        return Int(cost.rounded()) // Returning as Int to match `keys` type
     }
 }
 
@@ -443,4 +504,3 @@ struct AppUsageBar: View {
         }
     }
 }
-

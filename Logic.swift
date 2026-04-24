@@ -95,7 +95,6 @@ func lockAppByKarma() -> String {
         }
     }
 
-    // TODO: Actually lock the chosen app via Screen Time API / DeviceActivitySchedule
     return appToLock
 }
 
@@ -109,6 +108,9 @@ func performSundayLocking() -> [String] {
 
     @AppStorage("appCounts", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var appCounts: [String: Int] = [:]
+
+    @AppStorage("lockedApps", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    var lockedApps: [String] = []
 
     let totalApps = appCounts.count
     guard totalApps > 0 else { return [] }
@@ -124,11 +126,11 @@ func performSundayLocking() -> [String] {
         let picked = lockAppByKarma()
         if !picked.isEmpty && !locked.contains(picked) {
             locked.append(picked)
+            availableApps.removeValue(forKey: picked)
         }
     }
 
-    // Persist which apps are currently locked
-    UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked")?.set(locked, forKey: "lockedApps")
+    lockedApps = locked
     return locked
 }
 
@@ -138,13 +140,11 @@ final class LockScheduler: ObservableObject {
     private let defaults = UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked")
     private var timer: Timer?
 
-    private var lastLockKey: String { "lastSundayLockDate" }
+    private var lastLockKey: String { "lastWeeklyLockDate" }
 
     func start() {
-        // Check immediately in case app was closed over the trigger window
         checkAndLockIfNeeded()
 
-        // Then poll every minute while app is foregrounded
         timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             self?.checkAndLockIfNeeded()
         }
@@ -158,20 +158,21 @@ final class LockScheduler: ObservableObject {
     private func checkAndLockIfNeeded() {
         let now = Date()
         let calendar = Calendar.current
-        let components = calendar.dateComponents([.weekday, .hour, .minute], from: now)
+        
+        // Scheduler fix kept: Ensures if they miss exactly 12:01 AM, it still fires.
+        guard let startOfWeek = calendar.dateInterval(of: .weekOfYear, for: now)?.start else { return }
 
-        // weekday 1 = Sunday; trigger at 00:01
-        guard components.weekday == 1,
-              components.hour == 0,
-              components.minute == 1 else { return }
-
-        // Ensure we only fire once per Sunday
-        let todayString = ISO8601DateFormatter().string(from: calendar.startOfDay(for: now))
-        if defaults?.string(forKey: lastLockKey) == todayString { return }
-
-        defaults?.set(todayString, forKey: lastLockKey)
-        let locked = performSundayLocking()
-        print("Sunday lock: locked \(locked.count) app(s): \(locked)")
+        let currentWeekString = ISO8601DateFormatter().string(from: startOfWeek)
+        
+        if defaults?.string(forKey: lastLockKey) != currentWeekString {
+            defaults?.set(currentWeekString, forKey: lastLockKey)
+            let locked = performSundayLocking()
+            print("Weekly lock: locked \(locked.count) app(s): \(locked)")
+            
+            DispatchQueue.main.async {
+                self.objectWillChange.send()
+            }
+        }
     }
 
     deinit { stop() }
