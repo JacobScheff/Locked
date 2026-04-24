@@ -1,14 +1,6 @@
-//
-//  OnAppOpen.swift
-//  Locked
-//
-//  Created by Jacob Scheff on 4/10/26.
-//
-
 import Foundation
 import AppIntents
 import SwiftUI
-import SwiftData
 
 struct OnAppOpen: AppIntent {
     static var title: LocalizedStringResource = "On App Open"
@@ -18,44 +10,29 @@ struct OnAppOpen: AppIntent {
         
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<Bool> {
-        // Check if app is locked
-        let defaults = UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked")
-        let lockedApps = defaults?.stringArray(forKey: "lockedApps") ?? []
+        let store = LogicStore.shared
         
-        if lockedApps.contains(appName) {
+        // 1. Check if the app is locked
+        if store.lockedApps.contains(appName) {
+            // Returns 'true' so the Shortcuts app knows to execute "Go to Home Screen"
             return .result(value: true)
         }
         
-        @AppStorage("appCounts", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
-        var appCounts: [String: Int] = [:]
-        appCounts[appName] = appCounts[appName] ?? 0
-        
-        @AppStorage("lastOpenedApp", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
-        var lastOpenedApp: String = ""
-        
-        @AppStorage("eventState", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
-        var eventState: String = "Close"
-        
-        // Open --> Open: Do Nothing
-        // Close --> Open: Store new lastOpened
-        
-        @AppStorage("lastOpened", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
-        var lastOpened: Date = Date()
-        
+        // 2. Track screen time
+        store.appCounts[appName] = store.appCounts[appName] ?? 0
         let now = Date()
         
-        if eventState == "Open" {
-            let timeSpent = now.timeIntervalSince(lastOpened)
+        if store.eventState == "Open" {
+            let timeSpent = now.timeIntervalSince(store.lastOpened)
             if timeSpent > 0 {
                 // Add time to the previous app's total
-                appCounts[lastOpenedApp, default: 0] += Int(Double(timeSpent) / 0.75)
+                store.appCounts[store.lastOpenedApp, default: 0] += Int(Double(timeSpent) / 0.75)
             }
         }
         
-        
-        lastOpened = now
-        lastOpenedApp = appName
-        eventState = "Open"
+        store.lastOpened = now
+        store.lastOpenedApp = appName
+        store.eventState = "Open"
         
         return .result(value: false)
     }

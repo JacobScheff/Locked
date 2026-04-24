@@ -343,19 +343,24 @@ struct CourseDetailView: View {
             }
         }
     }
-    
+        
     private func markCompleted(_ assignment: Assignment) {
-        var updated = assignment
-        updated.completionDate = .now
-        saveAssignment(updated)
+            var updated = assignment
+            updated.completionDate = .now
+            saveAssignment(updated)
 
-        // Update karma based on how early/late this was completed
-        updateKarmaForAssignment(
-            releaseDate: assignment.releaseDate,
-            dueDate: assignment.dueDate,
-            completionDate: .now
-        )
-    }
+            // 1. Update Karma based on how early/late this was completed
+            updateKarmaForAssignment(
+                releaseDate: assignment.releaseDate,
+                dueDate: assignment.dueDate,
+                completionDate: .now
+            )
+            
+            // 2. Grant Keys (e.g., 5 base keys + whatever points the assignment was worth)
+            let baseKeys = 5.0
+            let pointBonus = assignment.pointsPossible ?? 0.0
+            LogicStore.shared.keys += (baseKeys + pointBonus)
+        }
     
     private func markIncomplete(_ assignment: Assignment) {
         var updated = assignment

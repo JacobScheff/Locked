@@ -431,14 +431,22 @@ struct AppCountsCard: View {
         .shadow(color: .black.opacity(0.04), radius: 8, x: 0, y: 4)
         // MARK: - Unlock Alert
         .alert("Unlock App", isPresented: $showUnlockAlert, presenting: appToUnlock) { app in
-            Button("Unlock (\(unlockCost) Keys)") {
-                keys -= unlockCost
-                lockedApps.removeAll { $0 == app }
-                updateWidget()
+            if keys >= unlockCost {
+                Button("Unlock (\(unlockCost) Keys)") {
+                    keys -= unlockCost
+                    lockedApps.removeAll { $0 == app }
+                    updateWidget()
+                }
+                Button("Cancel", role: .cancel) { }
+            } else {
+                Button("OK", role: .cancel) { }
             }
-            Button("Cancel", role: .cancel) { }
         } message: { app in
-            Text("Unlocking \(app) will cost \(unlockCost) keys. Do you want to proceed?")
+            if keys >= unlockCost {
+                Text("Unlocking \(app) will cost \(unlockCost) keys. Do you want to proceed?")
+            } else {
+                Text("Unlocking \(app) requires \(unlockCost) keys, but you only have \(keys). Keep studying to earn more keys!")
+            }
         }
     }
 
