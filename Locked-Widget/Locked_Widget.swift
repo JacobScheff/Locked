@@ -6,22 +6,30 @@ struct Provider: TimelineProvider {
     let sharedDefaults = UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked")
 
     func placeholder(in context: Context) -> SimpleEntry {
-        SimpleEntry(date: Date(), keys: 14, karma: 82)
+        SimpleEntry(date: Date(), keys: 14, karma: 82, overrideActive: false)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (SimpleEntry) -> ()) {
-        completion(currentEntry())
+        completion(currentEntry(at: Date()))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> ()) {
-        let timeline = Timeline(entries: [currentEntry()], policy: .atEnd)
-        completion(timeline)
+        let now = Date()
+        let until = Date(timeIntervalSince1970: sharedDefaults?.double(forKey: "emergencyOverrideUntil") ?? 0)
+        var entries = [currentEntry(at: now)]
+        if until > now {
+            entries.append(SimpleEntry(date: until, keys: entries[0].keys, karma: entries[0].karma, overrideActive: false))
+            completion(Timeline(entries: entries, policy: .after(until)))
+        } else {
+            completion(Timeline(entries: entries, policy: .atEnd))
+        }
     }
 
-    private func currentEntry() -> SimpleEntry {
+    private func currentEntry(at date: Date) -> SimpleEntry {
         let keys = Int(sharedDefaults?.double(forKey: "keys") ?? 0)
         let karma = Int(sharedDefaults?.double(forKey: "karma") ?? 0)
-        return SimpleEntry(date: Date(), keys: keys, karma: karma)
+        let until = Date(timeIntervalSince1970: sharedDefaults?.double(forKey: "emergencyOverrideUntil") ?? 0)
+        return SimpleEntry(date: date, keys: keys, karma: karma, overrideActive: until > date)
     }
 }
 
@@ -29,6 +37,7 @@ struct SimpleEntry: TimelineEntry {
     let date: Date
     let keys: Int
     let karma: Int
+    let overrideActive: Bool
 }
 
 // MARK: - Widget View
@@ -38,7 +47,9 @@ struct Locked_WidgetEntryView: View {
 
     var body: some View {
         Group {
-            if widgetFamily == .systemMedium {
+            if entry.overrideActive {
+                overrideBlock
+            } else if widgetFamily == .systemMedium {
                 HStack(spacing: 0) {
                     karmaBlock
                     Spacer(minLength: 12)
@@ -51,6 +62,28 @@ struct Locked_WidgetEntryView: View {
                     karmaBlock
                     keysBlock
                 }
+            }
+        }
+    }
+
+    private var overrideBlock: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "lock.open.fill")
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(.yellow)
+                .frame(width: 44, height: 44)
+                .background(Color.red.opacity(0.18))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("SEAL BROKEN")
+                    .font(.system(.caption2, design: .rounded, weight: .bold))
+                    .foregroundStyle(.red)
+                Text("Locks suspended")
+                    .font(.system(.headline, design: .rounded, weight: .heavy))
+                Text("They return in one hour")
+                    .font(.system(.caption, design: .rounded, weight: .medium))
+                    .foregroundStyle(.secondary)
             }
         }
     }

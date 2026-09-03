@@ -79,6 +79,21 @@ struct HowToUseView: View {
                     }
                 }
 
+                VStack(alignment: .leading, spacing: 12) {
+                    LockedSectionLabel(title: "Emergency", icon: "light.beacon.max.fill")
+
+                    LockedCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Break glass")
+                                .font(.headline)
+                            Text("If you truly cannot wait — a ride, a family call, a real emergency — break the glass on Home. Strike it three times. Every lock lifts for one hour, then snaps back on its own. It does not spend Keys or change Karma. This is a last resort, not a shortcut.")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+
                 #if DEBUG
                 debugTools
                 #endif

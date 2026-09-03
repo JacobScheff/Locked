@@ -1,5 +1,6 @@
 import SwiftUI
 import WidgetKit
+import UIKit
 
 struct MainPage: View {
     @AppStorage("screentime", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
@@ -26,6 +27,16 @@ struct MainPage: View {
     @AppStorage("courses", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var courses: [Course] = []
 
+    @AppStorage("emergencyOverrideUntil", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    var emergencyOverrideUntil: Double = 0
+
+    @State private var showingBreakGlass = false
+    @State private var now = Date()
+
+    private var overrideActive: Bool {
+        Date(timeIntervalSince1970: emergencyOverrideUntil) > now
+    }
+
     private var upcomingItems: [(course: Course, assignment: Assignment)] {
         courses.flatMap { course in
             course.assignments
@@ -39,6 +50,19 @@ struct MainPage: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
                 header
+
+                if overrideActive {
+                    OverrideStatusBanner(
+                        onRestore: {
+                            now = Date()
+                            updateWidget()
+                        },
+                        onExpired: {
+                            now = Date()
+                            updateWidget()
+                        }
+                    )
+                }
 
                 StatusHero(
                     karma: karma,
@@ -57,6 +81,7 @@ struct MainPage: View {
                     lockedApps: $lockedApps,
                     keys: $keys,
                     appCounts: $appCounts,
+                    overrideActive: overrideActive,
                     updateWidget: updateWidget
                 )
 
@@ -69,8 +94,15 @@ struct MainPage: View {
                     appOrder: $appOrder,
                     keys: $keys,
                     lockedApps: $lockedApps,
+                    overrideActive: overrideActive,
                     updateWidget: updateWidget
                 )
+
+                if !overrideActive {
+                    EmergencySealCard {
+                        showingBreakGlass = true
+                    }
+                }
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 36)
@@ -80,13 +112,23 @@ struct MainPage: View {
         .toolbar {
             ToolbarItem(placement: .principal) {
                 HStack(spacing: 6) {
-                    Image(systemName: "lock.fill")
+                    Image(systemName: overrideActive ? "lock.open.fill" : "lock.fill")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(LockedTheme.karmaGradient)
+                        .foregroundStyle(overrideActive ? Color.hazardYellow : Color.lockedIndigo)
                     Text("Locked")
                         .font(.headline.weight(.bold))
                 }
             }
+        }
+        .fullScreenCover(isPresented: $showingBreakGlass) {
+            BreakGlassView {
+                now = Date()
+                updateWidget()
+            }
+        }
+        .onAppear { now = Date() }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            now = Date()
         }
     }
 
@@ -95,9 +137,9 @@ struct MainPage: View {
             Text(Greeting.current)
                 .font(.lockedTitle(32))
                 .foregroundStyle(.primary)
-            Text(WeeklyLock.subtitle)
+            Text(overrideActive ? "Emergency override is active" : WeeklyLock.subtitle)
                 .font(.subheadline.weight(.medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(overrideActive ? Color.hazardRed : Color.secondary)
         }
         .padding(.top, 8)
     }
@@ -265,6 +307,7 @@ struct LockedAppsSection: View {
     @Binding var lockedApps: [String]
     @Binding var keys: Double
     @Binding var appCounts: [String: Int]
+    var overrideActive: Bool
     var updateWidget: () -> Void
 
     @State private var showUnlockAlert = false
@@ -273,7 +316,10 @@ struct LockedAppsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            LockedSectionLabel(title: "Locked apps", icon: "lock.fill")
+            LockedSectionLabel(
+                title: overrideActive ? "Temporarily released" : "Locked apps",
+                icon: overrideActive ? "lock.open.fill" : "lock.fill"
+            )
 
             if lockedApps.isEmpty {
                 LockedCard {
@@ -301,27 +347,37 @@ struct LockedAppsSection: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(name)
                                     .font(.body.weight(.semibold))
-                                Text("\(calculateUnlockCost(for: name)) keys to unlock")
+                                Text(overrideActive ? "Accessible until the seal repairs" : "\(calculateUnlockCost(for: name)) keys to unlock")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
 
                             Spacer()
 
-                            Button {
-                                appToUnlock = name
-                                unlockCost = calculateUnlockCost(for: name)
-                                showUnlockAlert = true
-                            } label: {
-                                Text("Unlock")
-                                    .font(.subheadline.weight(.semibold))
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 8)
-                                    .background(LockedTheme.keysGradient)
-                                    .foregroundStyle(.white)
+                            if overrideActive {
+                                Text("Open")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(Color.hazardYellow)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(Color.hazardYellow.opacity(0.15))
                                     .clipShape(Capsule())
+                            } else {
+                                Button {
+                                    appToUnlock = name
+                                    unlockCost = calculateUnlockCost(for: name)
+                                    showUnlockAlert = true
+                                } label: {
+                                    Text("Unlock")
+                                        .font(.subheadline.weight(.semibold))
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 8)
+                                        .background(LockedTheme.keysGradient)
+                                        .foregroundStyle(.white)
+                                        .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
                         .padding(14)
                         .background(LockedCardBackground(cornerRadius: 18))
@@ -420,6 +476,7 @@ struct AppCountsCard: View {
     @Binding var appOrder: [String]
     @Binding var keys: Double
     @Binding var lockedApps: [String]
+    var overrideActive: Bool = false
     var updateWidget: () -> Void
 
     var totalAppCounts: Double { Double(appCounts.values.reduce(0, +)) }
@@ -487,9 +544,9 @@ struct AppCountsCard: View {
                                     if isEditing {
                                         reorderHandle(for: name)
                                     } else if isLocked {
-                                        Label("Locked", systemImage: "lock.fill")
+                                        Label(overrideActive ? "Released" : "Locked", systemImage: overrideActive ? "lock.open.fill" : "lock.fill")
                                             .font(.caption.weight(.semibold))
-                                            .foregroundStyle(.secondary)
+                                            .foregroundStyle(overrideActive ? Color.hazardYellow : Color.secondary)
                                             .labelStyle(.titleAndIcon)
                                     } else {
                                         let count = Double(appCounts[name] ?? 0)

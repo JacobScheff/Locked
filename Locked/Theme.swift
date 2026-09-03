@@ -8,6 +8,8 @@ extension Color {
     static let lockedTeal = Color(red: 0.18, green: 0.78, blue: 0.72)
     static let lockedAmber = Color(red: 0.97, green: 0.70, blue: 0.22)
     static let lockedRose = Color(red: 0.93, green: 0.33, blue: 0.46)
+    static let hazardYellow = Color(red: 0.98, green: 0.78, blue: 0.12)
+    static let hazardRed = Color(red: 0.76, green: 0.12, blue: 0.18)
 }
 
 enum LockedTheme {
