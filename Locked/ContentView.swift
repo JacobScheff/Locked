@@ -1,26 +1,31 @@
 import SwiftUI
-import WidgetKit
 
 struct ContentView: View {
     var body: some View {
         TabView {
-            // Home Page
             NavigationStack {
                 MainPage()
             }
             .tabItem {
-                Label("Home", systemImage: "house")
+                Label("Home", systemImage: "house.fill")
             }
-            
-            // Courses + Assignments Pages
+
             NavigationStack {
                 CoursesPage()
-                    .navigationTitle("Courses")
             }
             .tabItem {
-                Label("Courses", systemImage: "list.bullet")
+                Label("Courses", systemImage: "book.fill")
+            }
+
+            NavigationStack {
+                HowToUseView()
+            }
+            .tabItem {
+                Label("Guide", systemImage: "questionmark.circle.fill")
             }
         }
+        .tint(.lockedIndigo)
+        .fontDesign(.rounded)
     }
 }
 

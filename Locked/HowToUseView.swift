@@ -1,165 +1,155 @@
-//
-//  HowToUseView.swift
-//  Locked
-//
-//  Created by Jacob Scheff on 4/19/26.
-//
-
 import SwiftUI
+#if DEBUG
+import WidgetKit
+#endif
 
 struct HowToUseView: View {
-    @Environment(\.dismiss) var dismiss
-    
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 24) {
-                    
-                    // MARK: - How It Works Section
-                    VStack(alignment: .leading, spacing: 16) {
-                        SectionHeader(title: "How It Works", icon: "info.circle.fill", color: .blue)
-                        
-                        InfoRow(
-                            icon: "key.fill",
-                            iconColor: .orange,
-                            title: "Keys",
-                            description: "Keys determine how much screentime usage you have left. As your keys decrease, the apps available slowly decrease. The earlier you complete your assignments, the more Keys you get."
+        ScrollView {
+            VStack(alignment: .leading, spacing: 28) {
+                intro
+
+                VStack(alignment: .leading, spacing: 12) {
+                    LockedSectionLabel(title: "The loop", icon: "arrow.triangle.2.circlepath")
+
+                    VStack(spacing: 10) {
+                        LoopCard(
+                            icon: "checkmark.circle.fill",
+                            color: .lockedTeal,
+                            title: "Finish work early",
+                            detail: "Assignments you complete before the due date earn Karma. Every completion also grants Keys."
                         )
-                        
-                        Divider()
-                        
-                        InfoRow(
+                        LoopCard(
                             icon: "star.fill",
-                            iconColor: .purple,
-                            title: "Karma",
-                            description: "Karma is measured by how consistently and early you complete your assignments. Lower karma means your most-used apps disappear quicker. Higher karma makes your most-used apps disappear last."
+                            color: .lockedViolet,
+                            title: "Karma protects apps",
+                            detail: "Higher Karma means fewer apps lock on Sunday — and the ones you use most are last to go."
+                        )
+                        LoopCard(
+                            icon: "key.fill",
+                            color: .lockedAmber,
+                            title: "Keys buy your time back",
+                            detail: "If something important gets locked, spend Keys to unlock it. Earn more by staying on top of coursework."
                         )
                     }
-                    .padding(20)
-                    .background(Color(UIColor.secondarySystemGroupedBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                    
-                    // MARK: - Siri Shortcuts Integration
-                    VStack(alignment: .leading, spacing: 16) {
-                        SectionHeader(title: "Siri Shortcuts Setup", icon: "bolt.fill", color: .yellow)
-                        
-                        Text("To track screentime, you must integrate Locked into your Shortcuts app.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        
-                        // App Open Setup
-                        StepCard(
-                            stepNumber: 1,
-                            title: "On App Open",
-                            instructions: [
-                                "Open **Shortcuts** > **Automation**.",
-                                "Create a new automation and select **App**.",
-                                "Choose **Is Opened** and **Run Immediately** (disable *Notify When Run* for a seamless experience).",
-                                "Select which apps you want to be part of the Locked experience.",
-                                "In the shortcut, add the **\"Get Current App\"** block.",
-                                "Next, add the **\"On App Open\"** block provided by the Locked app.",
-                                "Set the *App Name* parameter to the *Current App* variable.",
-                                "Add an **\"If\"** statement block directly below it.",
-                                "Set the condition: **If** *On App Open Result* is **True**.",
-                                "Inside the If statement, add the **\"Go to Home Screen\"** action. This ensures you get kicked out if an app is locked!"
-                            ]
-                        )
-                        
-                        // App Close Setup
-                        StepCard(
-                            stepNumber: 2,
-                            title: "On App Close",
-                            instructions: [
-                                "Go back to **Automation** and create a new **App** automation.",
-                                "Choose **Is Closed** and **Run Immediately** (disable *Notify When Run*).",
-                                "Select the exact same apps you chose earlier.",
-                                "In the shortcut, add the **\"On App Close\"** block provided by Locked.",
-                                "No parameters or current app blocks are needed here."
-                            ]
-                        )
-                    }
-                    .padding(20)
-                    .background(Color(UIColor.secondarySystemGroupedBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                    
-                    // MARK: - Extra Settings
-                    VStack(alignment: .leading, spacing: 12) {
-                        SectionHeader(title: "App Ranking", icon: "slider.horizontal.3", color: .indigo)
-                        
-                        (
-                            Text("If you ever want to override the ranking of your app popularities, you can do so manually by clicking on the ") +
-                            Text(Image(systemName: "slider.horizontal.3")).foregroundStyle(.indigo) +
-                            Text(" button in the App Rankings section.")
-                        )
+                }
+
+                VStack(alignment: .leading, spacing: 12) {
+                    LockedSectionLabel(title: "Shortcuts setup", icon: "bolt.fill")
+
+                    Text("Locked tracks which apps you open through the Shortcuts app. Do this once.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                    }
-                    .padding(20)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(UIColor.secondarySystemGroupedBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                    
+
+                    StepCard(
+                        stepNumber: 1,
+                        title: "When an app opens",
+                        instructions: [
+                            "Open **Shortcuts** → **Automation**.",
+                            "Create a new automation and choose **App**.",
+                            "Select **Is Opened** and **Run Immediately**. Turn off *Notify When Run*.",
+                            "Pick the apps you want Locked to manage.",
+                            "Add **Get Current App**, then Locked’s **On App Open** action.",
+                            "Set *App Name* to the *Current App* variable.",
+                            "Add an **If** block: **If** *On App Open Result* is **True**.",
+                            "Inside the If, add **Go to Home Screen** so locked apps bounce you out."
+                        ]
+                    )
+
+                    StepCard(
+                        stepNumber: 2,
+                        title: "When an app closes",
+                        instructions: [
+                            "Create another **App** automation.",
+                            "Choose **Is Closed** and **Run Immediately**. Turn off *Notify When Run*.",
+                            "Select the same apps as before.",
+                            "Add Locked’s **On App Close** action. No extra parameters needed."
+                        ]
+                    )
                 }
-                .padding()
-            }
-            .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
-            .navigationTitle("How to Use")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") {
-                        dismiss()
+
+                VStack(alignment: .leading, spacing: 12) {
+                    LockedSectionLabel(title: "Rankings", icon: "slider.horizontal.3")
+
+                    LockedCard {
+                        Text("App usage is ranked automatically. If you want a different lock order, tap Reorder on the Home screen and drag apps into place.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .fontWeight(.semibold)
                 }
+
+                #if DEBUG
+                debugTools
+                #endif
             }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 36)
+        }
+        .background(LockedBackground())
+        .navigationTitle("Guide")
+        .navigationBarTitleDisplayMode(.large)
+    }
+
+    private var intro: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Study first. Unlock later.")
+                .font(.lockedTitle(28))
+            Text("Locked closes distracting apps when coursework slips, and opens them back up when you follow through.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.top, 4)
+    }
+
+    #if DEBUG
+    private var debugTools: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            LockedSectionLabel(title: "Developer", icon: "hammer.fill")
+            Button {
+                performSundayLocking()
+                WidgetCenter.shared.reloadTimelines(ofKind: "Locked_Widget")
+            } label: {
+                Label("Simulate weekly lock", systemImage: "lock.rotation")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+            }
+            .buttonStyle(.bordered)
+            .tint(.lockedRose)
         }
     }
+    #endif
 }
 
-// MARK: - Helper Views
-
-struct SectionHeader: View {
-    let title: String
+private struct LoopCard: View {
     let icon: String
     let color: Color
-    
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon)
-                .foregroundStyle(color)
-            Text(title)
-                .font(.title3)
-                .fontWeight(.bold)
-                .foregroundStyle(.primary)
-        }
-    }
-}
-
-struct InfoRow: View {
-    let icon: String
-    let iconColor: Color
     let title: String
-    let description: String
-    
+    let detail: String
+
     var body: some View {
-        HStack(alignment: .top, spacing: 16) {
-            Image(systemName: icon)
-                .font(.title2)
-                .foregroundStyle(iconColor)
-                .frame(width: 30)
-            
+        HStack(alignment: .top, spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(color.opacity(0.15))
+                Image(systemName: icon)
+                    .font(.title3)
+                    .foregroundStyle(color)
+            }
+            .frame(width: 44, height: 44)
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.headline)
-                    .foregroundStyle(.primary)
-                
-                Text(description)
+                Text(detail)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+        .padding(16)
+        .background(LockedCardBackground(cornerRadius: 18))
     }
 }
 
@@ -167,39 +157,36 @@ struct StepCard: View {
     let stepNumber: Int
     let title: String
     let instructions: [String]
-    
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Circle()
-                    .fill(Color.indigo.opacity(0.15))
-                    .frame(width: 28, height: 28)
-                    .overlay(
-                        Text("\(stepNumber)")
-                            .font(.caption)
-                            .fontWeight(.bold)
-                            .foregroundStyle(.indigo)
-                    )
-                
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                Text("\(stepNumber)")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 26, height: 26)
+                    .background(LockedTheme.karmaGradient)
+                    .clipShape(Circle())
+
                 Text(title)
                     .font(.headline)
             }
-            
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(Array(instructions.enumerated()), id: \.offset) { index, instruction in
-                    HStack(alignment: .top, spacing: 8) {
-                        Text("•")
-                            .foregroundStyle(.tertiary)
-                        Text(try! AttributedString(markdown: instruction))
+
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Array(instructions.enumerated()), id: \.offset) { _, instruction in
+                    HStack(alignment: .top, spacing: 10) {
+                        Circle()
+                            .fill(Color.lockedIndigo.opacity(0.45))
+                            .frame(width: 6, height: 6)
+                            .padding(.top, 6)
+                        Text((try? AttributedString(markdown: instruction)) ?? AttributedString(instruction))
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
                 }
             }
-            .padding(.leading, 12)
         }
-        .padding()
-        .background(Color(UIColor.tertiarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(18)
+        .background(LockedCardBackground())
     }
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import WidgetKit
 
 // MARK: - Models
 
@@ -9,15 +10,14 @@ struct Assignment: Identifiable, Codable, Equatable {
     var releaseDate: Date
     var completionDate: Date?
     var pointsPossible: Double?
-    
-    // UX Helpers
+
     var isCompleted: Bool { completionDate != nil }
     var isOverdue: Bool { !isCompleted && dueDate < Date.now }
-    
+
     var statusColor: Color {
-        if isCompleted { return .green }
-        if isOverdue { return .red }
-        return .blue
+        if isCompleted { return .lockedTeal }
+        if isOverdue { return .lockedRose }
+        return .lockedIndigo
     }
 }
 
@@ -25,12 +25,18 @@ struct Course: Identifiable, Codable, Equatable {
     var id: UUID = UUID()
     var name: String
     var assignments: [Assignment] = []
-    
-    // UX Helpers
+
     var completionPercentage: Double {
         guard !assignments.isEmpty else { return 0 }
         let completed = assignments.filter { $0.isCompleted }.count
         return Double(completed) / Double(assignments.count)
+    }
+
+    var completedCount: Int { assignments.filter { $0.isCompleted }.count }
+    var overdueCount: Int { assignments.filter { $0.isOverdue }.count }
+
+    var nextDueAssignment: Assignment? {
+        assignments.filter { !$0.isCompleted }.sorted { $0.dueDate < $1.dueDate }.first
     }
 }
 
@@ -43,116 +49,297 @@ struct CoursesPage: View {
     @State private var editingCourse: Course?
     @State private var courseToDelete: Course?
 
+    private var upcoming: [(course: Course, assignment: Assignment)] {
+        courses.flatMap { course in
+            course.assignments.filter { !$0.isCompleted }.map { (course, $0) }
+        }
+        .sorted { $0.assignment.dueDate < $1.assignment.dueDate }
+    }
+
     var body: some View {
-        NavigationStack {
-            List {
-                ForEach(courses) { course in
-                    NavigationLink {
-                        CourseDetailView(courses: $courses, courseID: course.id)
-                    } label: {
-                        CourseRowView(course: course)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 28) {
+                if courses.isEmpty {
+                    emptyState
+                } else {
+                    if !upcoming.isEmpty {
+                        upcomingSection
                     }
-                    .swipeActions {
-                        Button {
-                            courseToDelete = course
-                        } label: {
-                            Label("Delete", systemImage: "trash")
-                        }
-                        .tint(.red)  // manually set red since we dropped the destructive role
-                        
-                        Button {
-                            editingCourse = course
-                        } label: {
-                            Label("Edit", systemImage: "pencil")
-                        }
-                        .tint(.orange)
+                    coursesSection
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 36)
+        }
+        .background(LockedBackground())
+        .navigationTitle("Courses")
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    editingCourse = Course(name: "")
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.body.weight(.bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                        .background(LockedTheme.karmaGradient)
+                        .clipShape(Circle())
+                }
+                .accessibilityLabel("Add course")
+            }
+        }
+        .sheet(item: $editingCourse) { course in
+            CourseEditorView(course: course) { savedCourse in
+                withAnimation {
+                    if let index = courses.firstIndex(where: { $0.id == savedCourse.id }) {
+                        courses[index] = savedCourse
+                    } else {
+                        courses.append(savedCourse)
                     }
                 }
             }
-            .navigationTitle("My Courses")
-            .overlay {
-                if courses.isEmpty {
-                    ContentUnavailableView(
-                        "No Courses",
-                        systemImage: "books.vertical",
-                        description: Text("Tap the + button to create your first course.")
+        }
+        .confirmationDialog(
+            "Delete \"\(courseToDelete?.name ?? "Course")\"?",
+            isPresented: Binding(
+                get: { courseToDelete != nil },
+                set: { if !$0 { courseToDelete = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let course = courseToDelete {
+                    withAnimation {
+                        courses.removeAll { $0.id == course.id }
+                    }
+                }
+                courseToDelete = nil
+            }
+            Button("Cancel", role: .cancel) {
+                courseToDelete = nil
+            }
+        } message: {
+            Text("All assignments in this course will also be deleted.")
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 18) {
+            Image(systemName: "books.vertical.fill")
+                .font(.system(size: 44))
+                .foregroundStyle(LockedTheme.karmaGradient)
+                .padding(.top, 48)
+
+            Text("No courses yet")
+                .font(.lockedTitle(24))
+
+            Text("Add a class, then log assignments. Finishing them early earns Keys and Karma — that’s what keeps your apps unlocked.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 12)
+
+            Button {
+                editingCourse = Course(name: "")
+            } label: {
+                Label("Add a course", systemImage: "plus")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 12)
+                    .background(LockedTheme.karmaGradient)
+                    .clipShape(Capsule())
+            }
+            .padding(.top, 4)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
+    }
+
+    private var upcomingSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            LockedSectionLabel(title: "Up next", icon: "clock.fill")
+
+            VStack(spacing: 8) {
+                ForEach(Array(upcoming.prefix(4)), id: \.assignment.id) { item in
+                    NavigationLink {
+                        CourseDetailView(courses: $courses, courseID: item.course.id)
+                    } label: {
+                        UpcomingAssignmentCard(course: item.course, assignment: item.assignment)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var coursesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            LockedSectionLabel(title: "Your courses", icon: "book.fill")
+
+            VStack(spacing: 12) {
+                ForEach(courses) { course in
+                    CourseCardView(
+                        courses: $courses,
+                        course: course,
+                        onRename: { editingCourse = course },
+                        onDelete: { courseToDelete = course }
                     )
                 }
-            }
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        editingCourse = Course(name: "")
-                    } label: {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.title3)
-                    }
-                }
-            }
-            .sheet(item: $editingCourse) { course in
-                CourseEditorView(course: course) { savedCourse in
-                    withAnimation {
-                        if let index = courses.firstIndex(where: { $0.id == savedCourse.id }) {
-                            courses[index] = savedCourse
-                        } else {
-                            courses.append(savedCourse)
-                        }
-                    }
-                }
-            }
-            .confirmationDialog(
-                "Delete \"\(courseToDelete?.name ?? "Course")\"?",
-                isPresented: Binding(
-                    get: { courseToDelete != nil },
-                    set: { if !$0 { courseToDelete = nil } }
-                ),
-                titleVisibility: .visible
-            ) {
-                Button("Delete", role: .destructive) {
-                    if let course = courseToDelete {
-                        withAnimation {
-                            courses.removeAll { $0.id == course.id }
-                        }
-                    }
-                    courseToDelete = nil
-                }
-                Button("Cancel", role: .cancel) {
-                    courseToDelete = nil
-                }
-            } message: {
-                Text("All assignments in this course will also be deleted.")
             }
         }
     }
 }
 
-// MARK: - UI Components
+// MARK: - Course cards
 
-struct CourseRowView: View {
+private struct UpcomingAssignmentCard: View {
     let course: Course
-    
+    let assignment: Assignment
+
     var body: some View {
-        HStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .stroke(Color.secondary.opacity(0.2), lineWidth: 4)
-                Circle()
-                    .trim(from: 0, to: course.completionPercentage)
-                    .stroke(Color.blue, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
+        HStack(spacing: 14) {
+            VStack(spacing: 2) {
+                Text(assignment.dueDate.formatted(.dateTime.month(.abbreviated)))
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(assignment.isOverdue ? Color.lockedRose : Color.lockedIndigo)
+                Text(assignment.dueDate.formatted(.dateTime.day()))
+                    .font(.lockedNumber(20))
+                    .foregroundStyle(assignment.isOverdue ? Color.lockedRose : .primary)
             }
-            .frame(width: 40, height: 40)
-            
-            VStack(alignment: .leading, spacing: 4) {
+            .frame(width: 46)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(assignment.name)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
                 Text(course.name)
-                    .font(.headline)
-                
-                Text("\(course.assignments.count) Assignment\(course.assignments.count == 1 ? "" : "s")")
-                    .font(.subheadline)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            Spacer()
+
+            if assignment.isOverdue {
+                Text("Overdue")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.lockedRose)
+                    .clipShape(Capsule())
+            } else {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
         }
-        .padding(.vertical, 4)
+        .padding(14)
+        .background(LockedCardBackground(cornerRadius: 18))
+    }
+}
+
+struct CourseCardView: View {
+    @Binding var courses: [Course]
+    let course: Course
+    var onRename: () -> Void = {}
+    var onDelete: () -> Void = {}
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            NavigationLink {
+                CourseDetailView(courses: $courses, courseID: course.id)
+            } label: {
+                cardBody
+            }
+            .buttonStyle(.plain)
+
+            Menu {
+                Button(action: onRename) {
+                    Label("Rename", systemImage: "pencil")
+                }
+                Button(role: .destructive, action: onDelete) {
+                    Label("Delete", systemImage: "trash")
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
+            }
+            .padding(.top, 10)
+            .padding(.trailing, 10)
+        }
+    }
+
+    private var cardBody: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center, spacing: 14) {
+                ZStack {
+                    ProgressRing(
+                        progress: course.completionPercentage,
+                        lineWidth: 5,
+                        gradient: LinearGradient(
+                            colors: [courseAccent(course.name), courseAccent(course.name).opacity(0.6)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    Text("\(Int(course.completionPercentage * 100))")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                }
+                .frame(width: 42, height: 42)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(course.name)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 28)
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.primary.opacity(0.08))
+                    Capsule()
+                        .fill(courseAccent(course.name).gradient)
+                        .frame(width: max(geo.size.width * course.completionPercentage, course.assignments.isEmpty ? 0 : 4))
+                }
+            }
+            .frame(height: 6)
+
+            if let next = course.nextDueAssignment {
+                HStack(spacing: 6) {
+                    Image(systemName: next.isOverdue ? "exclamationmark.circle.fill" : "calendar")
+                        .foregroundStyle(next.isOverdue ? Color.lockedRose : .secondary)
+                    Text("Next: \(next.name)")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(next.dueDate.formatted(date: .abbreviated, time: .omitted))
+                        .foregroundStyle(next.isOverdue ? Color.lockedRose : .secondary)
+                }
+                .font(.caption.weight(.medium))
+            }
+        }
+        .padding(18)
+        .background(LockedCardBackground())
+    }
+
+    private var subtitle: String {
+        let count = course.assignments.count
+        if count == 0 { return "No assignments yet" }
+        var parts = ["\(course.completedCount)/\(count) done"]
+        if course.overdueCount > 0 {
+            parts.append("\(course.overdueCount) overdue")
+        }
+        return parts.joined(separator: " · ")
     }
 }
 
@@ -161,77 +348,96 @@ struct CourseRowView: View {
 struct CourseDetailView: View {
     @Binding var courses: [Course]
     let courseID: UUID
-    
+
     @AppStorage("keys", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked")) var keys: Double = 0.0
     @AppStorage("karma", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked")) var karma: Double = 0.0
-    
+
     @State private var editingAssignment: Assignment?
     @State private var assignmentToDelete: Assignment?
     @State private var assignmentToComplete: Assignment?
     @State private var assignmentToUncomplete: Assignment?
-    
+
     private var courseIndex: Int? { courses.firstIndex { $0.id == courseID } }
     private var course: Course? { courseIndex != nil ? courses[courseIndex!] : nil }
-    
+
     private var pendingAssignments: [Assignment] {
         course?.assignments.filter { !$0.isCompleted }.sorted { $0.dueDate < $1.dueDate } ?? []
     }
-    
+
     private var completedAssignments: [Assignment] {
         course?.assignments.filter { $0.isCompleted }.sorted { $0.completionDate ?? .now > $1.completionDate ?? .now } ?? []
     }
-    
+
     var body: some View {
         Group {
             if let course {
                 List {
+                    Section {
+                        CourseProgressHeader(course: course)
+                    }
+                    .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+
                     if course.assignments.isEmpty {
-                        ContentUnavailableView(
-                            "No Assignments",
-                            systemImage: "doc.text.magnifyingglass",
-                            description: Text("Add assignments to track your progress.")
-                        )
+                        Section {
+                            emptyAssignments
+                        }
                         .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                     } else {
                         if !pendingAssignments.isEmpty {
-                            Section("To Do") {
+                            Section("To do") {
                                 ForEach(pendingAssignments) { assignment in
-                                    AssignmentRowView(assignment: assignment)
-                                        .contentShape(Rectangle())
-                                        .onTapGesture { editingAssignment = assignment }
-                                        .swipeActions(edge: .leading) {
-                                            Button { assignmentToComplete = assignment } label: {
-                                                Label("Complete", systemImage: "checkmark")
-                                            }
-                                            .tint(.green)
+                                    AssignmentRowView(
+                                        assignment: assignment,
+                                        onToggle: { assignmentToComplete = assignment },
+                                        onOpen: { editingAssignment = assignment }
+                                    )
+                                    .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
+                                    .listRowSeparator(.hidden)
+                                    .listRowBackground(Color.clear)
+                                    .swipeActions(edge: .leading) {
+                                        Button { assignmentToComplete = assignment } label: {
+                                            Label("Complete", systemImage: "checkmark")
                                         }
-                                        .swipeActions(edge: .trailing) { deleteAndEditActions(for: assignment) }
+                                        .tint(.lockedTeal)
+                                    }
+                                    .swipeActions(edge: .trailing) { deleteAndEditActions(for: assignment) }
                                 }
                             }
                         }
-                        
+
                         if !completedAssignments.isEmpty {
                             Section("Completed") {
                                 ForEach(completedAssignments) { assignment in
-                                    AssignmentRowView(assignment: assignment)
-                                        .contentShape(Rectangle())
-                                        .onTapGesture { editingAssignment = assignment }
-                                        .swipeActions(edge: .leading) {
-                                            Button { assignmentToUncomplete = assignment } label: {
-                                                Label("Mark Pending", systemImage: "arrow.uturn.backward")
-                                            }
-                                            .tint(.orange)
+                                    AssignmentRowView(
+                                        assignment: assignment,
+                                        onToggle: { assignmentToUncomplete = assignment },
+                                        onOpen: { editingAssignment = assignment }
+                                    )
+                                    .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
+                                    .listRowSeparator(.hidden)
+                                    .listRowBackground(Color.clear)
+                                    .swipeActions(edge: .leading) {
+                                        Button { assignmentToUncomplete = assignment } label: {
+                                            Label("Mark Pending", systemImage: "arrow.uturn.backward")
                                         }
-                                        .swipeActions(edge: .trailing) { deleteAndEditActions(for: assignment) }
+                                        .tint(.orange)
+                                    }
+                                    .swipeActions(edge: .trailing) { deleteAndEditActions(for: assignment) }
                                 }
                             }
                         }
                     }
                 }
-                .listStyle(.insetGrouped)
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .listSectionSpacing(14)
                 .animation(.default, value: course.assignments)
             }
         }
+        .background(LockedBackground())
         .navigationTitle(course?.name ?? "Course")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
@@ -244,16 +450,20 @@ struct CourseDetailView: View {
                     pointsPossible: nil
                 )
             } label: {
-                Image(systemName: "plus.circle.fill")
-                    .font(.title3)
+                Image(systemName: "plus")
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 32, height: 32)
+                    .background(LockedTheme.karmaGradient)
+                    .clipShape(Circle())
             }
+            .accessibilityLabel("Add assignment")
         }
         .sheet(item: $editingAssignment) { assignment in
             AssignmentEditorView(assignment: assignment) { savedAssignment in
                 saveAssignment(savedAssignment)
             }
         }
-        // Delete confirmation
         .confirmationDialog(
             "Delete \"\(assignmentToDelete?.name ?? "Assignment")\"?",
             isPresented: Binding(
@@ -276,7 +486,6 @@ struct CourseDetailView: View {
         } message: {
             Text("This action cannot be undone.")
         }
-        // Mark complete confirmation
         .confirmationDialog(
             "Mark \"\(assignmentToComplete?.name ?? "Assignment")\" as completed?",
             isPresented: Binding(
@@ -294,8 +503,9 @@ struct CourseDetailView: View {
             Button("Cancel", role: .cancel) {
                 assignmentToComplete = nil
             }
+        } message: {
+            Text("You’ll earn Keys, and Karma based on how early you finished.")
         }
-        // Mark incomplete confirmation
         .confirmationDialog(
             "Mark \"\(assignmentToUncomplete?.name ?? "Assignment")\" as pending?",
             isPresented: Binding(
@@ -315,131 +525,205 @@ struct CourseDetailView: View {
             }
         }
     }
-    
+
+    private var emptyAssignments: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "doc.badge.plus")
+                .font(.title)
+                .foregroundStyle(Color.lockedIndigo)
+            Text("No assignments")
+                .font(.headline)
+            Text("Add work to earn Keys and Karma when you finish it.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 28)
+    }
+
     // MARK: Actions
-        
-        @ViewBuilder
-        private func deleteAndEditActions(for assignment: Assignment) -> some View {
-            Button {
-                assignmentToDelete = assignment
-            } label: {
-                Label("Delete", systemImage: "trash")
-            }
-            .tint(.red)
-            
-            Button {
-                editingAssignment = assignment
-            } label: {
-                Label("Edit", systemImage: "pencil")
-            }
-            .tint(.orange)
+
+    @ViewBuilder
+    private func deleteAndEditActions(for assignment: Assignment) -> some View {
+        Button {
+            assignmentToDelete = assignment
+        } label: {
+            Label("Delete", systemImage: "trash")
         }
-        
-        private func saveAssignment(_ savedAssignment: Assignment) {
-            guard let courseIndex else { return }
-            
-            // 1. Check if the assignment is transitioning from Pending -> Completed
-            let assignmentIndex = courses[courseIndex].assignments.firstIndex(where: { $0.id == savedAssignment.id })
-            let wasCompleted = assignmentIndex != nil ? courses[courseIndex].assignments[assignmentIndex!].isCompleted : false
-            
-            if !wasCompleted && savedAssignment.isCompleted {
-                // Calculate and Add Karma directly to AppStorage
-                let karmaDelta = calculateKarmaDelta(
-                    releaseDate: savedAssignment.releaseDate,
-                    dueDate: savedAssignment.dueDate,
-                    completionDate: savedAssignment.completionDate ?? .now
+        .tint(.red)
+
+        Button {
+            editingAssignment = assignment
+        } label: {
+            Label("Edit", systemImage: "pencil")
+        }
+        .tint(.orange)
+    }
+
+    private func saveAssignment(_ savedAssignment: Assignment) {
+        guard let courseIndex else { return }
+
+        let assignmentIndex = courses[courseIndex].assignments.firstIndex(where: { $0.id == savedAssignment.id })
+        let wasCompleted = assignmentIndex != nil ? courses[courseIndex].assignments[assignmentIndex!].isCompleted : false
+
+        if !wasCompleted && savedAssignment.isCompleted {
+            let karmaDelta = calculateKarmaDelta(
+                releaseDate: savedAssignment.releaseDate,
+                dueDate: savedAssignment.dueDate,
+                completionDate: savedAssignment.completionDate ?? .now
+            )
+            karma += karmaDelta
+
+            if karma < 0 {
+                karma = 0
+            } else if karma > 100 {
+                karma = 100
+            }
+
+            let baseKeys = 10.0
+            let pointBonus = savedAssignment.pointsPossible ?? 0.0
+            keys += (baseKeys + pointBonus)
+            WidgetCenter.shared.reloadTimelines(ofKind: "Locked_Widget")
+        }
+
+        withAnimation {
+            if let index = assignmentIndex {
+                courses[courseIndex].assignments[index] = savedAssignment
+            } else {
+                courses[courseIndex].assignments.append(savedAssignment)
+            }
+        }
+    }
+
+    private func markCompleted(_ assignment: Assignment) {
+        var updated = assignment
+        updated.completionDate = .now
+        saveAssignment(updated)
+    }
+
+    private func markIncomplete(_ assignment: Assignment) {
+        var updated = assignment
+        updated.completionDate = nil
+        saveAssignment(updated)
+    }
+}
+
+private struct CourseProgressHeader: View {
+    let course: Course
+
+    var body: some View {
+        HStack(spacing: 18) {
+            ZStack {
+                ProgressRing(
+                    progress: course.completionPercentage,
+                    lineWidth: 8,
+                    gradient: LinearGradient(
+                        colors: [courseAccent(course.name), .lockedIndigo],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
                 )
-                karma += karmaDelta
-                
-                if karma < 0 {
-                    karma = 0
-                } else if karma > 100 {
-                    karma = 100
-                }
-                
-                // Grant Keys directly to AppStorage
-                let baseKeys = 10.0
-                let pointBonus = savedAssignment.pointsPossible ?? 0.0
-                keys += (baseKeys + pointBonus)
-            }
-            
-            // 2. Save the updated assignment
-            withAnimation {
-                if let index = assignmentIndex {
-                    courses[courseIndex].assignments[index] = savedAssignment
-                } else {
-                    courses[courseIndex].assignments.append(savedAssignment)
+                VStack(spacing: -2) {
+                    Text("\(Int(course.completionPercentage * 100))")
+                        .font(.lockedNumber(22))
+                    Text("%")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundStyle(.secondary)
                 }
             }
+            .frame(width: 76, height: 76)
+
+            HStack(spacing: 10) {
+                MiniStat(value: "\(course.assignments.filter { !$0.isCompleted }.count)", label: "Open")
+                MiniStat(value: "\(course.completedCount)", label: "Done")
+                MiniStat(
+                    value: "\(course.overdueCount)",
+                    label: "Late",
+                    emphasize: course.overdueCount > 0
+                )
+            }
         }
-        
-        private func markCompleted(_ assignment: Assignment) {
-            var updated = assignment
-            updated.completionDate = .now
-            // saveAssignment now natively handles granting keys and karma!
-            saveAssignment(updated)
+        .padding(18)
+        .background(LockedCardBackground())
+    }
+}
+
+private struct MiniStat: View {
+    let value: String
+    let label: String
+    var emphasize = false
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .font(.lockedNumber(20))
+                .foregroundStyle(emphasize ? Color.lockedRose : .primary)
+            Text(label)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
         }
-        
-        private func markIncomplete(_ assignment: Assignment) {
-            var updated = assignment
-            updated.completionDate = nil
-            saveAssignment(updated)
-        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(Color(uiColor: .tertiarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
 }
 
 // MARK: - Assignment Row View
 
 struct AssignmentRowView: View {
     let assignment: Assignment
-    
+    var onToggle: () -> Void
+    var onOpen: () -> Void
+
     var body: some View {
-        HStack(alignment: .top, spacing: 16) {
-            Image(systemName: assignment.isCompleted ? "checkmark.circle.fill" : (assignment.isOverdue ? "exclamationmark.circle.fill" : "circle"))
-                .font(.title2)
-                .foregroundStyle(assignment.statusColor)
-                .padding(.top, 2)
-            
-            VStack(alignment: .leading, spacing: 6) {
-                Text(assignment.name)
-                    .font(.headline)
-                    .strikethrough(assignment.isCompleted)
-                    .foregroundStyle(assignment.isCompleted ? .secondary : .primary)
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack {
-                        Image(systemName: "calendar")
-                        Text("Due: \(assignment.dueDate.formatted(date: .abbreviated, time: .shortened))")
-                            .foregroundStyle(assignment.isOverdue ? .red : .secondary)
-                    }
-                    
-                    if let completionDate = assignment.completionDate {
-                        HStack {
-                            Image(systemName: "checkmark")
-                            Text("Done: \(completionDate.formatted(date: .abbreviated, time: .omitted))")
+        HStack(alignment: .center, spacing: 12) {
+            Button(action: onToggle) {
+                Image(systemName: assignment.isCompleted ? "checkmark.circle.fill" : (assignment.isOverdue ? "exclamationmark.circle.fill" : "circle"))
+                    .font(.title2)
+                    .foregroundStyle(assignment.statusColor)
+                    .symbolRenderingMode(.hierarchical)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(assignment.isCompleted ? "Mark as pending" : "Mark as completed")
+
+            Button(action: onOpen) {
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(assignment.name)
+                            .font(.body.weight(.semibold))
+                            .strikethrough(assignment.isCompleted)
+                            .foregroundStyle(assignment.isCompleted ? Color.secondary : Color.primary)
+                            .multilineTextAlignment(.leading)
+
+                        HStack(spacing: 6) {
+                            Image(systemName: "calendar")
+                            Text(assignment.dueDate.formatted(date: .abbreviated, time: .shortened))
+                                .foregroundStyle(assignment.isOverdue ? Color.lockedRose : Color.secondary)
                         }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    if let points = assignment.pointsPossible {
+                        VStack(spacing: 0) {
+                            Text("\(points, specifier: "%.0f")")
+                                .font(.subheadline.weight(.bold))
+                            Text("pts")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .foregroundStyle(.primary)
                     }
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
             }
-            
-            Spacer()
-            
-            if let points = assignment.pointsPossible {
-                VStack {
-                    Text("\(points, specifier: "%.1f")")
-                        .font(.subheadline.bold())
-                    Text("pts")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Color.secondary.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-            }
+            .buttonStyle(.plain)
         }
-        .padding(.vertical, 4)
+        .padding(14)
+        .background(LockedCardBackground(cornerRadius: 16))
     }
 }
 
@@ -468,9 +752,11 @@ struct CourseEditorView: View {
                         .focused($isFocused)
                 } header: {
                     Text("Course Name")
+                } footer: {
+                    Text("Completing this course’s assignments earns Keys and Karma.")
                 }
             }
-            .navigationTitle(course.name.isEmpty ? "New Course" : "Edit Course")
+            .navigationTitle(course.name.isEmpty ? "New Course" : "Rename Course")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -484,6 +770,7 @@ struct CourseEditorView: View {
                         onSave(saved)
                         dismiss()
                     }
+                    .fontWeight(.semibold)
                     .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
@@ -491,6 +778,8 @@ struct CourseEditorView: View {
                 isFocused = true
             }
         }
+        .presentationDetents([.medium])
+        .tint(.lockedIndigo)
     }
 }
 
@@ -509,7 +798,7 @@ struct AssignmentEditorView: View {
     @State private var isCompleted: Bool
     @State private var completionDate: Date
     @State private var pointsText: String
-    
+
     enum Field { case name, points }
 
     init(assignment: Assignment, onSave: @escaping (Assignment) -> Void) {
@@ -530,25 +819,29 @@ struct AssignmentEditorView: View {
                 Section("Details") {
                     TextField("Assignment Name", text: $name)
                         .focused($focusedField, equals: .name)
-                    
+
                     TextField("Points / Grade Weight (Optional)", text: $pointsText)
                         .keyboardType(.decimalPad)
                         .focused($focusedField, equals: .points)
                 }
 
                 Section("Dates") {
-                    DatePicker("Release Date", selection: $releaseDate, displayedComponents: [.date, .hourAndMinute])
-                    DatePicker("Due Date", selection: $dueDate, displayedComponents: [.date, .hourAndMinute])
-                        .foregroundStyle(dueDate < Date.now && !isCompleted ? .red : .primary)
+                    DatePicker("Assigned", selection: $releaseDate, displayedComponents: [.date, .hourAndMinute])
+                    DatePicker("Due", selection: $dueDate, displayedComponents: [.date, .hourAndMinute])
+                        .foregroundStyle(dueDate < Date.now && !isCompleted ? Color.lockedRose : Color.primary)
                 }
 
-                Section("Status") {
+                Section {
                     Toggle("Mark as Completed", isOn: $isCompleted.animation())
-                        .tint(.green)
+                        .tint(.lockedTeal)
 
                     if isCompleted {
-                        DatePicker("Completion Date", selection: $completionDate, in: ...Date.now, displayedComponents: [.date, .hourAndMinute])
+                        DatePicker("Completed", selection: $completionDate, in: ...Date.now, displayedComponents: [.date, .hourAndMinute])
                     }
+                } header: {
+                    Text("Status")
+                } footer: {
+                    Text("Finishing early grants more Karma. Keys are based on the point value, plus a base reward.")
                 }
             }
             .navigationTitle(assignment.name.isEmpty ? "New Assignment" : "Edit Assignment")
@@ -575,10 +868,10 @@ struct AssignmentEditorView: View {
                         onSave(saved)
                         dismiss()
                     }
+                    .fontWeight(.semibold)
                     .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
-                
-                // Keyboard toolbar to dismiss decimal pad
+
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
                     Button("Done") {
@@ -592,5 +885,6 @@ struct AssignmentEditorView: View {
                 }
             }
         }
+        .tint(.lockedIndigo)
     }
 }

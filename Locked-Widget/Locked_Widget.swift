@@ -1,28 +1,27 @@
 import WidgetKit
 import SwiftUI
-import AppIntents
 
 // MARK: - Provider
 struct Provider: TimelineProvider {
     let sharedDefaults = UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked")
 
     func placeholder(in context: Context) -> SimpleEntry {
-        SimpleEntry(date: Date(), keys: 5, karma: 12)
+        SimpleEntry(date: Date(), keys: 14, karma: 82)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (SimpleEntry) -> ()) {
-        let keys = sharedDefaults?.integer(forKey: "keys") ?? 0
-        let karma = sharedDefaults?.integer(forKey: "karma") ?? 0
-        let entry = SimpleEntry(date: Date(), keys: keys, karma: karma)
-        completion(entry)
+        completion(currentEntry())
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> ()) {
-        let keys = sharedDefaults?.integer(forKey: "keys") ?? 0
-        let karma = sharedDefaults?.integer(forKey: "karma") ?? 0
-        let entry = SimpleEntry(date: Date(), keys: keys, karma: karma)
-        let timeline = Timeline(entries: [entry], policy: .atEnd)
+        let timeline = Timeline(entries: [currentEntry()], policy: .atEnd)
         completion(timeline)
+    }
+
+    private func currentEntry() -> SimpleEntry {
+        let keys = Int(sharedDefaults?.double(forKey: "keys") ?? 0)
+        let karma = Int(sharedDefaults?.double(forKey: "karma") ?? 0)
+        return SimpleEntry(date: Date(), keys: keys, karma: karma)
     }
 }
 
@@ -33,64 +32,87 @@ struct SimpleEntry: TimelineEntry {
 }
 
 // MARK: - Widget View
-struct Locked_WidgetEntryView : View {
+struct Locked_WidgetEntryView: View {
     var entry: Provider.Entry
     @Environment(\.widgetFamily) var widgetFamily
-    
+
     var body: some View {
         Group {
             if widgetFamily == .systemMedium {
-                HStack(spacing: 24) {
-                    karmaStat
-                    Divider().frame(height: 50).opacity(0.5)
-                    keysStat
+                HStack(spacing: 0) {
+                    karmaBlock
+                    Spacer(minLength: 12)
+                    Divider().opacity(0.25)
+                    Spacer(minLength: 12)
+                    keysBlock
                 }
-                .padding(.horizontal)
             } else {
                 VStack(alignment: .leading, spacing: 16) {
-                    karmaStat
-                    keysStat
+                    karmaBlock
+                    keysBlock
                 }
             }
         }
     }
-    
-    private var karmaStat: some View {
-        StatItemView(icon: "sparkles", color: .purple, title: "Karma", value: entry.karma)
-    }
-    
-    private var keysStat: some View {
-        StatItemView(icon: "key.fill", color: .orange, title: "Keys", value: entry.keys)
-    }
-}
 
-struct StatItemView: View {
-    let icon: String
-    let color: Color
-    let title: String
-    let value: Int
-    
-    var body: some View {
+    private var karmaBlock: some View {
         HStack(spacing: 12) {
             ZStack {
-                Circle().fill(color.gradient.opacity(0.2))
-                Image(systemName: icon)
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(color.gradient)
+                Circle()
+                    .stroke(Color.purple.opacity(0.18), lineWidth: 7)
+                Circle()
+                    .trim(from: 0, to: min(max(Double(entry.karma) / 100.0, 0), 1))
+                    .stroke(
+                        LinearGradient(colors: [.purple, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing),
+                        style: StrokeStyle(lineWidth: 7, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                Text("\(entry.karma)")
+                    .font(.system(.headline, design: .rounded, weight: .heavy))
             }
-            .frame(width: 44, height: 44)
-            
+            .frame(width: 52, height: 52)
+
             VStack(alignment: .leading, spacing: 2) {
-                Text(title.uppercased())
+                Text("KARMA")
                     .font(.system(.caption2, design: .rounded, weight: .bold))
                     .foregroundStyle(.secondary)
-                
-                Text("\(value)")
+                Text(karmaCaption)
+                    .font(.system(.caption, design: .rounded, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+    }
+
+    private var keysBlock: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.orange.opacity(0.18))
+                Image(systemName: "key.fill")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(.orange.gradient)
+            }
+            .frame(width: 44, height: 44)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("KEYS")
+                    .font(.system(.caption2, design: .rounded, weight: .bold))
+                    .foregroundStyle(.secondary)
+                Text("\(entry.keys)")
                     .font(.system(.title2, design: .rounded, weight: .heavy))
-                    .foregroundStyle(.primary)
                     .minimumScaleFactor(0.8)
                     .lineLimit(1)
             }
+        }
+    }
+
+    private var karmaCaption: String {
+        switch entry.karma {
+        case 90...: return "Well protected"
+        case 70..<90: return "Mostly safe"
+        case 40..<70: return "Apps at risk"
+        default: return "Lockdown likely"
         }
     }
 }
@@ -110,7 +132,7 @@ struct Locked_Widget: Widget {
             }
         }
         .configurationDisplayName("Locked Stats")
-        .description("Track your keys and karma at a glance.")
+        .description("Karma, keys, and whether your apps are safe this week.")
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }

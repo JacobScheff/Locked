@@ -61,6 +61,8 @@ struct LockedApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .tint(.lockedIndigo)
+                .fontDesign(.rounded)
                 .onAppear { lockScheduler.start() }
                 .onDisappear { lockScheduler.stop() }
         }
