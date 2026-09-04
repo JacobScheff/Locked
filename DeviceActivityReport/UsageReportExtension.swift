@@ -1,4 +1,6 @@
 import DeviceActivity
+import ExtensionFoundation
+import ExtensionKit
 import FamilyControls
 import ManagedSettings
 import SwiftUI
@@ -9,8 +11,8 @@ struct UsageSnapshot {
     var tokens: [String: Data]
 }
 
-struct UsageReport: DeviceActivityReportScene {
-    let context: DeviceActivityReport.Context = .usage
+struct UsageReport: DeviceActivity.DeviceActivityReportScene {
+    let context: DeviceActivity.DeviceActivityReport.Context = .usage
     let content: (UsageSnapshot) -> UsageReportView
 
     func makeConfiguration(representing data: DeviceActivityResults<DeviceActivityData>) async -> UsageSnapshot {
@@ -64,8 +66,8 @@ struct UsageReportView: View {
 }
 
 @main
-struct UsageReportExtension: DeviceActivityReportExtension {
-    var body: some DeviceActivityReportScene {
+struct UsageReportExtension: DeviceActivity.DeviceActivityReportExtension {
+    var body: some DeviceActivity.DeviceActivityReportScene {
         UsageReport { snapshot in
             UsageReportView(snapshot: snapshot)
         }

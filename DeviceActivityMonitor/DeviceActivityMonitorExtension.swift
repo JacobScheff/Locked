@@ -2,7 +2,7 @@ import DeviceActivity
 import Foundation
 import os.log
 
-final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
+final class DeviceActivityMonitorExtension: DeviceActivity.DeviceActivityMonitor {
     private let logger = Logger(subsystem: "com.Jacob-Scheff.Locked", category: "Monitor")
 
     override func intervalDidStart(for activity: DeviceActivityName) {

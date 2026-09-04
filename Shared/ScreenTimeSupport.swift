@@ -103,7 +103,7 @@ extension DeviceActivityName {
     static let emergencyOverride = Self("locked.emergencyOverride")
 }
 
-extension DeviceActivityReport.Context {
+extension DeviceActivity.DeviceActivityReport.Context {
     static let usage = Self("LockedUsage")
 }
 

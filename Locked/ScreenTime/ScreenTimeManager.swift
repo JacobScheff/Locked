@@ -56,7 +56,7 @@ struct UsageReportHost: View {
     let selection: FamilyActivitySelection
 
     var body: some View {
-        DeviceActivityReport(.usage, filter: usageFilter(for: selection))
+        DeviceActivity.DeviceActivityReport(.usage, filter: usageFilter(for: selection))
             .frame(width: 1, height: 1)
             .opacity(0.01)
             .accessibilityHidden(true)
