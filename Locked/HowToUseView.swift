@@ -117,7 +117,7 @@ struct HowToUseView: View {
         VStack(alignment: .leading, spacing: 12) {
             LockedSectionLabel(title: "Developer", icon: "hammer.fill")
             Button {
-                performSundayLocking()
+                applyManualWeeklyLock()
                 WidgetCenter.shared.reloadTimelines(ofKind: "Locked_Widget")
             } label: {
                 Label("Simulate weekly lock", systemImage: "lock.rotation")

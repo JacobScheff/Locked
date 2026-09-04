@@ -420,22 +420,13 @@ enum LockedTokenStore {
     }
 }
 
-/// Decides which tokens belong on the home-screen shield.
-/// Named apps stay locked only while they are still in `lockedNames`.
-/// Stored tokens that do not belong to any known display name stay locked
-/// until they are unlocked explicitly (picker apps with no usage name yet).
+/// Tokens that belong on the home-screen shield: exactly the currently locked names.
 enum ShieldTokenResolution {
     static func resolve<Token: Hashable>(
         lockedNames: [String],
-        tokenByName: [String: Token],
-        storedTokens: Set<Token>,
-        knownNamedTokens: Set<Token>
+        tokenByName: [String: Token]
     ) -> Set<Token> {
-        var tokens = Set(lockedNames.compactMap { tokenByName[$0] })
-        for token in storedTokens where !knownNamedTokens.contains(token) {
-            tokens.insert(token)
-        }
-        return tokens
+        Set(lockedNames.compactMap { tokenByName[$0] })
     }
 }
 
@@ -469,27 +460,25 @@ enum ScreenTimeShields {
             tokenByName[name] = token
         }
 
-        let knownNamedTokens = Set(usageTokens.values).union(named.values)
         var tokens = ShieldTokenResolution.resolve(
             lockedNames: lockedNames,
-            tokenByName: tokenByName,
-            storedTokens: LockedTokenStore.load(),
-            knownNamedTokens: knownNamedTokens
+            tokenByName: tokenByName
         )
         tokens.subtract(ExcludedApps.tokens)
-
-        LockedTokenStore.replace(
-            named: named,
-            unnamed: tokens.subtracting(Set(named.values))
-        )
+        LockedTokenStore.replace(named: named, unnamed: [])
 
         let applications = capped(tokens, lockedNames: lockedNames, named: named)
-        store.shield.applications = applications.isEmpty ? nil : applications
-        // Never fall back to category shields — that locks every app in the
-        // category (often the whole home screen) until the last named lock
-        // is spent. Individual unlocks must uns shield that app immediately.
-        store.shield.applicationCategories = nil
+        apply(applications)
+    }
+
+    /// Writes only individual application shields. Category policies are always
+    /// cleared — including on the default store, where an older build may have
+    /// left a leftover "lock this whole category" rule.
+    static func apply(_ applications: Set<ApplicationToken>) {
+        clear(ManagedSettingsStore())
+        store.shield.applicationCategories = .none
         store.shield.webDomains = nil
+        store.shield.applications = applications.isEmpty ? nil : applications
     }
 
     static func capped(
@@ -517,9 +506,14 @@ enum ScreenTimeShields {
     }
 
     static func clear() {
-        store.shield.applications = nil
-        store.shield.applicationCategories = nil
-        store.shield.webDomains = nil
+        clear(store)
+        clear(ManagedSettingsStore())
+    }
+
+    private static func clear(_ settings: ManagedSettingsStore) {
+        settings.shield.applications = nil
+        settings.shield.applicationCategories = .none
+        settings.shield.webDomains = nil
     }
 }
 

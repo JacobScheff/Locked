@@ -228,7 +228,7 @@ struct ProgressRing: View {
 
 enum WeeklyLock {
     static var daysUntilSunday: Int {
-        let weekday = Calendar.current.component(.weekday, from: Date())
+        let weekday = WeeklyLockSchedule.sundayCalendar.component(.weekday, from: Date())
         return weekday == 1 ? 0 : 8 - weekday
     }
 

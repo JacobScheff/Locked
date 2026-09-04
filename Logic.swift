@@ -155,6 +155,9 @@ func performSundayLocking() -> [String] {
     let karma = AppGroupStore.defaults.double(forKey: "karma")
     let selection = ActivitySelectionStore.load()
     
+    // Only apps with real usage names and tokens can be locked. Picker /
+    // category tokens are an allowlist for tracking, not extra lock targets —
+    // adding them made new unnamed apps appear locked on every launch.
     var snapshot = ExcludedApps.strippingExcluded(UsageStore.loadAppCounts())
     var tokenByName: [String: ApplicationToken] = [:]
     for name in snapshot.keys {
@@ -162,17 +165,8 @@ func performSundayLocking() -> [String] {
             tokenByName[name] = token
         }
     }
+    snapshot = snapshot.filter { tokenByName[$0.key] != nil }
 
-    var unusedSelected = selection.applicationTokens.subtracting(ExcludedApps.tokens)
-    for token in tokenByName.values {
-        unusedSelected.remove(token)
-    }
-    for token in unusedSelected {
-        let name = "token:" + TokenCoding.id(for: token)
-        snapshot[name] = snapshot[name] ?? 1
-        tokenByName[name] = token
-    }
-    
     let totalApps = snapshot.count
     guard totalApps > 0 else { return [] }
 
@@ -190,46 +184,94 @@ func performSundayLocking() -> [String] {
         }
     }
 
-    var named: [String: ApplicationToken] = [:]
-    var unnamed: Set<ApplicationToken> = []
-    for name in locked {
-        guard let token = tokenByName[name] else { continue }
-        if name.hasPrefix("token:") {
-            unnamed.insert(token)
-        } else {
-            named[name] = token
-        }
-    }
-    let displayNames = locked.filter { !$0.hasPrefix("token:") }
-    LockedTokenStore.replace(named: named, unnamed: unnamed)
-    UsageStore.saveLockedApps(displayNames)
-    store.lockedApps = displayNames
+    let named = Dictionary(uniqueKeysWithValues: locked.compactMap { name -> (String, ApplicationToken)? in
+        tokenByName[name].map { (name, $0) }
+    })
+    LockedTokenStore.replace(named: named, unnamed: [])
+    UsageStore.saveLockedApps(locked)
+    store.lockedApps = locked
     ScreenTimeShields.sync(using: selection)
-    return displayNames
+    return locked
+}
+
+/// Runs the weekly lock immediately (debug / developer reset) and marks
+/// this Sunday-week as already handled so opening the app does not lock again.
+func applyManualWeeklyLock() {
+    let locked = performSundayLocking()
+    AppGroupStore.defaults.set(WeeklyLockSchedule.weekId(), forKey: WeeklyLockSchedule.lastWeekKey)
+    print("Manual weekly lock: locked \(locked.count) app(s): \(locked)")
+}
+
+enum WeeklyLockSchedule {
+    static let lastWeekKey = "lastWeeklyLockDate"
+
+    enum Action: Equatable {
+        case arm
+        case adopt
+        case lock
+        case idle
+    }
+
+    static var sundayCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.firstWeekday = 1
+        calendar.minimumDaysInFirstWeek = 1
+        return calendar
+    }
+
+    static func weekId(for date: Date = Date(), calendar: Calendar = sundayCalendar) -> String {
+        guard let start = calendar.dateInterval(of: .weekOfYear, for: date)?.start else { return "" }
+        let year = calendar.component(.yearForWeekOfYear, from: start)
+        let week = calendar.component(.weekOfYear, from: start)
+        return String(format: "%d-W%02d", year, week)
+    }
+
+    static func weekId(fromStored raw: String, calendar: Calendar = sundayCalendar) -> String? {
+        if raw.range(of: #"^\d{4}-W\d{2}$"#, options: .regularExpression) != nil {
+            return raw
+        }
+        let iso = ISO8601DateFormatter()
+        if let date = iso.date(from: raw) {
+            return weekId(for: date, calendar: calendar)
+        }
+        iso.formatOptions = [.withInternetDateTime]
+        if let date = iso.date(from: raw) {
+            return weekId(for: date, calendar: calendar)
+        }
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = iso.date(from: raw) {
+            return weekId(for: date, calendar: calendar)
+        }
+        return nil
+    }
+
+    /// First launch arms the current week without locking. A later Sunday
+    /// (week id change) locks once. Unlocking apps never starts a new lock.
+    static func action(lastWeek: String?, currentWeek: String) -> Action {
+        guard let lastWeek, !lastWeek.isEmpty else { return .arm }
+        if lastWeek == currentWeek { return .idle }
+        if let storedWeek = weekId(fromStored: lastWeek) {
+            return storedWeek == currentWeek ? .idle : .lock
+        }
+        return .adopt
+    }
 }
 
 func checkAndPerformWeeklyLockIfNeeded() {
     let defaults = AppGroupStore.defaults
-    let now = Date()
-    let calendar = Calendar.current
-    guard let startOfWeek = calendar.dateInterval(of: .weekOfYear, for: now)?.start else { return }
+    let currentWeek = WeeklyLockSchedule.weekId()
+    let lastWeek = defaults.string(forKey: WeeklyLockSchedule.lastWeekKey)
 
-    let currentWeekString = ISO8601DateFormatter().string(from: startOfWeek)
-    let lastLockKey = "lastWeeklyLockDate"
-    let poolReady = !UsageStore.loadAppCounts().isEmpty || ActivitySelectionStore.hasSelection
-    let alreadyRan = defaults.string(forKey: lastLockKey) == currentWeekString
-    let hasLocks = !UsageStore.loadLockedApps().isEmpty || !LockedTokenStore.load().isEmpty
-
-    if !alreadyRan {
-        guard poolReady else { return }
-        defaults.set(currentWeekString, forKey: lastLockKey)
+    switch WeeklyLockSchedule.action(lastWeek: lastWeek, currentWeek: currentWeek) {
+    case .arm, .adopt:
+        defaults.set(currentWeek, forKey: WeeklyLockSchedule.lastWeekKey)
+    case .lock:
+        guard !UsageStore.loadAppCounts().isEmpty else { return }
         let locked = performSundayLocking()
+        defaults.set(currentWeek, forKey: WeeklyLockSchedule.lastWeekKey)
         print("Weekly lock: locked \(locked.count) app(s): \(locked)")
-    } else if !hasLocks && poolReady {
-        // Earlier this week we stamped the lock date before any apps/tokens
-        // existed, so nothing was shielded. Retry now that a pool is ready.
-        let locked = performSundayLocking()
-        print("Weekly lock retry: locked \(locked.count) app(s): \(locked)")
+    case .idle:
+        break
     }
 }
 
