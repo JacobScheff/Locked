@@ -7,6 +7,8 @@ import Foundation
 import SwiftUI
 import GameplayKit
 import Combine
+import FamilyControls
+import ManagedSettings
 
 // MARK: - Shared Storage
 final class LogicStore {
@@ -151,8 +153,25 @@ func lockAppByKarma(from snapshot: [String: Int]) -> String {
 func performSundayLocking() -> [String] {
     let store = LogicStore.shared
     let karma = AppGroupStore.defaults.double(forKey: "karma")
+    let selection = ActivitySelectionStore.load()
     
     var snapshot = ExcludedApps.strippingExcluded(UsageStore.loadAppCounts())
+    var tokenByName: [String: ApplicationToken] = [:]
+    for name in snapshot.keys {
+        if let token = UsageStore.token(for: name) {
+            tokenByName[name] = token
+        }
+    }
+
+    var unusedSelected = selection.applicationTokens.subtracting(ExcludedApps.tokens)
+    for token in tokenByName.values {
+        unusedSelected.remove(token)
+    }
+    for token in unusedSelected {
+        let name = "token:" + TokenCoding.id(for: token)
+        snapshot[name] = snapshot[name] ?? 1
+        tokenByName[name] = token
+    }
     
     let totalApps = snapshot.count
     guard totalApps > 0 else { return [] }
@@ -171,10 +190,13 @@ func performSundayLocking() -> [String] {
         }
     }
 
-    UsageStore.saveLockedApps(locked)
-    store.lockedApps = locked
-    ScreenTimeShields.sync()
-    return locked
+    let lockedTokens = Set(locked.compactMap { tokenByName[$0] })
+    let displayNames = locked.filter { !$0.hasPrefix("token:") }
+    LockedTokenStore.save(lockedTokens)
+    UsageStore.saveLockedApps(displayNames)
+    store.lockedApps = displayNames
+    ScreenTimeShields.sync(using: selection)
+    return displayNames
 }
 
 func checkAndPerformWeeklyLockIfNeeded() {
@@ -185,10 +207,20 @@ func checkAndPerformWeeklyLockIfNeeded() {
 
     let currentWeekString = ISO8601DateFormatter().string(from: startOfWeek)
     let lastLockKey = "lastWeeklyLockDate"
-    if defaults.string(forKey: lastLockKey) != currentWeekString {
+    let poolReady = !UsageStore.loadAppCounts().isEmpty || ActivitySelectionStore.hasSelection
+    let alreadyRan = defaults.string(forKey: lastLockKey) == currentWeekString
+    let hasLocks = !UsageStore.loadLockedApps().isEmpty || !LockedTokenStore.load().isEmpty
+
+    if !alreadyRan {
+        guard poolReady else { return }
         defaults.set(currentWeekString, forKey: lastLockKey)
         let locked = performSundayLocking()
         print("Weekly lock: locked \(locked.count) app(s): \(locked)")
+    } else if !hasLocks && poolReady {
+        // Earlier this week we stamped the lock date before any apps/tokens
+        // existed, so nothing was shielded. Retry now that a pool is ready.
+        let locked = performSundayLocking()
+        print("Weekly lock retry: locked \(locked.count) app(s): \(locked)")
     }
 }
 

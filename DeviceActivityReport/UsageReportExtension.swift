@@ -45,7 +45,7 @@ struct UsageReport: DeviceActivityReportScene {
                             bundleIDsByApp[name] = bundleID
                         }
                         if let token = applicationActivity.application.token,
-                           let tokenData = try? JSONEncoder().encode(token) {
+                           let tokenData = TokenCoding.encode(token) {
                             tokensByApp[name] = tokenData
                         }
                     }

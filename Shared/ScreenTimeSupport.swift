@@ -59,7 +59,7 @@ enum AppGroupStore {
     }
 
     static func encodeJSON<T: Encodable>(_ value: T) -> String? {
-        guard let data = try? JSONEncoder().encode(value),
+        guard let data = TokenCoding.encode(value),
               let string = String(data: data, encoding: .utf8)
         else { return nil }
         return string
@@ -67,7 +67,23 @@ enum AppGroupStore {
 
     static func decodeJSON<T: Decodable>(_ type: T.Type, from raw: String?) -> T? {
         guard let raw, let data = raw.data(using: .utf8) else { return nil }
+        return TokenCoding.decode(type, from: data)
+    }
+}
+
+enum TokenCoding {
+    static func encode<T: Encodable>(_ value: T) -> Data? {
+        if let data = try? PropertyListEncoder().encode(value) { return data }
+        return try? JSONEncoder().encode(value)
+    }
+
+    static func decode<T: Decodable>(_ type: T.Type, from data: Data) -> T? {
+        if let value = try? PropertyListDecoder().decode(type, from: data) { return value }
         return try? JSONDecoder().decode(type, from: data)
+    }
+
+    static func id<T: Encodable>(for value: T) -> String {
+        encode(value)?.base64EncodedString() ?? UUID().uuidString
     }
 }
 
@@ -142,10 +158,9 @@ enum InstalledApps {
     /// Screen Time still reports deleted apps historically. A current
     /// display name, and a live token when we have a bundle ID, mean the app is still on the device.
     static func isPresent(bundleIdentifier: String?, displayName: String?) -> Bool {
+        // Application(bundleIdentifier:).token is nil in the main app, so a missing
+        // token cannot be used as proof that the app was deleted.
         guard let displayName, !ExcludedApps.isBlankName(displayName) else { return false }
-        if let bundleIdentifier, Application(bundleIdentifier: bundleIdentifier).token == nil {
-            return false
-        }
         return true
     }
 }
@@ -168,15 +183,15 @@ enum ActivitySelectionStore {
 
     static func load() -> FamilyActivitySelection {
         guard let data = AppGroupStore.defaults.data(forKey: key),
-              let selection = try? JSONDecoder().decode(FamilyActivitySelection.self, from: data)
+              let selection = TokenCoding.decode(FamilyActivitySelection.self, from: data)
         else {
-            return FamilyActivitySelection()
+            return FamilyActivitySelection(includeEntireCategory: true)
         }
         return selection
     }
 
     static func save(_ selection: FamilyActivitySelection) {
-        if let data = try? JSONEncoder().encode(selection) {
+        if let data = TokenCoding.encode(selection) {
             AppGroupStore.defaults.set(data, forKey: key)
         }
     }
@@ -218,7 +233,7 @@ enum UsageStore {
 
     static func token(for name: String) -> ApplicationToken? {
         guard let data = loadTokens()[name] else { return nil }
-        return try? JSONDecoder().decode(ApplicationToken.self, from: data)
+        return TokenCoding.decode(ApplicationToken.self, from: data)
     }
 
     static func loadBundleIDs() -> [String: String] {
@@ -226,11 +241,11 @@ enum UsageStore {
     }
 
     static func isStillInstalled(name: String, bundleIDs: [String: String]? = nil) -> Bool {
-        let ids = bundleIDs ?? loadBundleIDs()
-        if let bundleID = ids[name] {
-            return Application(bundleIdentifier: bundleID).token != nil
-        }
-        return true
+        // Do not consult Application(bundleIdentifier:).token here. That property is
+        // unavailable in the main app and was treating every managed app as deleted,
+        // which cleared lockedApps and removed the shields.
+        _ = bundleIDs
+        return !ExcludedApps.isBlankName(name) && !ExcludedApps.isExcludedName(name)
     }
 
     static func saveUsage(
@@ -273,6 +288,13 @@ enum UsageStore {
         }
     }
 
+    static func unlock(name: String) {
+        saveLockedApps(loadLockedApps().filter { $0 != name })
+        if let token = token(for: name) {
+            LockedTokenStore.remove(token)
+        }
+    }
+
     static func pingMainApp() {
         CFNotificationCenterPostNotification(
             CFNotificationCenterGetDarwinNotifyCenter(),
@@ -284,22 +306,88 @@ enum UsageStore {
     }
 }
 
+enum LockedTokenStore {
+    static let key = "lockedAppTokens"
+
+    static func load() -> Set<ApplicationToken> {
+        guard let data = AppGroupStore.defaults.data(forKey: key) else { return [] }
+        return TokenCoding.decode(Set<ApplicationToken>.self, from: data) ?? []
+    }
+
+    static func save(_ tokens: Set<ApplicationToken>) {
+        let filtered = tokens.subtracting(ExcludedApps.tokens)
+        if let data = TokenCoding.encode(filtered) {
+            AppGroupStore.defaults.set(data, forKey: key)
+        }
+    }
+
+    static func remove(_ token: ApplicationToken) {
+        var tokens = load()
+        tokens.remove(token)
+        save(tokens)
+    }
+}
+
 enum ScreenTimeShields {
     static var store: ManagedSettingsStore {
         ManagedSettingsStore(named: .locked)
     }
 
     /// Applies or clears shields from the current lock list and emergency-override state.
-    static func sync() {
+    static func sync(using selection: FamilyActivitySelection? = nil) {
         if EmergencyOverride.isActive() {
             clear()
             return
         }
 
+        let picker = selection ?? ActivitySelectionStore.load()
         let lockedNames = UsageStore.loadLockedApps()
-        var tokens = Set(lockedNames.compactMap { UsageStore.token(for: $0) })
-        tokens.subtract(ExcludedApps.tokens)
+        var tokens = tokensToShield(lockedNames: lockedNames, selection: picker)
+
+        LockedTokenStore.save(tokens)
+        tokens = Set(Array(tokens).prefix(50))
+
         store.shield.applications = tokens.isEmpty ? nil : tokens
+        if tokens.isEmpty, !lockedNames.isEmpty, !picker.categoryTokens.isEmpty {
+            store.shield.applicationCategories = .specific(picker.categoryTokens)
+        } else {
+            store.shield.applicationCategories = nil
+        }
+        store.shield.webDomains = nil
+    }
+
+    /// Resolves Screen Time tokens for the named lock list.
+    /// Name lookup often fails in the main app, so this falls back to the
+    /// FamilyActivityPicker selection the user already approved.
+    static func tokensToShield(
+        lockedNames: [String],
+        selection: FamilyActivitySelection
+    ) -> Set<ApplicationToken> {
+        var tokens = LockedTokenStore.load()
+        for name in lockedNames {
+            if let token = UsageStore.token(for: name) {
+                tokens.insert(token)
+            }
+        }
+        tokens.subtract(ExcludedApps.tokens)
+
+        let selected = selection.applicationTokens.subtracting(ExcludedApps.tokens)
+        if tokens.count < lockedNames.count {
+            for token in selected where !tokens.contains(token) {
+                guard tokens.count < max(lockedNames.count, 1) else { break }
+                tokens.insert(token)
+            }
+        }
+
+        if tokens.isEmpty && !lockedNames.isEmpty {
+            tokens = Set(Array(selected).prefix(lockedNames.count))
+        }
+
+        if tokens.isEmpty && lockedNames.isEmpty && !selected.isEmpty {
+            tokens = LockedTokenStore.load().intersection(selected)
+        }
+
+        return tokens.subtracting(ExcludedApps.tokens)
     }
 
     static func clear() {

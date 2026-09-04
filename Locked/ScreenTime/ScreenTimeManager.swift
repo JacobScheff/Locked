@@ -9,7 +9,10 @@ final class ScreenTimeManager: ObservableObject {
 
     @Published var authorizationStatus: AuthorizationStatus
     @Published var selection: FamilyActivitySelection {
-        didSet { ActivitySelectionStore.save(selection) }
+        didSet {
+            ActivitySelectionStore.save(selection)
+            ScreenTimeShields.sync(using: selection)
+        }
     }
     @Published var isPickerPresented = false
 
@@ -34,7 +37,8 @@ final class ScreenTimeManager: ObservableObject {
         authorizationStatus = AuthorizationCenter.shared.authorizationStatus
         if isAuthorized {
             ScreenTimeMonitor.startDaily()
-            ScreenTimeShields.sync()
+            checkAndPerformWeeklyLockIfNeeded()
+            ScreenTimeShields.sync(using: selection)
         }
     }
 
