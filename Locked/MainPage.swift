@@ -163,28 +163,23 @@ struct MainPage: View {
 
     private func refreshScreenTime() {
         screenTime.refreshStatus()
-        let counts = UsageStore.loadAppCounts()
-        if !counts.isEmpty {
-            appCounts = counts
-        } else {
-            appCounts = ExcludedApps.strippingExcluded(appCounts)
-        }
-        let total = UsageStore.loadScreenTime()
-        if total > 0 {
-            screentime = total
-        }
-        lockedApps = ExcludedApps.strippingExcluded(lockedApps)
+        applyUsageSnapshot()
         ScreenTimeShields.sync()
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            let latest = UsageStore.loadAppCounts()
-            if !latest.isEmpty {
-                appCounts = latest
-            }
-            let latestTotal = UsageStore.loadScreenTime()
-            if latestTotal > 0 {
-                screentime = latestTotal
-            }
+            applyUsageSnapshot()
         }
+    }
+
+    private func applyUsageSnapshot() {
+        if UsageStore.hasSnapshot {
+            appCounts = UsageStore.loadAppCounts().filter { UsageStore.isStillInstalled(name: $0.key) }
+            lockedApps = UsageStore.loadLockedApps().filter { UsageStore.isStillInstalled(name: $0) }
+        } else {
+            appCounts = ExcludedApps.strippingExcluded(appCounts).filter { UsageStore.isStillInstalled(name: $0.key) }
+            lockedApps = ExcludedApps.strippingExcluded(lockedApps).filter { UsageStore.isStillInstalled(name: $0) }
+        }
+        screentime = appCounts.values.reduce(0, +)
+        appOrder = appOrder.filter { appCounts.keys.contains($0) }
     }
 
     private var header: some View {
@@ -412,6 +407,9 @@ struct LockedAppsSection: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(name)
                                     .font(.body.weight(.semibold))
+                                Text(formatAppDuration(appCounts[name] ?? 0))
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
                                 Text(overrideActive ? "Accessible until the seal repairs" : "\(calculateUnlockCost(for: name)) keys to unlock")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
@@ -633,19 +631,24 @@ struct AppCountsCard: View {
                                     if isEditing {
                                         reorderHandle(for: name)
                                     } else if isLocked {
-                                        Label(overrideActive ? "Released" : "Locked", systemImage: overrideActive ? "lock.open.fill" : "lock.fill")
-                                            .font(.caption.weight(.semibold))
-                                            .foregroundStyle(overrideActive ? Color.hazardYellow : Color.secondary)
-                                            .labelStyle(.titleAndIcon)
+                                        VStack(alignment: .trailing, spacing: 3) {
+                                            Label(overrideActive ? "Released" : "Locked", systemImage: overrideActive ? "lock.open.fill" : "lock.fill")
+                                                .font(.caption.weight(.semibold))
+                                                .foregroundStyle(overrideActive ? Color.hazardYellow : Color.secondary)
+                                                .labelStyle(.titleAndIcon)
+                                            Text(formatAppDuration(visibleAppCounts[name] ?? 0))
+                                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                                .foregroundStyle(.secondary)
+                                        }
                                     } else {
                                         let count = Double(visibleAppCounts[name] ?? 0)
                                         let percentage = totalAppCounts > 0 ? count / totalAppCounts : 0
-                                        AppUsageBar(percentage: percentage)
+                                        AppUsageBar(seconds: visibleAppCounts[name] ?? 0, percentage: percentage)
                                             .frame(width: 108)
                                     }
                                 }
                                 .padding(.horizontal, 16)
-                                .frame(height: 54)
+                                .frame(height: 62)
                                 .opacity(draggedItem == name ? 0.45 : 1.0)
 
                                 if name != displayOrder.last {
@@ -734,7 +737,7 @@ struct AppCountsCard: View {
                 DragGesture(minimumDistance: 3, coordinateSpace: .named("ListArea"))
                     .onChanged { value in
                         if draggedItem == nil { draggedItem = name }
-                        let rowHeight: CGFloat = 55
+                        let rowHeight: CGFloat = 63
                         let clampedIndex = max(0, min(draftOrder.count - 1, Int(value.location.y / rowHeight)))
                         if let currentIdx = draftOrder.firstIndex(of: name), currentIdx != clampedIndex {
                             withAnimation(.spring(response: 0.3)) {
@@ -751,10 +754,15 @@ struct AppCountsCard: View {
 }
 
 struct AppUsageBar: View {
+    let seconds: Int
     let percentage: Double
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 4) {
+            Text(formatAppDuration(seconds))
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .foregroundStyle(.primary)
+                .contentTransition(.numericText())
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule()

@@ -134,6 +134,18 @@ enum ExcludedApps {
     }
 }
 
+enum InstalledApps {
+    /// Screen Time still reports deleted apps historically. A current
+    /// display name, and a live token when we have a bundle ID, mean the app is still on the device.
+    static func isPresent(bundleIdentifier: String?, displayName: String?) -> Bool {
+        guard let displayName, !displayName.isEmpty else { return false }
+        if let bundleIdentifier, Application(bundleIdentifier: bundleIdentifier).token == nil {
+            return false
+        }
+        return true
+    }
+}
+
 extension ManagedSettingsStore.Name {
     static let locked = Self("Locked")
 }
@@ -192,6 +204,10 @@ enum UsageStore {
         AppGroupStore.defaults.integer(forKey: "screentime")
     }
 
+    static var hasSnapshot: Bool {
+        AppGroupStore.defaults.bool(forKey: "hasUsageSnapshot")
+    }
+
     static func loadTokens() -> [String: Data] {
         AppGroupStore.decodeJSON([String: Data].self, from: AppGroupStore.defaults.string(forKey: "appTokens")) ?? [:]
     }
@@ -201,16 +217,49 @@ enum UsageStore {
         return try? JSONDecoder().decode(ApplicationToken.self, from: data)
     }
 
-    static func saveUsage(appCounts: [String: Int], tokens: [String: Data], totalSeconds: Int) {
+    static func loadBundleIDs() -> [String: String] {
+        AppGroupStore.decodeJSON([String: String].self, from: AppGroupStore.defaults.string(forKey: "appBundleIDs")) ?? [:]
+    }
+
+    static func isStillInstalled(name: String, bundleIDs: [String: String]? = nil) -> Bool {
+        let ids = bundleIDs ?? loadBundleIDs()
+        if let bundleID = ids[name] {
+            return Application(bundleIdentifier: bundleID).token != nil
+        }
+        return true
+    }
+
+    static func saveUsage(
+        appCounts: [String: Int],
+        tokens: [String: Data],
+        bundleIDs: [String: String],
+        totalSeconds: Int
+    ) {
         let filteredCounts = ExcludedApps.strippingExcluded(appCounts)
-        let filteredTokens = tokens.filter { !ExcludedApps.isExcludedName($0.key) }
+        let remainingNames = Set(filteredCounts.keys)
+        let filteredTokens = tokens.filter { remainingNames.contains($0.key) }
+        let total = filteredCounts.values.reduce(0, +)
+
+        var ids = loadBundleIDs()
+        for (name, bundleID) in bundleIDs where remainingNames.contains(name) {
+            ids[name] = bundleID
+        }
+        for name in ids.keys where !remainingNames.contains(name) && !isStillInstalled(name: name, bundleIDs: ids) {
+            ids.removeValue(forKey: name)
+        }
+
         if let raw = AppGroupStore.encodeJSON(filteredCounts) {
             AppGroupStore.defaults.set(raw, forKey: "appCounts")
         }
         if let raw = AppGroupStore.encodeJSON(filteredTokens) {
             AppGroupStore.defaults.set(raw, forKey: "appTokens")
         }
-        AppGroupStore.defaults.set(totalSeconds > 0 ? totalSeconds : filteredCounts.values.reduce(0, +), forKey: "screentime")
+        if let raw = AppGroupStore.encodeJSON(ids) {
+            AppGroupStore.defaults.set(raw, forKey: "appBundleIDs")
+        }
+        AppGroupStore.defaults.set(total, forKey: "screentime")
+        AppGroupStore.defaults.set(true, forKey: "hasUsageSnapshot")
+        saveLockedApps(loadLockedApps().filter { remainingNames.contains($0) || isStillInstalled(name: $0, bundleIDs: ids) })
         pingMainApp()
     }
 

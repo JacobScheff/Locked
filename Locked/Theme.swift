@@ -203,6 +203,16 @@ func formatScreenTime(days: Int, hours: Int, minutes: Int) -> String {
     return parts.joined(separator: " ")
 }
 
+func formatAppDuration(_ seconds: Int) -> String {
+    let hours = seconds / 3600
+    let minutes = (seconds % 3600) / 60
+    if hours > 0 && minutes > 0 { return "\(hours)h \(minutes)m" }
+    if hours > 0 { return "\(hours)h" }
+    if minutes > 0 { return "\(minutes)m" }
+    if seconds > 0 { return "<1m" }
+    return "0m"
+}
+
 func karmaStatusCopy(karma: Double, appCount: Int) -> (headline: String, detail: String) {
     let lockPercent = max(0.0, min(100.0, 100.0 - karma))
     let numToLock = appCount == 0

@@ -22,6 +22,7 @@ struct UsageReport: DeviceActivityReportScene {
     func makeConfiguration(representing data: DeviceActivityResults<DeviceActivityData>) async -> UsageSnapshot {
         var secondsByApp: [String: Int] = [:]
         var tokensByApp: [String: Data] = [:]
+        var bundleIDsByApp: [String: String] = [:]
 
         for await deviceData in data {
             for await segment in deviceData.activitySegments {
@@ -29,14 +30,18 @@ struct UsageReport: DeviceActivityReportScene {
                     for await applicationActivity in category.applications {
                         let bundleID = applicationActivity.application.bundleIdentifier
                         let name = applicationActivity.application.localizedDisplayName
-                            ?? bundleID
-                            ?? "Unknown"
-                        if ExcludedApps.isExcluded(bundleIdentifier: bundleID, displayName: name) {
+                        guard InstalledApps.isPresent(bundleIdentifier: bundleID, displayName: name),
+                              let name,
+                              !ExcludedApps.isExcluded(bundleIdentifier: bundleID, displayName: name)
+                        else {
                             continue
                         }
 
                         let seconds = Int(applicationActivity.totalActivityDuration.rounded())
                         secondsByApp[name, default: 0] += seconds
+                        if let bundleID {
+                            bundleIDsByApp[name] = bundleID
+                        }
                         if let token = applicationActivity.application.token,
                            let tokenData = try? JSONEncoder().encode(token) {
                             tokensByApp[name] = tokenData
@@ -54,6 +59,7 @@ struct UsageReport: DeviceActivityReportScene {
         UsageStore.saveUsage(
             appCounts: snapshot.appCounts,
             tokens: snapshot.tokens,
+            bundleIDs: bundleIDsByApp,
             totalSeconds: snapshot.totalSeconds
         )
         return snapshot
