@@ -355,7 +355,7 @@ struct BreakGlassView: View {
                                     .stroke(Color.white.opacity(0.45 * shard.opacity), lineWidth: 0.8)
                             )
                             .offset(shard.drift)
-                            .rotationEffect(.degrees(shard.rotation))
+                            .rotationEffect(Angle.degrees(shard.rotation))
                             .opacity(shard.opacity)
                     }
                 }
@@ -614,7 +614,7 @@ struct GlassShard: Identifiable {
     var rotation: Double = 0
     var opacity: Double = 1
 
-    var path(in size: CGSize) -> Path {
+    func path(in size: CGSize) -> Path {
         var path = Path()
         guard let first = points.first else { return path }
         path.move(to: CGPoint(x: first.x * size.width, y: first.y * size.height))
