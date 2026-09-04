@@ -74,6 +74,7 @@ final class ScreenTimeManager: ObservableObject {
     }
 
     func presentPicker() {
+        selection = ActivitySelectionStore.normalized(selection)
         isPickerPresented = true
     }
 

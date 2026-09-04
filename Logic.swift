@@ -156,14 +156,9 @@ func performSundayLocking() -> [String] {
     let selection = ActivitySelectionStore.load()
     
     var snapshot = ExcludedApps.strippingExcluded(UsageStore.loadAppCounts())
-    var tokenByName: [String: ApplicationToken] = [:]
-    for name in snapshot.keys {
-        if let token = UsageStore.token(for: name) {
-            tokenByName[name] = token
-        }
-    }
+    var tokenByName = TokenIndex.tokensByName(from: selection)
 
-    var unusedSelected = selection.applicationTokens.subtracting(ExcludedApps.tokens)
+    var unusedSelected = ActivitySelectionStore.lockableApplicationTokens
     for token in tokenByName.values {
         unusedSelected.remove(token)
     }
@@ -172,7 +167,10 @@ func performSundayLocking() -> [String] {
         snapshot[name] = snapshot[name] ?? 1
         tokenByName[name] = token
     }
-    
+
+    // Only apps we can actually shield belong in the lock pool.
+    snapshot = snapshot.filter { tokenByName[$0.key] != nil }
+
     let totalApps = snapshot.count
     guard totalApps > 0 else { return [] }
 
@@ -181,22 +179,26 @@ func performSundayLocking() -> [String] {
     let numToLock = Int((lockPercent / 100.0 * Double(totalApps)).rounded(.up))
 
     var locked: [String] = []
-    
-    for _ in 0 ..< numToLock {
+    var lockedTokens = Set<ApplicationToken>()
+
+    while lockedTokens.count < numToLock && !snapshot.isEmpty {
         let picked = lockAppByKarma(from: snapshot)
-        if !picked.isEmpty && !locked.contains(picked) && !ExcludedApps.isExcludedName(picked) {
-            locked.append(picked)
-            snapshot.removeValue(forKey: picked)
-        }
+        snapshot.removeValue(forKey: picked)
+        guard !picked.isEmpty,
+              !locked.contains(picked),
+              !ExcludedApps.isExcludedName(picked),
+              let token = tokenByName[picked]
+        else { continue }
+        locked.append(picked)
+        lockedTokens.insert(token)
     }
 
-    let lockedTokens = Set(locked.compactMap { tokenByName[$0] })
     let displayNames = locked.filter { !$0.hasPrefix("token:") }
     UsageStore.saveTokens(tokenByName)
     LockedTokenStore.save(lockedTokens)
     UsageStore.saveLockedApps(displayNames)
     store.lockedApps = displayNames
-    ScreenTimeShields.sync(using: selection)
+    ScreenTimeShields.apply(tokens: lockedTokens)
     return displayNames
 }
 

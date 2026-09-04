@@ -55,7 +55,7 @@ struct HowToUseView: View {
                         title: "Choose apps",
                         instructions: [
                             "Tap **Choose Apps** and pick what Locked is allowed to manage.",
-                            "You can select individual apps or whole categories. Categories only define the pool — Sunday still locks specific apps, and unlocking with Keys opens just that app.",
+                            "You can select individual apps or whole categories. If you previously picked only categories, open Choose Apps again and tap Done so Locked can see each app token. Sunday still locks specific apps, and unlocking with Keys opens just that app.",
                             "**Locked, Settings, Phone, Messages, FaceTime, Find My, Wallet, and Clock never appear and never lock** — they also don’t count toward usage percentages."
                         ]
                     )
