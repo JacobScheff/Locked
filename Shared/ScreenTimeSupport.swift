@@ -306,6 +306,11 @@ enum UsageStore {
     }
 }
 
+struct UnnamedLockedApp: Identifiable, Hashable {
+    let id: String
+    let token: ApplicationToken
+}
+
 enum LockedTokenStore {
     static let key = "lockedAppTokens"
 
@@ -325,6 +330,18 @@ enum LockedTokenStore {
         var tokens = load()
         tokens.remove(token)
         save(tokens)
+    }
+
+    static func remove(_ app: UnnamedLockedApp) {
+        remove(app.token)
+    }
+
+    static func unnamedApps(excludingNames names: [String]) -> [UnnamedLockedApp] {
+        let named = Set(names.compactMap { UsageStore.token(for: $0) })
+        return load()
+            .subtracting(named)
+            .map { UnnamedLockedApp(id: TokenCoding.id(for: $0), token: $0) }
+            .sorted { $0.id < $1.id }
     }
 }
 

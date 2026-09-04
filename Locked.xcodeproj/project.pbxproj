@@ -31,6 +31,9 @@
 		4C0DA0012F9B000100000058 /* ShieldConfiguration.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000050 /* ShieldConfiguration.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		4C0DA0012F9B000100000070 /* GameplayKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000005 /* GameplayKit.framework */; };
 		4C0DA0012F9B000100000071 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3A8DF99A2F89F2B900279855 /* SwiftUI.framework */; };
+		4C0DA0012F9B000100000080 /* DeviceActivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000001 /* DeviceActivity.framework */; };
+		4C0DA0012F9B000100000081 /* FamilyControls.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000002 /* FamilyControls.framework */; };
+		4C0DA0012F9B000100000082 /* ManagedSettings.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000003 /* ManagedSettings.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -190,6 +193,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4C0DA0012F9B000100000080 /* DeviceActivity.framework in Frameworks */,
+				4C0DA0012F9B000100000081 /* FamilyControls.framework in Frameworks */,
+				4C0DA0012F9B000100000082 /* ManagedSettings.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

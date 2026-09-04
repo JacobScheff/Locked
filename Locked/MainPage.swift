@@ -381,7 +381,7 @@ struct LockedAppsSection: View {
 
     @State private var showUnlockAlert = false
     @State private var appToUnlock: String?
-    @State private var tokenToUnlock: ApplicationToken?
+    @State private var unnamedAppToUnlock: UnnamedLockedApp?
     @State private var unlockCost: Int = 0
 
     var body: some View {
@@ -408,10 +408,9 @@ struct LockedAppsSection: View {
                 }
             } else {
                 VStack(spacing: 10) {
-                    ForEach(unnamedLockedTokens, id: \.self) { token in
+                    ForEach(unnamedLockedTokens) { item in
                         HStack(spacing: 12) {
-                            Label(token)
-                                .labelStyle(.titleAndIcon)
+                            UnnamedLockedAppLabel(app: item)
                                 .font(.body.weight(.semibold))
                             Spacer()
                             if overrideActive {
@@ -426,7 +425,7 @@ struct LockedAppsSection: View {
                                 Button {
                                     appToUnlock = "this app"
                                     unlockCost = calculateUnlockCost(for: "App")
-                                    tokenToUnlock = token
+                                    unnamedAppToUnlock = item
                                     showUnlockAlert = true
                                 } label: {
                                     Text("Unlock")
@@ -472,7 +471,7 @@ struct LockedAppsSection: View {
                                 Button {
                                     appToUnlock = name
                                     unlockCost = calculateUnlockCost(for: name)
-                                    tokenToUnlock = nil
+                                    unnamedAppToUnlock = nil
                                     showUnlockAlert = true
                                 } label: {
                                     Text("Unlock")
@@ -496,9 +495,9 @@ struct LockedAppsSection: View {
             if keys >= Double(unlockCost) {
                 Button("Unlock (\(unlockCost) Keys)") {
                     keys -= Double(unlockCost)
-                    if let token = tokenToUnlock {
-                        LockedTokenStore.remove(token)
-                        tokenToUnlock = nil
+                    if let unnamed = unnamedAppToUnlock {
+                        LockedTokenStore.remove(unnamed)
+                        unnamedAppToUnlock = nil
                     } else {
                         lockedApps.removeAll { $0 == app }
                         UsageStore.unlock(name: app)
@@ -519,11 +518,8 @@ struct LockedAppsSection: View {
         }
     }
 
-    private var unnamedLockedTokens: [ApplicationToken] {
-        let named = Set(visibleLockedApps.compactMap { UsageStore.token(for: $0) })
-        return LockedTokenStore.load()
-            .subtracting(named)
-            .sorted { TokenCoding.id(for: $0) < TokenCoding.id(for: $1) }
+    private var unnamedLockedTokens: [UnnamedLockedApp] {
+        LockedTokenStore.unnamedApps(excludingNames: visibleLockedApps)
     }
 
     private var visibleLockedApps: [String] {

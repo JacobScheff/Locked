@@ -200,6 +200,15 @@ private struct HiddenUsageReportRoot: View {
     }
 }
 
+struct UnnamedLockedAppLabel: View {
+    let app: UnnamedLockedApp
+
+    var body: some View {
+        Label(app.token)
+            .labelStyle(.titleAndIcon)
+    }
+}
+
 struct ManagedAppIcon: View {
     let name: String
     var size: CGFloat = 32
