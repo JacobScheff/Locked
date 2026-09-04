@@ -106,10 +106,6 @@ struct InnerVaultView: View {
             background
 
             VStack(spacing: 0) {
-                topBar
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
-
                 if revealed {
                     treasury
                         .padding(.horizontal, 24)
@@ -118,7 +114,7 @@ struct InnerVaultView: View {
                 } else {
                     lockedStage
                         .padding(.horizontal, 28)
-                        .padding(.bottom, 24)
+                        .padding(.bottom, 28)
                 }
             }
         }
@@ -155,7 +151,11 @@ struct InnerVaultView: View {
 
             combinationDial
                 .frame(width: 300, height: 300)
+
+            dismissButton(title: "Cancel", prominent: false)
+                .padding(.top, 8)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var instruction: String {
@@ -222,6 +222,8 @@ struct InnerVaultView: View {
                 .font(.caption)
                 .foregroundStyle(.white.opacity(0.4))
                 .multilineTextAlignment(.center)
+
+            dismissButton(title: "Done", prominent: true)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -413,14 +415,23 @@ struct InnerVaultView: View {
         .ignoresSafeArea()
     }
 
-    private var topBar: some View {
-        HStack {
-            Button(revealed ? "Done" : "Cancel") { dismiss() }
-                .font(.body.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.7))
-            Spacer()
+    private func dismissButton(title: String, prominent: Bool) -> some View {
+        Button {
+            dismiss()
+        } label: {
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(prominent ? .black : .white.opacity(0.86))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background((prominent ? Color.vaultBrass : Color.white.opacity(0.1)), in: Capsule())
+                .overlay(
+                    Capsule()
+                        .strokeBorder(prominent ? Color.clear : Color.white.opacity(0.22), lineWidth: 1)
+                )
         }
-        .frame(height: 44)
+        .buttonStyle(.plain)
+        .padding(.horizontal, 20)
     }
 
     // MARK: Interaction
