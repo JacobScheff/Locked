@@ -54,12 +54,72 @@ enum AppGroupStore {
     static let suiteName = "group.com.Jacob-Scheff.Locked"
     static let usageDidUpdateName = "com.Jacob-Scheff.Locked.usageDidUpdate"
 
-    static var defaults: UserDefaults {
-        UserDefaults(suiteName: suiteName) ?? .standard
+    /// One suite instance. Repeated `UserDefaults(suiteName:)` lookups from
+    /// Device Activity extensions trigger CFPrefs `kCFPreferencesAnyUser`
+    /// failures and detach from cfprefsd.
+    static let defaults: UserDefaults = {
+        prepareContainer()
+        return UserDefaults(suiteName: suiteName) ?? .standard
+    }()
+
+    /// Create the group container before any suite read. Doing this after
+    /// a `UserDefaults(suiteName:)` lookup is what triggers the
+    /// `kCFPreferencesAnyUser` / cfprefsd detach on first launch.
+    static func prepareContainer() {
+        guard let url = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: suiteName) else {
+            return
+        }
+        if !FileManager.default.fileExists(atPath: url.path) {
+            try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        }
+    }
+
+    static var containerURL: URL? {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: suiteName)
+    }
+
+    static func fileURL(for key: String) -> URL? {
+        containerURL?.appendingPathComponent(key, isDirectory: false)
+    }
+
+    /// Device Activity extensions often cannot read the app-group suite
+    /// through cfprefsd. Files in the group container still work.
+    static func setSharedData(_ data: Data, forKey key: String) {
+        defaults.set(data, forKey: key)
+        if let url = fileURL(for: key) {
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
+    static func sharedData(forKey key: String) -> Data? {
+        if let url = fileURL(for: key),
+           let data = try? Data(contentsOf: url),
+           !data.isEmpty {
+            return data
+        }
+        return defaults.data(forKey: key)
+    }
+
+    static func setSharedString(_ string: String, forKey key: String) {
+        defaults.set(string, forKey: key)
+        if let url = fileURL(for: key), let data = string.data(using: .utf8) {
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
+    static func sharedString(forKey key: String) -> String? {
+        if let data = sharedData(forKey: key),
+           let string = String(data: data, encoding: .utf8),
+           !string.isEmpty {
+            return string
+        }
+        return defaults.string(forKey: key)
     }
 
     static func encodeJSON<T: Encodable>(_ value: T) -> String? {
-        guard let data = TokenCoding.encode(value),
+        // TokenCoding prefers binary plists, which cannot become a UTF-8 string.
+        // JSON is required here so name→token maps actually persist.
+        guard let data = try? JSONEncoder().encode(value),
               let string = String(data: data, encoding: .utf8)
         else { return nil }
         return string
@@ -69,6 +129,10 @@ enum AppGroupStore {
         guard let raw, let data = raw.data(using: .utf8) else { return nil }
         return TokenCoding.decode(type, from: data)
     }
+}
+
+extension UserDefaults {
+    static var lockedGroup: UserDefaults { AppGroupStore.defaults }
 }
 
 enum TokenCoding {
@@ -181,18 +245,30 @@ enum LockedReportContext {
 enum ActivitySelectionStore {
     static let key = "familyActivitySelection"
 
+    /// Category picks must expand to individual `ApplicationToken`s so we can
+    /// lock one app without shielding every app in Social, Games, etc.
+    static func expandingCategories(_ selection: FamilyActivitySelection) -> FamilyActivitySelection {
+        guard !selection.includeEntireCategory else { return selection }
+        var expanded = FamilyActivitySelection(includeEntireCategory: true)
+        expanded.applicationTokens = selection.applicationTokens
+        expanded.categoryTokens = selection.categoryTokens
+        expanded.webDomainTokens = selection.webDomainTokens
+        return expanded
+    }
+
     static func load() -> FamilyActivitySelection {
-        guard let data = AppGroupStore.defaults.data(forKey: key),
+        guard let data = AppGroupStore.sharedData(forKey: key),
               let selection = TokenCoding.decode(FamilyActivitySelection.self, from: data)
         else {
             return FamilyActivitySelection(includeEntireCategory: true)
         }
-        return selection
+        return expandingCategories(selection)
     }
 
     static func save(_ selection: FamilyActivitySelection) {
-        if let data = TokenCoding.encode(selection) {
-            AppGroupStore.defaults.set(data, forKey: key)
+        let expanded = expandingCategories(selection)
+        if let data = TokenCoding.encode(expanded) {
+            AppGroupStore.setSharedData(data, forKey: key)
         }
     }
 
@@ -208,13 +284,13 @@ enum ActivitySelectionStore {
 
 enum UsageStore {
     static func loadAppCounts() -> [String: Int] {
-        let raw = AppGroupStore.defaults.string(forKey: "appCounts")
+        let raw = AppGroupStore.sharedString(forKey: "appCounts")
         let decoded = AppGroupStore.decodeJSON([String: Int].self, from: raw) ?? [:]
         return ExcludedApps.strippingExcluded(decoded)
     }
 
     static func loadLockedApps() -> [String] {
-        let raw = AppGroupStore.defaults.string(forKey: "lockedApps")
+        let raw = AppGroupStore.sharedString(forKey: "lockedApps")
         let decoded = AppGroupStore.decodeJSON([String].self, from: raw) ?? []
         return ExcludedApps.strippingExcluded(decoded)
     }
@@ -227,17 +303,58 @@ enum UsageStore {
         AppGroupStore.defaults.bool(forKey: "hasUsageSnapshot")
     }
 
+    static let tokensKey = "appTokensData"
+    static let tokensLegacyKey = "appTokens"
+
     static func loadTokens() -> [String: Data] {
-        AppGroupStore.decodeJSON([String: Data].self, from: AppGroupStore.defaults.string(forKey: "appTokens")) ?? [:]
+        if let data = AppGroupStore.sharedData(forKey: tokensKey),
+           let tokens = TokenCoding.decode([String: Data].self, from: data) {
+            return tokens
+        }
+        return AppGroupStore.decodeJSON([String: Data].self, from: AppGroupStore.sharedString(forKey: tokensLegacyKey)) ?? [:]
+    }
+
+    static func saveTokens(_ tokens: [String: Data]) {
+        if let data = TokenCoding.encode(tokens) {
+            AppGroupStore.setSharedData(data, forKey: tokensKey)
+        }
+        if let raw = AppGroupStore.encodeJSON(tokens) {
+            AppGroupStore.setSharedString(raw, forKey: tokensLegacyKey)
+        }
+    }
+
+    static func loadTokenMap() -> [String: ApplicationToken] {
+        var map: [String: ApplicationToken] = [:]
+        for (name, data) in loadTokens() {
+            if let token = TokenCoding.decode(ApplicationToken.self, from: data) {
+                map[name] = token
+            }
+        }
+        return map
+    }
+
+    static func saveToken(_ token: ApplicationToken, for name: String) {
+        guard !ExcludedApps.isBlankName(name), !ExcludedApps.isExcludedName(name) else { return }
+        guard let data = TokenCoding.encode(token) else { return }
+        var tokens = loadTokens()
+        tokens[name] = data
+        saveTokens(tokens)
     }
 
     static func token(for name: String) -> ApplicationToken? {
-        guard let data = loadTokens()[name] else { return nil }
-        return TokenCoding.decode(ApplicationToken.self, from: data)
+        if let token = loadTokenMap()[name] { return token }
+        // Device Activity extensions can resolve a token from a bundle ID.
+        // The main app cannot; this is a no-op there.
+        if let bundleID = loadBundleIDs()[name],
+           let token = Application(bundleIdentifier: bundleID).token {
+            saveToken(token, for: name)
+            return token
+        }
+        return nil
     }
 
     static func loadBundleIDs() -> [String: String] {
-        AppGroupStore.decodeJSON([String: String].self, from: AppGroupStore.defaults.string(forKey: "appBundleIDs")) ?? [:]
+        AppGroupStore.decodeJSON([String: String].self, from: AppGroupStore.sharedString(forKey: "appBundleIDs")) ?? [:]
     }
 
     static func isStillInstalled(name: String, bundleIDs: [String: String]? = nil) -> Bool {
@@ -255,7 +372,21 @@ enum UsageStore {
     ) {
         let filteredCounts = ExcludedApps.strippingExcluded(appCounts)
         let remainingNames = Set(filteredCounts.keys)
-        let filteredTokens = tokens.filter { remainingNames.contains($0.key) }
+        var mergedTokens = loadTokens()
+        for (name, data) in tokens {
+            mergedTokens[name] = data
+        }
+        let lockedTokenSet = LockedTokenStore.load()
+        var keepNames = remainingNames.union(Set(loadLockedApps()))
+        for (name, data) in mergedTokens {
+            if let token = TokenCoding.decode(ApplicationToken.self, from: data),
+               lockedTokenSet.contains(token) {
+                keepNames.insert(name)
+            }
+        }
+        let filteredTokens = mergedTokens.filter {
+            keepNames.contains($0.key) || remainingNames.contains($0.key)
+        }
         let total = filteredCounts.values.reduce(0, +)
 
         var ids = loadBundleIDs()
@@ -267,25 +398,50 @@ enum UsageStore {
         }
 
         if let raw = AppGroupStore.encodeJSON(filteredCounts) {
-            AppGroupStore.defaults.set(raw, forKey: "appCounts")
+            AppGroupStore.setSharedString(raw, forKey: "appCounts")
         }
-        if let raw = AppGroupStore.encodeJSON(filteredTokens) {
-            AppGroupStore.defaults.set(raw, forKey: "appTokens")
-        }
+        saveTokens(filteredTokens)
         if let raw = AppGroupStore.encodeJSON(ids) {
-            AppGroupStore.defaults.set(raw, forKey: "appBundleIDs")
+            AppGroupStore.setSharedString(raw, forKey: "appBundleIDs")
         }
         AppGroupStore.defaults.set(total, forKey: "screentime")
         AppGroupStore.defaults.set(true, forKey: "hasUsageSnapshot")
-        saveLockedApps(loadLockedApps().filter { remainingNames.contains($0) || isStillInstalled(name: $0, bundleIDs: ids) })
+        var locked = loadLockedApps().filter { remainingNames.contains($0) || isStillInstalled(name: $0, bundleIDs: ids) }
+        let lockedTokens = LockedTokenStore.load()
+        for (name, data) in filteredTokens {
+            guard let token = TokenCoding.decode(ApplicationToken.self, from: data),
+                  lockedTokens.contains(token),
+                  !locked.contains(name)
+            else { continue }
+            locked.append(name)
+        }
+        saveLockedApps(locked)
+        applyShields(for: locked, encodedTokens: filteredTokens)
         pingMainApp()
     }
 
     static func saveLockedApps(_ locked: [String]) {
         let filtered = ExcludedApps.strippingExcluded(locked)
         if let raw = AppGroupStore.encodeJSON(filtered) {
-            AppGroupStore.defaults.set(raw, forKey: "lockedApps")
+            AppGroupStore.setSharedString(raw, forKey: "lockedApps")
         }
+    }
+
+    /// Applies shields in the same process that just decoded the tokens.
+    /// Device Activity extensions cannot reliably round-trip tokens through cfprefsd.
+    static func applyShields(for lockedNames: [String], encodedTokens: [String: Data]) {
+        var tokens = LockedTokenStore.load()
+        for name in lockedNames {
+            if let data = encodedTokens[name],
+               let token = TokenCoding.decode(ApplicationToken.self, from: data) {
+                tokens.insert(token)
+            } else if let token = token(for: name) {
+                tokens.insert(token)
+            }
+        }
+        tokens.subtract(ExcludedApps.tokens)
+        guard !tokens.isEmpty else { return }
+        ScreenTimeShields.lock(tokens: tokens)
     }
 
     static func unlock(name: String) {
@@ -315,14 +471,14 @@ enum LockedTokenStore {
     static let key = "lockedAppTokens"
 
     static func load() -> Set<ApplicationToken> {
-        guard let data = AppGroupStore.defaults.data(forKey: key) else { return [] }
+        guard let data = AppGroupStore.sharedData(forKey: key) else { return [] }
         return TokenCoding.decode(Set<ApplicationToken>.self, from: data) ?? []
     }
 
     static func save(_ tokens: Set<ApplicationToken>) {
         let filtered = tokens.subtracting(ExcludedApps.tokens)
         if let data = TokenCoding.encode(filtered) {
-            AppGroupStore.defaults.set(data, forKey: key)
+            AppGroupStore.setSharedData(data, forKey: key)
         }
     }
 
@@ -346,8 +502,20 @@ enum LockedTokenStore {
 }
 
 enum ScreenTimeShields {
+    static let applicationLimit = 50
+
+    /// A named store so these shields never merge with the default store
+    /// or with restrictions written elsewhere in the app.
     static var store: ManagedSettingsStore {
         ManagedSettingsStore(named: .locked)
+    }
+
+    /// Shields only the given application tokens. Every other app stays open.
+    static func lock(tokens: Set<ApplicationToken>) {
+        let isolated = isolatedTokens(from: tokens)
+        guard !isolated.isEmpty else { return }
+        LockedTokenStore.save(isolated)
+        apply(isolated)
     }
 
     /// Applies or clears shields from the current lock list and emergency-override state.
@@ -357,54 +525,66 @@ enum ScreenTimeShields {
             return
         }
 
-        let picker = selection ?? ActivitySelectionStore.load()
+        let picker = ActivitySelectionStore.expandingCategories(selection ?? ActivitySelectionStore.load())
         let lockedNames = UsageStore.loadLockedApps()
-        var tokens = tokensToShield(lockedNames: lockedNames, selection: picker)
-
-        LockedTokenStore.save(tokens)
-        tokens = Set(Array(tokens).prefix(50))
-
-        store.shield.applications = tokens.isEmpty ? nil : tokens
-        if tokens.isEmpty, !lockedNames.isEmpty, !picker.categoryTokens.isEmpty {
-            store.shield.applicationCategories = .specific(picker.categoryTokens)
-        } else {
-            store.shield.applicationCategories = nil
+        let isolated = tokensToShield(
+            lockedNames: lockedNames,
+            selection: picker
+        )
+        if isolated.isEmpty {
+            // Names without tokens are not a reason to wipe live shields.
+            // Only clear when nothing is supposed to be locked.
+            if lockedNames.isEmpty && LockedTokenStore.load().isEmpty {
+                clear()
+            }
+            return
         }
-        store.shield.webDomains = nil
+        LockedTokenStore.save(isolated)
+        apply(isolated)
     }
 
-    /// Resolves Screen Time tokens for the named lock list.
-    /// Name lookup often fails in the main app, so this falls back to the
-    /// FamilyActivityPicker selection the user already approved.
+    /// Clears leftover settings, then shields only these application tokens.
+    /// Categories and web domains are never applied — that would lock every
+    /// app in a group instead of the specific apps karma picked.
+    private static func apply(_ tokens: Set<ApplicationToken>) {
+        let isolated = isolatedTokens(from: tokens)
+        guard !isolated.isEmpty else { return }
+        // Do not call clearAllSettings() here. That write is applied
+        // asynchronously and can wipe the assignment that follows, which
+        // leaves the UI saying "Locked" while SpringBoard has no shield.
+        store.shield.applicationCategories = nil
+        store.shield.webDomains = nil
+        store.shield.applications = isolated
+    }
+
+    static func isolatedTokens(from tokens: Set<ApplicationToken>) -> Set<ApplicationToken> {
+        let filtered = tokens.subtracting(ExcludedApps.tokens)
+        guard filtered.count > applicationLimit else { return filtered }
+        return Set(
+            filtered
+                .sorted { TokenCoding.id(for: $0) < TokenCoding.id(for: $1) }
+                .prefix(applicationLimit)
+        )
+    }
+
+    /// Isolates tokens for the current lock list only.
+    /// Does not pad with arbitrary picker tokens and never uses category tokens.
     static func tokensToShield(
         lockedNames: [String],
         selection: FamilyActivitySelection
     ) -> Set<ApplicationToken> {
+        _ = selection
         var tokens = LockedTokenStore.load()
+        let named = UsageStore.loadTokenMap()
         for name in lockedNames {
-            if let token = UsageStore.token(for: name) {
+            if let token = named[name] ?? UsageStore.token(for: name) {
                 tokens.insert(token)
             }
         }
-        tokens.subtract(ExcludedApps.tokens)
-
-        let selected = selection.applicationTokens.subtracting(ExcludedApps.tokens)
-        if tokens.count < lockedNames.count {
-            for token in selected where !tokens.contains(token) {
-                guard tokens.count < max(lockedNames.count, 1) else { break }
-                tokens.insert(token)
-            }
+        for (name, token) in named where !lockedNames.contains(name) {
+            tokens.remove(token)
         }
-
-        if tokens.isEmpty && !lockedNames.isEmpty {
-            tokens = Set(Array(selected).prefix(lockedNames.count))
-        }
-
-        if tokens.isEmpty && lockedNames.isEmpty && !selected.isEmpty {
-            tokens = LockedTokenStore.load().intersection(selected)
-        }
-
-        return tokens.subtracting(ExcludedApps.tokens)
+        return isolatedTokens(from: tokens)
     }
 
     static func clear() {
@@ -421,8 +601,10 @@ enum ScreenTimeMonitor {
             intervalEnd: DateComponents(hour: 23, minute: 59),
             repeats: true
         )
+        let center = DeviceActivityCenter()
+        center.stopMonitoring([.daily])
         do {
-            try DeviceActivityCenter().startMonitoring(.daily, during: schedule)
+            try center.startMonitoring(.daily, during: schedule)
         } catch {
             print("Failed to start daily Screen Time monitoring: \(error)")
         }
@@ -455,11 +637,11 @@ enum EmergencyOverride {
     static let duration: TimeInterval = 60 * 60
     static let strikesToBreak = 3
 
-    static func isActive(at date: Date = .now, defaults: UserDefaults? = UserDefaults(suiteName: suiteName)) -> Bool {
+    static func isActive(at date: Date = .now, defaults: UserDefaults? = AppGroupStore.defaults) -> Bool {
         remaining(at: date, defaults: defaults) > 0
     }
 
-    static func remaining(at date: Date = .now, defaults: UserDefaults? = UserDefaults(suiteName: suiteName)) -> TimeInterval {
+    static func remaining(at date: Date = .now, defaults: UserDefaults? = AppGroupStore.defaults) -> TimeInterval {
         let until = defaults?.double(forKey: untilKey) ?? 0
         return max(0, Date(timeIntervalSince1970: until).timeIntervalSince(date))
     }

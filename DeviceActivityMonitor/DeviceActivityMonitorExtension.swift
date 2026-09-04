@@ -12,6 +12,8 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         if activity == .daily {
             checkAndPerformWeeklyLockIfNeeded()
         }
+        // Re-apply isolated tokens. sync() will not clearAllSettings when
+        // names exist but this extension cannot read tokens from cfprefsd.
         ScreenTimeShields.sync()
     }
 

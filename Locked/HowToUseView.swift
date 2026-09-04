@@ -4,6 +4,8 @@ import WidgetKit
 #endif
 
 struct HowToUseView: View {
+    @EnvironmentObject private var screenTime: ScreenTimeManager
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
@@ -55,7 +57,7 @@ struct HowToUseView: View {
                         title: "Choose apps",
                         instructions: [
                             "Tap **Choose Apps** and pick what Locked is allowed to manage.",
-                            "You can select individual apps or whole categories.",
+                            "You can select individual apps or whole categories. Categories only choose the pool — Sunday still locks specific apps, not the entire group.",
                             "**Locked, Settings, Phone, Messages, FaceTime, Find My, Wallet, and Clock never appear and never lock** — they also don’t count toward usage percentages."
                         ]
                     )
@@ -117,7 +119,7 @@ struct HowToUseView: View {
         VStack(alignment: .leading, spacing: 12) {
             LockedSectionLabel(title: "Developer", icon: "hammer.fill")
             Button {
-                performSundayLocking()
+                screenTime.simulateWeeklyLock()
                 WidgetCenter.shared.reloadTimelines(ofKind: "Locked_Widget")
             } label: {
                 Label("Simulate weekly lock", systemImage: "lock.rotation")
@@ -127,6 +129,9 @@ struct HowToUseView: View {
             }
             .buttonStyle(.bordered)
             .tint(.lockedRose)
+            Text("Locks at least one managed app using Screen Time tokens, then refreshes usage so remaining names get their shields.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
     #endif

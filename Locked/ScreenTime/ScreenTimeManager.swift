@@ -11,13 +11,15 @@ final class ScreenTimeManager: ObservableObject {
     @Published var authorizationStatus: AuthorizationStatus
     @Published var selection: FamilyActivitySelection {
         didSet {
-            ActivitySelectionStore.save(selection)
-            ScreenTimeShields.sync(using: selection)
+            let expanded = ActivitySelectionStore.expandingCategories(selection)
+            ActivitySelectionStore.save(expanded)
+            ScreenTimeShields.sync(using: expanded)
         }
     }
     @Published var isPickerPresented = false
     @Published private(set) var isReady = false
     @Published private(set) var usageRevision = 0
+    @Published private(set) var usageReportNonce = 0
 
     private var didStartDailyMonitor = false
     private var launchedAt = Date()
@@ -74,11 +76,28 @@ final class ScreenTimeManager: ObservableObject {
     }
 
     func presentPicker() {
+        let expanded = ActivitySelectionStore.expandingCategories(selection)
+        if !selection.includeEntireCategory {
+            selection = expanded
+        }
         isPickerPresented = true
+    }
+
+    func reloadUsageReport() {
+        usageReportNonce += 1
+    }
+
+    func simulateWeeklyLock() {
+        _ = performSundayLocking(using: selection, minimumLockCount: 1)
+        reloadUsageReport()
+        didStartDailyMonitor = false
+        ScreenTimeMonitor.startDaily()
+        didStartDailyMonitor = true
     }
 
     func noteUsageUpdated() {
         usageRevision += 1
+        ScreenTimeShields.sync(using: selection)
         markReady()
     }
 
@@ -87,15 +106,6 @@ final class ScreenTimeManager: ObservableObject {
         try? await Task.sleep(for: .milliseconds(160))
         refreshStatus()
 
-        if !shouldCollectUsage {
-            markReady()
-            return
-        }
-
-        // Wait for the hidden report to finish (or time out) so the system
-        // "Select apps to use Screen Time API" placeholder never appears.
-        let timeout: TimeInterval = UsageStore.hasSnapshot ? 3 : 6
-        try? await Task.sleep(for: .seconds(timeout))
         markReady()
     }
 
@@ -136,9 +146,10 @@ extension DeviceActivityReport.Context {
 struct UsageReportHost: View {
     let selection: FamilyActivitySelection
     let dayKey: String
+    var nonce: Int = 0
 
     private var identity: String {
-        "\(dayKey)-\(selection.applicationTokens.hashValue)-\(selection.categoryTokens.hashValue)"
+        "\(dayKey)-\(nonce)-\(selection.applicationTokens.hashValue)-\(selection.categoryTokens.hashValue)"
     }
 
     var body: some View {

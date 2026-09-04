@@ -17,26 +17,25 @@ final class LogicStore {
     // Using @AppStorage inside the logic class directly uses your custom extension!
     // This perfectly prevents UserDefaults decoding failures and data wiping.
     
-    @AppStorage("karma", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    @AppStorage("karma", store: AppGroupStore.defaults)
     var karma: Double = 0.0
     
-    @AppStorage("keys", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    @AppStorage("keys", store: AppGroupStore.defaults)
     var keys: Double = 0.0
     
-    @AppStorage("appCounts", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    @AppStorage("appCounts", store: AppGroupStore.defaults)
     var appCounts: [String: Int] = [:]
     
-    @AppStorage("lockedApps", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    @AppStorage("lockedApps", store: AppGroupStore.defaults)
     var lockedApps: [String] = []
     
-    @AppStorage("emergencyOverrideUntil", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    @AppStorage("emergencyOverrideUntil", store: AppGroupStore.defaults)
     var emergencyOverrideUntil: Double = 0
     
-    @AppStorage("innerVaultUnlockedUntil", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    @AppStorage("innerVaultUnlockedUntil", store: AppGroupStore.defaults)
     var innerVaultUnlockedUntil: Double = 0
     
-    // Dates still rely on the standard defaults.object fallback
-    private let defaults = UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked")!
+    private let defaults = AppGroupStore.defaults
     
     var isEmergencyOverrideActive: Bool {
         Date(timeIntervalSince1970: defaults.double(forKey: EmergencyOverride.untilKey)) > Date()
@@ -150,20 +149,23 @@ func lockAppByKarma(from snapshot: [String: Int]) -> String {
 /// Locks the appropriate number of apps based on current karma.
 /// Returns the list of names that were locked. Safety-critical apps are never included.
 @discardableResult
-func performSundayLocking() -> [String] {
+func performSundayLocking(
+    using selection: FamilyActivitySelection? = nil,
+    minimumLockCount: Int = 0
+) -> [String] {
     let store = LogicStore.shared
     let karma = AppGroupStore.defaults.double(forKey: "karma")
-    let selection = ActivitySelectionStore.load()
+    let picker = ActivitySelectionStore.expandingCategories(selection ?? ActivitySelectionStore.load())
     
     var snapshot = ExcludedApps.strippingExcluded(UsageStore.loadAppCounts())
-    var tokenByName: [String: ApplicationToken] = [:]
-    for name in snapshot.keys {
+    var tokenByName: [String: ApplicationToken] = UsageStore.loadTokenMap()
+    for name in snapshot.keys where tokenByName[name] == nil {
         if let token = UsageStore.token(for: name) {
             tokenByName[name] = token
         }
     }
 
-    var unusedSelected = selection.applicationTokens.subtracting(ExcludedApps.tokens)
+    var unusedSelected = picker.applicationTokens.subtracting(ExcludedApps.tokens)
     for token in tokenByName.values {
         unusedSelected.remove(token)
     }
@@ -178,24 +180,39 @@ func performSundayLocking() -> [String] {
 
     // 100 Karma = 0% locked. 77 Karma = 23% locked. 0 Karma = 100% locked.
     let lockPercent = max(0.0, min(100.0, 100.0 - karma))
-    let numToLock = Int((lockPercent / 100.0 * Double(totalApps)).rounded(.up))
+    var numToLock = Int((lockPercent / 100.0 * Double(totalApps)).rounded(.up))
+    numToLock = max(numToLock, min(minimumLockCount, totalApps))
 
     var locked: [String] = []
-    
-    for _ in 0 ..< numToLock {
+    var lockedTokens: Set<ApplicationToken> = []
+    var attempts = 0
+    while locked.count < numToLock && !snapshot.isEmpty && attempts < totalApps + numToLock + 8 {
+        attempts += 1
         let picked = lockAppByKarma(from: snapshot)
-        if !picked.isEmpty && !locked.contains(picked) && !ExcludedApps.isExcludedName(picked) {
-            locked.append(picked)
-            snapshot.removeValue(forKey: picked)
+        snapshot.removeValue(forKey: picked)
+        guard !picked.isEmpty,
+              !locked.contains(picked),
+              !ExcludedApps.isExcludedName(picked)
+        else { continue }
+        locked.append(picked)
+        if let token = tokenByName[picked] ?? UsageStore.token(for: picked) {
+            lockedTokens.insert(token)
         }
     }
 
-    let lockedTokens = Set(locked.compactMap { tokenByName[$0] })
     let displayNames = locked.filter { !$0.hasPrefix("token:") }
-    LockedTokenStore.save(lockedTokens)
+    for name in displayNames {
+        if let token = tokenByName[name] {
+            UsageStore.saveToken(token, for: name)
+        }
+    }
     UsageStore.saveLockedApps(displayNames)
     store.lockedApps = displayNames
-    ScreenTimeShields.sync(using: selection)
+    if !lockedTokens.isEmpty {
+        ScreenTimeShields.lock(tokens: lockedTokens)
+    } else {
+        ScreenTimeShields.sync(using: picker)
+    }
     return displayNames
 }
 
@@ -208,12 +225,13 @@ func checkAndPerformWeeklyLockIfNeeded() {
     let currentWeekString = ISO8601DateFormatter().string(from: startOfWeek)
     let lastLockKey = "lastWeeklyLockDate"
     let poolReady = !UsageStore.loadAppCounts().isEmpty || ActivitySelectionStore.hasSelection
-    let alreadyRan = defaults.string(forKey: lastLockKey) == currentWeekString
+    let alreadyRan = AppGroupStore.sharedString(forKey: lastLockKey) == currentWeekString
+        || defaults.string(forKey: lastLockKey) == currentWeekString
     let hasLocks = !UsageStore.loadLockedApps().isEmpty || !LockedTokenStore.load().isEmpty
 
     if !alreadyRan {
         guard poolReady else { return }
-        defaults.set(currentWeekString, forKey: lastLockKey)
+        AppGroupStore.setSharedString(currentWeekString, forKey: lastLockKey)
         let locked = performSundayLocking()
         print("Weekly lock: locked \(locked.count) app(s): \(locked)")
     } else if !hasLocks && poolReady {

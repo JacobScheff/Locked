@@ -7,31 +7,31 @@ struct MainPage: View {
     @EnvironmentObject private var screenTime: ScreenTimeManager
     @Environment(\.scenePhase) private var scenePhase
 
-    @AppStorage("screentime", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    @AppStorage("screentime", store: .lockedGroup)
     var screentime: Int = 0
     var days: Int { screentime / 86400 }
     var hours: Int { (screentime % 86400) / 3600 }
     var minutes: Int { (screentime % 3600) / 60 }
 
-    @AppStorage("appCounts", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    @AppStorage("appCounts", store: .lockedGroup)
     var appCounts: [String: Int] = [:]
 
-    @AppStorage("keys", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    @AppStorage("keys", store: .lockedGroup)
     var keys: Double = 0.0
 
-    @AppStorage("karma", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    @AppStorage("karma", store: .lockedGroup)
     var karma: Double = 0.0
 
-    @AppStorage("lockedApps", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    @AppStorage("lockedApps", store: .lockedGroup)
     var lockedApps: [String] = []
 
-    @AppStorage("courses", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    @AppStorage("courses", store: .lockedGroup)
     var courses: [Course] = []
 
-    @AppStorage("emergencyOverrideUntil", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    @AppStorage("emergencyOverrideUntil", store: .lockedGroup)
     var emergencyOverrideUntil: Double = 0
 
-    @AppStorage("innerVaultUnlockedUntil", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    @AppStorage("innerVaultUnlockedUntil", store: .lockedGroup)
     var innerVaultUnlockedUntil: Double = 0
 
     @State private var presentedRitual: HomeRitual?

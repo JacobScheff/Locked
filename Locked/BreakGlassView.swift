@@ -65,7 +65,7 @@ struct EmergencySealCard: View {
 // MARK: - Home: active override
 
 struct OverrideStatusBanner: View {
-    @AppStorage("emergencyOverrideUntil", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    @AppStorage("emergencyOverrideUntil", store: .lockedGroup)
     var emergencyOverrideUntil: Double = 0
 
     var onRestore: () -> Void

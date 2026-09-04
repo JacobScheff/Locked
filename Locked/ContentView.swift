@@ -6,10 +6,11 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            if screenTime.shouldCollectUsage {
+            if screenTime.isReady && screenTime.shouldCollectUsage {
                 UsageReportHost(
                     selection: screenTime.selection,
-                    dayKey: screenTime.reportDayKey
+                    dayKey: screenTime.reportDayKey,
+                    nonce: screenTime.usageReportNonce
                 )
             }
 

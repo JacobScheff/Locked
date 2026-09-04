@@ -61,13 +61,13 @@ struct InnerVaultView: View {
 
     @Environment(\.dismiss) private var dismiss
 
-    @AppStorage("keys", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    @AppStorage("keys", store: .lockedGroup)
     var keys: Double = 0.0
 
-    @AppStorage("karma", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    @AppStorage("karma", store: .lockedGroup)
     var karma: Double = 0.0
 
-    @AppStorage("emergencyOverrideUntil", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    @AppStorage("emergencyOverrideUntil", store: .lockedGroup)
     var emergencyOverrideUntil: Double = 0
 
     @State private var combination = InnerVault.randomCombination()
