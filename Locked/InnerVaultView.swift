@@ -111,6 +111,10 @@ struct InnerVaultView: View {
         .interactiveDismissDisabled(!revealed)
         .onAppear(perform: prepare)
         .onReceive(Timer.publish(every: 1.0 / 30.0, on: .main, in: .common).autoconnect()) { date in
+            if !EmergencyOverride.isActive(at: date) {
+                dismiss()
+                return
+            }
             tickHold(at: date)
         }
         .onChange(of: emergencyOverrideUntil) { _, _ in
