@@ -250,7 +250,9 @@ enum InnerVault {
     }
 
     static func number(at dialAngle: Double) -> Int {
-        let ticks = (dialAngle / degreesPerTick).rounded()
+        // The face paints number N at +N ticks. A positive (clockwise) dial
+        // rotation therefore brings a lower number under the top pointer.
+        let ticks = (-dialAngle / degreesPerTick).rounded()
         var number = Int(ticks) % tickCount
         if number < 0 { number += tickCount }
         return number
