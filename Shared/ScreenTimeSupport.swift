@@ -302,11 +302,17 @@ enum UsageStore {
     ) {
         let filteredCounts = ExcludedApps.strippingExcluded(appCounts)
         let remainingNames = Set(filteredCounts.keys)
-        let lockedNames = Set(loadLockedApps())
-        let keepNames = remainingNames.union(lockedNames)
         var mergedTokens = loadTokens()
-        for (name, data) in tokens where keepNames.contains(name) {
+        for (name, data) in tokens {
             mergedTokens[name] = data
+        }
+        let lockedTokenSet = LockedTokenStore.load()
+        var keepNames = remainingNames.union(Set(loadLockedApps()))
+        for (name, data) in mergedTokens {
+            if let token = TokenCoding.decode(ApplicationToken.self, from: data),
+               lockedTokenSet.contains(token) {
+                keepNames.insert(name)
+            }
         }
         let filteredTokens = mergedTokens.filter { keepNames.contains($0.key) }
         let total = filteredCounts.values.reduce(0, +)
