@@ -1,6 +1,8 @@
 import SwiftUI
 import WidgetKit
 import UIKit
+import FamilyControls
+import ManagedSettings
 
 struct MainPage: View {
     @AppStorage("screentime", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
@@ -32,6 +34,8 @@ struct MainPage: View {
 
     @State private var showingBreakGlass = false
     @State private var now = Date()
+    @State private var showManagedApps = false
+    @ObservedObject private var screenTime = ScreenTimeLockManager.shared
 
     private var overrideActive: Bool {
         Date(timeIntervalSince1970: emergencyOverrideUntil) > now
@@ -55,10 +59,12 @@ struct MainPage: View {
                     OverrideStatusBanner(
                         onRestore: {
                             now = Date()
+                            screenTime.applyShields()
                             updateWidget()
                         },
                         onExpired: {
                             now = Date()
+                            screenTime.applyShields()
                             updateWidget()
                         }
                     )
@@ -70,8 +76,13 @@ struct MainPage: View {
                     days: days,
                     hours: hours,
                     minutes: minutes,
-                    appCount: appCounts.filter { $0.key != "Locked" }.count
+                    appCount: max(
+                        appCounts.filter { $0.key != "Locked" }.count,
+                        screenTime.managedItemCount
+                    )
                 )
+
+                ScreenTimeSetupCard(manager: screenTime, showManagedApps: $showManagedApps)
 
                 if appCounts.isEmpty {
                     SetupPromptCard()
@@ -82,7 +93,8 @@ struct MainPage: View {
                     keys: $keys,
                     appCounts: $appCounts,
                     overrideActive: overrideActive,
-                    updateWidget: updateWidget
+                    updateWidget: updateWidget,
+                    screenTime: screenTime
                 )
 
                 if !upcomingItems.isEmpty {
@@ -126,9 +138,16 @@ struct MainPage: View {
                 updateWidget()
             }
         }
-        .onAppear { now = Date() }
+        .navigationDestination(isPresented: $showManagedApps) {
+            ManagedAppsPage(manager: screenTime)
+        }
+        .onAppear {
+            now = Date()
+            screenTime.bootstrap()
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             now = Date()
+            screenTime.bootstrap()
         }
     }
 
@@ -283,7 +302,7 @@ private struct SetupPromptCard: View {
                     Text("Finish setup")
                         .font(.headline)
                         .foregroundStyle(.primary)
-                    Text("Connect Shortcuts so Locked can track apps and block the ones you lock.")
+                    Text("Optional: connect Shortcuts to track usage. Screen Time is what actually blocks apps.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.leading)
@@ -309,10 +328,37 @@ struct LockedAppsSection: View {
     @Binding var appCounts: [String: Int]
     var overrideActive: Bool
     var updateWidget: () -> Void
+    @ObservedObject var screenTime: ScreenTimeLockManager
 
     @State private var showUnlockAlert = false
-    @State private var appToUnlock: String?
-    @State private var unlockCost: Int = 0
+    @State private var unlockTarget: UnlockTarget?
+
+    private enum UnlockTarget: Identifiable {
+        case named(String)
+        case application(ApplicationToken, String)
+        case category(ActivityCategoryToken)
+        case webDomain(WebDomainToken)
+
+        var id: String {
+            switch self {
+            case .named(let name): return "name:\(name)"
+            case .application(let token, _): return "app:" + ScreenTimeCoding.id(for: token)
+            case .category(let token): return "cat:" + ScreenTimeCoding.id(for: token)
+            case .webDomain(let token): return "web:" + ScreenTimeCoding.id(for: token)
+            }
+        }
+
+        var displayName: String {
+            switch self {
+            case .named(let name), .application(_, let name): return name
+            case .category: return "this category"
+            case .webDomain: return "this website"
+            }
+        }
+    }
+
+    private var hasScreenTimeLocks: Bool { !screenTime.lockedItems.isEmpty }
+    private var showsEmpty: Bool { lockedApps.isEmpty && !hasScreenTimeLocks }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -321,7 +367,7 @@ struct LockedAppsSection: View {
                 icon: overrideActive ? "lock.open.fill" : "lock.fill"
             )
 
-            if lockedApps.isEmpty {
+            if showsEmpty {
                 LockedCard {
                     HStack(spacing: 12) {
                         Image(systemName: "checkmark.seal.fill")
@@ -336,72 +382,125 @@ struct LockedAppsSection: View {
                         }
                     }
                 }
+            } else if hasScreenTimeLocks {
+                VStack(spacing: 10) {
+                    ForEach(Array(screenTime.lockedItems.applications).sorted(by: tokenSort), id: \.self) { token in
+                        let name = screenTime.displayName(for: token) ?? "App"
+                        lockRow(costName: name) {
+                            Label(token).labelStyle(.titleAndIcon)
+                        } unlock: {
+                            presentUnlock(.application(token, name))
+                        }
+                    }
+                    ForEach(Array(screenTime.lockedItems.categories).sorted(by: tokenSort), id: \.self) { token in
+                        lockRow(costName: "Category") {
+                            Label(token).labelStyle(.titleAndIcon)
+                        } unlock: {
+                            presentUnlock(.category(token))
+                        }
+                    }
+                    ForEach(Array(screenTime.lockedItems.webDomains).sorted(by: tokenSort), id: \.self) { token in
+                        lockRow(costName: "Website") {
+                            Label(token).labelStyle(.titleAndIcon)
+                        } unlock: {
+                            presentUnlock(.webDomain(token))
+                        }
+                    }
+                }
             } else {
                 VStack(spacing: 10) {
                     ForEach(lockedApps, id: \.self) { name in
-                        HStack(spacing: 12) {
-                            AppIconView(appName: name)
-                                .frame(width: 40, height: 40)
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-                            VStack(alignment: .leading, spacing: 2) {
+                        lockRow(costName: name) {
+                            HStack(spacing: 12) {
+                                AppIconView(appName: name)
+                                    .frame(width: 40, height: 40)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                                 Text(name)
                                     .font(.body.weight(.semibold))
-                                Text(overrideActive ? "Accessible until the seal repairs" : "\(calculateUnlockCost(for: name)) keys to unlock")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
                             }
-
-                            Spacer()
-
-                            if overrideActive {
-                                Text("Open")
-                                    .font(.caption.weight(.bold))
-                                    .foregroundStyle(Color.hazardYellow)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(Color.hazardYellow.opacity(0.15))
-                                    .clipShape(Capsule())
-                            } else {
-                                Button {
-                                    appToUnlock = name
-                                    unlockCost = calculateUnlockCost(for: name)
-                                    showUnlockAlert = true
-                                } label: {
-                                    Text("Unlock")
-                                        .font(.subheadline.weight(.semibold))
-                                        .padding(.horizontal, 14)
-                                        .padding(.vertical, 8)
-                                        .background(LockedTheme.keysGradient)
-                                        .foregroundStyle(.white)
-                                        .clipShape(Capsule())
-                                }
-                                .buttonStyle(.plain)
-                            }
+                        } unlock: {
+                            presentUnlock(.named(name))
                         }
-                        .padding(14)
-                        .background(LockedCardBackground(cornerRadius: 18))
                     }
                 }
             }
         }
-        .alert("Unlock App", isPresented: $showUnlockAlert, presenting: appToUnlock) { app in
-            if keys >= Double(unlockCost) {
-                Button("Unlock (\(unlockCost) Keys)") {
-                    keys -= Double(unlockCost)
-                    lockedApps.removeAll { $0 == app }
+        .alert("Unlock App", isPresented: $showUnlockAlert, presenting: unlockTarget) { target in
+            let cost = calculateUnlockCost(for: target.displayName)
+            if keys >= Double(cost) {
+                Button("Unlock (\(cost) Keys)") {
+                    keys -= Double(cost)
+                    performUnlock(target)
                     updateWidget()
                 }
                 Button("Cancel", role: .cancel) { }
             } else {
                 Button("OK", role: .cancel) { }
             }
-        } message: { app in
-            if keys >= Double(unlockCost) {
-                Text("Unlocking \(app) will cost \(unlockCost) keys.")
+        } message: { target in
+            let cost = calculateUnlockCost(for: target.displayName)
+            if keys >= Double(cost) {
+                Text("Unlocking \(target.displayName) will cost \(cost) keys.")
             } else {
-                Text("Unlocking \(app) needs \(unlockCost) keys, but you only have \(Int(keys)). Finish assignments to earn more.")
+                Text("Unlocking \(target.displayName) needs \(cost) keys, but you only have \(Int(keys)). Finish assignments to earn more.")
             }
+        }
+    }
+
+    private func lockRow<Title: View>(
+        costName: String,
+        @ViewBuilder title: () -> Title,
+        unlock: @escaping () -> Void
+    ) -> some View {
+        HStack(spacing: 12) {
+            title()
+            Spacer()
+            VStack(alignment: .trailing, spacing: 6) {
+                if overrideActive {
+                    Text("Open")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Color.hazardYellow)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.hazardYellow.opacity(0.15))
+                        .clipShape(Capsule())
+                } else {
+                    Button(action: unlock) {
+                        Text("Unlock")
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(LockedTheme.keysGradient)
+                            .foregroundStyle(.white)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+                Text(overrideActive ? "Accessible until the seal repairs" : "\(calculateUnlockCost(for: costName)) keys to unlock")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(14)
+        .background(LockedCardBackground(cornerRadius: 18))
+    }
+
+    private func presentUnlock(_ target: UnlockTarget) {
+        unlockTarget = target
+        showUnlockAlert = true
+    }
+
+    private func performUnlock(_ target: UnlockTarget) {
+        switch target {
+        case .named(let name):
+            lockedApps.removeAll { $0 == name }
+            screenTime.unlock(name: name)
+        case .application(let token, _):
+            screenTime.unlockApplication(token)
+        case .category(let token):
+            screenTime.unlockCategory(token)
+        case .webDomain(let token):
+            screenTime.unlockWebDomain(token)
         }
     }
 
@@ -409,7 +508,8 @@ struct LockedAppsSection: View {
         let totalUsage = Double(appCounts.values.reduce(0, +))
         let appUsage = Double(appCounts[app] ?? 0)
         let usagePercentage = totalUsage > 0 ? (appUsage / totalUsage) * 100.0 : 0.0
-        let cost = pow(Double(lockedApps.count), 1.5) + 0.5 * pow(usagePercentage, 1.25) + 10.0
+        let lockCount = max(lockedApps.count, screenTime.lockedItems.count)
+        let cost = pow(Double(max(lockCount, 1)), 1.5) + 0.5 * pow(usagePercentage, 1.25) + 10.0
         return Int(cost.rounded())
     }
 }

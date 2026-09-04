@@ -53,6 +53,7 @@ extension Dictionary: @retroactive RawRepresentable where Key == String, Value: 
 @main
 struct LockedApp: App {
     @StateObject private var lockScheduler = LockScheduler()
+    @ObservedObject private var screenTime = ScreenTimeLockManager.shared
     
     init() {
         LibraryAppShortcuts.updateAppShortcutParameters()
@@ -63,7 +64,11 @@ struct LockedApp: App {
             ContentView()
                 .tint(.lockedIndigo)
                 .fontDesign(.rounded)
-                .onAppear { lockScheduler.start() }
+                .environmentObject(screenTime)
+                .onAppear {
+                    lockScheduler.start()
+                    screenTime.bootstrap()
+                }
                 .onDisappear { lockScheduler.stop() }
         }
     }

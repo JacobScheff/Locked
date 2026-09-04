@@ -35,14 +35,33 @@ struct HowToUseView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 12) {
-                    LockedSectionLabel(title: "Shortcuts setup", icon: "bolt.fill")
+                    LockedSectionLabel(title: "Screen Time", icon: "hourglass")
 
-                    Text("Locked tracks which apps you open through the Shortcuts app. Do this once.")
+                    Text("Allowing Screen Time is only permission. Apps stay open until Locked selects them and writes a shield.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
 
                     StepCard(
                         stepNumber: 1,
+                        title: "Allow and choose apps",
+                        instructions: [
+                            "On Home, open **Screen Time**.",
+                            "Tap **Allow Screen Time** and approve the system prompt.",
+                            "Tap **Choose apps** and pick every app Locked should be able to block.",
+                            "Weekly locks now apply an iOS shield. A locked app opens to a restriction screen, not the app itself."
+                        ]
+                    )
+                }
+
+                VStack(alignment: .leading, spacing: 12) {
+                    LockedSectionLabel(title: "Shortcuts setup", icon: "bolt.fill")
+
+                    Text("Shortcuts only track usage and can bounce you home as a backup. They do not block an app the way Screen Time does.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    StepCard(
+                        stepNumber: 2,
                         title: "When an app opens",
                         instructions: [
                             "Open **Shortcuts** → **Automation**.",
@@ -57,7 +76,7 @@ struct HowToUseView: View {
                     )
 
                     StepCard(
-                        stepNumber: 2,
+                        stepNumber: 3,
                         title: "When an app closes",
                         instructions: [
                             "Create another **App** automation.",
@@ -110,7 +129,7 @@ struct HowToUseView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Study first. Unlock later.")
                 .font(.lockedTitle(28))
-            Text("Locked closes distracting apps when coursework slips, and opens them back up when you follow through.")
+            Text("Locked shields distracting apps with Screen Time when coursework slips, and lifts those shields when you follow through.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }

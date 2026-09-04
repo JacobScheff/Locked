@@ -47,11 +47,13 @@ final class LogicStore {
         let expiry = Date().addingTimeInterval(EmergencyOverride.duration).timeIntervalSince1970
         defaults.set(expiry, forKey: EmergencyOverride.untilKey)
         emergencyOverrideUntil = expiry
+        ScreenTimeLockManager.shared.applyShields()
     }
     
     func endEmergencyOverride() {
         defaults.set(0.0, forKey: EmergencyOverride.untilKey)
         emergencyOverrideUntil = 0
+        ScreenTimeLockManager.shared.applyShields()
     }
     
     var lastOpened: Date {
@@ -150,14 +152,16 @@ func performSundayLocking() -> [String] {
     snapshot.removeValue(forKey: "Locked")
     
     let totalApps = snapshot.count
-    guard totalApps > 0 else { return [] }
+    guard totalApps > 0 || ScreenTimeLockManager.shared.hasManagedApps else { return [] }
 
     // Corrected lock formula:
     // 100 Karma = 0% locked. 77 Karma = 23% locked. 0 Karma = 100% locked.
     let lockPercent = max(0.0, min(100.0, 100.0 - karma))
     
     // Calculate raw number of apps to lock, rounding up to ensure at least 1 app locks if lockPercent > 0
-    let numToLock = Int((lockPercent / 100.0 * Double(totalApps)).rounded(.up))
+    let numToLock = totalApps == 0
+        ? 0
+        : Int((lockPercent / 100.0 * Double(totalApps)).rounded(.up))
 
     var locked: [String] = []
     
@@ -171,6 +175,7 @@ func performSundayLocking() -> [String] {
     }
 
     store.lockedApps = locked
+    ScreenTimeLockManager.shared.lockForWeeklyKarma(lockedNames: locked, karma: karma)
     return locked
 }
 

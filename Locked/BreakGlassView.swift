@@ -145,7 +145,7 @@ struct OverrideStatusBanner: View {
                         onRestore()
                     }
                 } message: {
-                    Text("Locked apps will start bouncing you out again immediately.")
+                    Text("Locked apps will be shielded again immediately.")
                 }
             } else {
                 Color.clear
