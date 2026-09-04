@@ -11,8 +11,9 @@ final class ScreenTimeManager: ObservableObject {
     @Published var authorizationStatus: AuthorizationStatus
     @Published var selection: FamilyActivitySelection {
         didSet {
-            ActivitySelectionStore.save(selection)
-            ScreenTimeShields.sync(using: selection)
+            let expanded = ActivitySelectionStore.expandingCategories(selection)
+            ActivitySelectionStore.save(expanded)
+            ScreenTimeShields.sync(using: expanded)
         }
     }
     @Published var isPickerPresented = false
@@ -74,11 +75,16 @@ final class ScreenTimeManager: ObservableObject {
     }
 
     func presentPicker() {
+        let expanded = ActivitySelectionStore.expandingCategories(selection)
+        if !selection.includeEntireCategory {
+            selection = expanded
+        }
         isPickerPresented = true
     }
 
     func noteUsageUpdated() {
         usageRevision += 1
+        ScreenTimeShields.sync(using: selection)
         markReady()
     }
 
