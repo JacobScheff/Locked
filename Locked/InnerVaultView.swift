@@ -214,7 +214,8 @@ struct InnerVaultView: View {
                     canIncrement: displayedKarma < 100,
                     canDecrement: displayedKarma > 0,
                     onIncrement: { stepKarma(1) },
-                    onDecrement: { stepKarma(-1) }
+                    onDecrement: { stepKarma(-1) },
+                    minimumDigits: 3
                 )
             }
 
@@ -572,7 +573,9 @@ struct InnerVaultView: View {
     private func stepKeys(_ delta: Int) {
         let next = adjustedKeys(from: keys, by: delta)
         guard next != keys else { return }
-        keys = next
+        withAnimation(ReserveNumberWheel.spinAnimation) {
+            keys = next
+        }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         onChanged()
     }
@@ -580,7 +583,9 @@ struct InnerVaultView: View {
     private func stepKarma(_ delta: Int) {
         let next = adjustedKarma(from: karma, by: delta)
         guard next != karma else { return }
-        karma = next
+        withAnimation(ReserveNumberWheel.spinAnimation) {
+            karma = next
+        }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         onChanged()
     }
@@ -597,6 +602,7 @@ private struct ReserveStepper: View {
     let canDecrement: Bool
     let onIncrement: () -> Void
     let onDecrement: () -> Void
+    var minimumDigits: Int = 2
 
     var body: some View {
         VStack(spacing: 12) {
@@ -610,12 +616,8 @@ private struct ReserveStepper: View {
             stepButton(systemName: "chevron.up", enabled: canIncrement, action: onIncrement)
                 .accessibilityLabel("Increase \(title)")
 
-            Text("\(value)")
-                .font(.lockedNumber(44))
-                .foregroundStyle(.white)
-                .monospacedDigit()
-                .contentTransition(.numericText())
-                .frame(minHeight: 54)
+            ReserveNumberWheel(value: value, minimumDigits: minimumDigits, accent: accent)
+                .accessibilityLabel("\(title) \(value)")
 
             stepButton(systemName: "chevron.down", enabled: canDecrement, action: onDecrement)
                 .accessibilityLabel("Decrease \(title)")
@@ -644,6 +646,116 @@ private struct ReserveStepper: View {
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
+    }
+}
+
+// MARK: - Number wheel
+
+private struct ReserveNumberWheel: View {
+    let value: Int
+    var minimumDigits: Int = 2
+    var accent: Color
+
+    static let spinAnimation: Animation = .spring(response: 0.42, dampingFraction: 0.72)
+
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(digitCells, id: \.place) { cell in
+                DigitReel(value: value, digit: cell.digit)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.black.opacity(0.38))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(accent.opacity(0.35), lineWidth: 1)
+                )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            LinearGradient(
+                colors: [
+                    Color.black.opacity(0.62),
+                    Color.clear,
+                    Color.clear,
+                    Color.black.opacity(0.62)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .allowsHitTesting(false)
+        }
+    }
+
+    private var digitCells: [DigitCell] {
+        let magnitude = max(value, 0)
+        let count = max(minimumDigits, String(magnitude).count)
+        return (0..<count).reversed().map { place in
+            let divisor = Int(pow(10.0, Double(place)))
+            return DigitCell(place: place, digit: (magnitude / max(divisor, 1)) % 10)
+        }
+    }
+}
+
+private struct DigitCell: Equatable {
+    let place: Int
+    let digit: Int
+}
+
+private struct DigitReel: View {
+    let value: Int
+    let digit: Int
+
+    private let rowHeight: CGFloat = 46
+    private let span = 3
+    private let viewportHeight: CGFloat = 72
+
+    @State private var reel: Int
+
+    init(value: Int, digit: Int) {
+        self.value = value
+        self.digit = digit
+        _reel = State(initialValue: digit)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach((reel - span)...(reel + span), id: \.self) { index in
+                let shown = ((index % 10) + 10) % 10
+                Text("\(shown)")
+                    .font(.lockedNumber(38))
+                    .foregroundStyle(.white)
+                    .monospacedDigit()
+                    .frame(width: 32, height: rowHeight)
+                    .opacity(index == reel ? 1 : (abs(index - reel) == 1 ? 0.32 : 0.08))
+                    .scaleEffect(index == reel ? 1 : 0.74)
+            }
+        }
+        .offset(y: -CGFloat(span) * rowHeight + (viewportHeight - rowHeight) / 2)
+        .frame(width: 32, height: viewportHeight, alignment: .top)
+        .clipped()
+        .animation(ReserveNumberWheel.spinAnimation, value: reel)
+        .onChange(of: value) { oldValue, newValue in
+            advance(to: digit, increasing: newValue >= oldValue)
+        }
+    }
+
+    private func advance(to newDigit: Int, increasing: Bool) {
+        let current = ((reel % 10) + 10) % 10
+        if current == newDigit { return }
+        if increasing {
+            var steps = (newDigit - current + 10) % 10
+            if steps == 0 { steps = 10 }
+            reel += steps
+        } else {
+            var steps = (current - newDigit + 10) % 10
+            if steps == 0 { steps = 10 }
+            reel -= steps
+        }
     }
 }
 
