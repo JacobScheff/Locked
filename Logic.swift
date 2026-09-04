@@ -192,6 +192,7 @@ func performSundayLocking() -> [String] {
     UsageStore.saveLockedApps(locked)
     store.lockedApps = locked
     ScreenTimeShields.sync(using: selection)
+    ScreenTimeMonitor.requestImmediateSync()
     return locked
 }
 

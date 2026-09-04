@@ -176,6 +176,7 @@ extension ManagedSettingsStore.Name {
 extension DeviceActivityName {
     static let daily = Self("locked.daily")
     static let emergencyOverride = Self("locked.emergencyOverride")
+    static let applyShields = Self("locked.applyShields")
 }
 
 enum LockedReportContext {
@@ -189,7 +190,7 @@ enum ActivitySelectionStore {
         guard let data = AppGroupStore.defaults.data(forKey: key),
               let selection = TokenCoding.decode(FamilyActivitySelection.self, from: data)
         else {
-            return FamilyActivitySelection()
+            return FamilyActivitySelection(includeEntireCategory: true)
         }
         return selection
     }
@@ -232,33 +233,77 @@ enum UsageStore {
     }
 
     static let tokensDataKey = "appTokensData"
+    static let tokenBlobNamesKey = "appTokenBlobNames"
+
+    static func tokenBlobKey(for name: String) -> String {
+        let encoded = Data(name.utf8).base64EncodedString()
+            .replacingOccurrences(of: "/", with: "_")
+        return "tokenBlob." + encoded
+    }
 
     static func loadTokens() -> [String: Data] {
-        if let data = AppGroupStore.defaults.data(forKey: tokensDataKey),
-           let tokens = TokenCoding.decode([String: Data].self, from: data) {
-            return tokens
+        var merged: [String: Data] = [:]
+        let defaults = AppGroupStore.defaults
+        if let names = defaults.stringArray(forKey: tokenBlobNamesKey) {
+            for name in names {
+                if let data = defaults.data(forKey: tokenBlobKey(for: name)) {
+                    merged[name] = data
+                }
+            }
         }
-        return AppGroupStore.decodeJSON([String: Data].self, from: AppGroupStore.defaults.string(forKey: "appTokens")) ?? [:]
+        if let data = defaults.data(forKey: tokensDataKey),
+           let tokens = TokenCoding.decode([String: Data].self, from: data) {
+            for (name, tokenData) in tokens where merged[name] == nil {
+                merged[name] = tokenData
+            }
+        }
+        if let tokens = AppGroupStore.decodeJSON(
+            [String: Data].self,
+            from: defaults.string(forKey: "appTokens")
+        ) {
+            for (name, tokenData) in tokens where merged[name] == nil {
+                merged[name] = tokenData
+            }
+        }
+        return merged
     }
 
     static func saveTokens(_ tokens: [String: Data]) {
+        let defaults = AppGroupStore.defaults
+        if let previous = defaults.stringArray(forKey: tokenBlobNamesKey) {
+            for name in previous where tokens[name] == nil {
+                defaults.removeObject(forKey: tokenBlobKey(for: name))
+            }
+        }
+        for (name, data) in tokens {
+            defaults.set(data, forKey: tokenBlobKey(for: name))
+        }
+        defaults.set(Array(tokens.keys), forKey: tokenBlobNamesKey)
         if let data = TokenCoding.encode(tokens) {
-            AppGroupStore.defaults.set(data, forKey: tokensDataKey)
+            defaults.set(data, forKey: tokensDataKey)
         }
         if let raw = AppGroupStore.encodeJSON(tokens) {
-            AppGroupStore.defaults.set(raw, forKey: "appTokens")
+            defaults.set(raw, forKey: "appTokens")
         }
+        defaults.synchronize()
     }
 
     static func token(for name: String) -> ApplicationToken? {
-        guard let data = loadTokens()[name] else { return nil }
-        return TokenCoding.decode(ApplicationToken.self, from: data)
+        if let data = loadTokens()[name],
+           let token = TokenCoding.decode(ApplicationToken.self, from: data) {
+            return token
+        }
+        if let bundleID = loadBundleIDs()[name],
+           let token = Application(bundleIdentifier: bundleID).token {
+            return token
+        }
+        return nil
     }
 
     static func tokensByName() -> [String: ApplicationToken] {
         var result: [String: ApplicationToken] = [:]
-        for (name, data) in loadTokens() {
-            if let token = TokenCoding.decode(ApplicationToken.self, from: data) {
+        for name in Set(loadTokens().keys).union(loadBundleIDs().keys) {
+            if let token = token(for: name) {
                 result[name] = token
             }
         }
@@ -471,14 +516,21 @@ enum ScreenTimeShields {
         apply(applications)
     }
 
-    /// Writes only individual application shields. Category policies are always
-    /// cleared — including on the default store, where an older build may have
-    /// left a leftover "lock this whole category" rule.
+    static func shieldedCount(for lockedNames: [String] = UsageStore.loadLockedApps()) -> Int {
+        lockedNames.reduce(0) { count, name in
+            count + (UsageStore.token(for: name) == nil ? 0 : 1)
+        }
+    }
+
+    /// Writes individual application shields to the named store and the default
+    /// store. Category policies stay off so only the locked apps are blocked.
     static func apply(_ applications: Set<ApplicationToken>) {
-        clear(ManagedSettingsStore())
-        store.shield.applicationCategories = .none
-        store.shield.webDomains = nil
-        store.shield.applications = applications.isEmpty ? nil : applications
+        let value: Set<ApplicationToken>? = applications.isEmpty ? nil : applications
+        for target in [store, ManagedSettingsStore()] {
+            target.shield.applicationCategories = .none
+            target.shield.webDomains = nil
+            target.shield.applications = value
+        }
     }
 
     static func capped(
@@ -550,6 +602,23 @@ enum ScreenTimeMonitor {
     static func stopEmergencyOverrideWindow() {
         DeviceActivityCenter().stopMonitoring([.emergencyOverride])
     }
+
+    /// Wakes the monitor extension so it can apply shields with extension-only tokens.
+    static func requestImmediateSync() {
+        let calendar = Calendar.current
+        let startDate = Date()
+        let endDate = startDate.addingTimeInterval(8)
+        let schedule = DeviceActivitySchedule(
+            intervalStart: calendar.dateComponents([.hour, .minute, .second], from: startDate),
+            intervalEnd: calendar.dateComponents([.hour, .minute, .second], from: endDate),
+            repeats: false
+        )
+        do {
+            try DeviceActivityCenter().startMonitoring(.applyShields, during: schedule)
+        } catch {
+            print("Failed to start immediate shield sync: \(error)")
+        }
+    }
 }
 
 enum EmergencyOverride {
@@ -585,7 +654,9 @@ func usageFilter(for selection: FamilyActivitySelection, days: Int = 7) -> Devic
     let start = calendar.date(byAdding: .day, value: -days, to: startOfToday) ?? startOfToday
     let end = calendar.date(byAdding: .day, value: 1, to: startOfToday) ?? Date()
     let interval = DateInterval(start: start, end: end)
-    let applications = selection.applicationTokens.subtracting(ExcludedApps.tokens)
+    let applications = selection.applicationTokens
+        .union(Set(UsageStore.tokensByName().values))
+        .subtracting(ExcludedApps.tokens)
 
     if applications.isEmpty && selection.categoryTokens.isEmpty {
         return DeviceActivityFilter(

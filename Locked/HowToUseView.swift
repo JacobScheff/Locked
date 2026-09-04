@@ -55,7 +55,7 @@ struct HowToUseView: View {
                         title: "Choose apps",
                         instructions: [
                             "Tap **Choose Apps** and pick what Locked is allowed to manage.",
-                            "You can select individual apps or whole categories. Categories are only for tracking — home-screen locks stay on the specific apps that were locked, and unlocking one app unlocks just that app.",
+                            "You can select individual apps or whole categories. For home-screen locks to work, pick the apps themselves — or pick a category with every app in it included — so Locked receives Screen Time tokens.",
                             "**Locked, Settings, Phone, Messages, FaceTime, Find My, Wallet, and Clock never appear and never lock** — they also don’t count toward usage percentages."
                         ]
                     )
@@ -120,9 +120,16 @@ struct HowToUseView: View {
             LockedSectionLabel(title: "Developer", icon: "hammer.fill")
             Button {
                 let locked = applyManualWeeklyLock()
-                lastManualLockSummary = locked.isEmpty
-                    ? "No apps were locked. Open Home so usage can load, then try again."
-                    : "Locked \(locked.count) app\(locked.count == 1 ? "" : "s"): \(locked.joined(separator: ", "))"
+                let shielded = ScreenTimeShields.shieldedCount(for: locked)
+                if locked.isEmpty {
+                    lastManualLockSummary = "No apps were locked. Open Home so usage can load, then try again."
+                } else if shielded == locked.count {
+                    lastManualLockSummary = "Locked \(locked.joined(separator: ", ")) on the home screen."
+                } else if shielded == 0 {
+                    lastManualLockSummary = "Marked \(locked.joined(separator: ", ")) locked, but Screen Time has not handed over app tokens yet. Open Home, wait a few seconds, then press this again."
+                } else {
+                    lastManualLockSummary = "Locked \(locked.joined(separator: ", ")). Home-screen shield is on for \(shielded) of \(locked.count)."
+                }
                 WidgetCenter.shared.reloadTimelines(ofKind: "Locked_Widget")
             } label: {
                 Label("Simulate weekly lock", systemImage: "lock.rotation")
