@@ -30,11 +30,18 @@ struct MainPage: View {
     @AppStorage("emergencyOverrideUntil", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var emergencyOverrideUntil: Double = 0
 
-    @State private var showingBreakGlass = false
+    @AppStorage("innerVaultUnlockedUntil", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    var innerVaultUnlockedUntil: Double = 0
+
+    @State private var presentedRitual: HomeRitual?
     @State private var now = Date()
 
     private var overrideActive: Bool {
         Date(timeIntervalSince1970: emergencyOverrideUntil) > now
+    }
+
+    private var vaultUnlocked: Bool {
+        overrideActive && innerVaultUnlockedUntil > 0 && abs(innerVaultUnlockedUntil - emergencyOverrideUntil) < 0.5
     }
 
     private var upcomingItems: [(course: Course, assignment: Assignment)] {
@@ -63,6 +70,10 @@ struct MainPage: View {
                             updateWidget()
                         }
                     )
+
+                    VaultSealCard(unlocked: vaultUnlocked) {
+                        presentedRitual = .vault
+                    }
                 }
 
                 StatusHero(
@@ -98,7 +109,7 @@ struct MainPage: View {
 
                 if !overrideActive {
                     EmergencySealCard {
-                        showingBreakGlass = true
+                        presentedRitual = .glass
                     }
                 }
             }
@@ -118,10 +129,24 @@ struct MainPage: View {
                 }
             }
         }
-        .fullScreenCover(isPresented: $showingBreakGlass) {
-            BreakGlassView {
-                now = Date()
-                updateWidget()
+        .fullScreenCover(item: $presentedRitual) { ritual in
+            switch ritual {
+            case .glass:
+                BreakGlassView(
+                    onReleased: {
+                        now = Date()
+                        updateWidget()
+                    },
+                    onOpenVault: {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                            presentedRitual = .vault
+                        }
+                    }
+                )
+            case .vault:
+                InnerVaultView {
+                    updateWidget()
+                }
             }
         }
         .background {
@@ -189,6 +214,13 @@ struct MainPage: View {
     func updateWidget() {
         WidgetCenter.shared.reloadTimelines(ofKind: "Locked_Widget")
     }
+}
+
+private enum HomeRitual: String, Identifiable {
+    case glass
+    case vault
+
+    var id: String { rawValue }
 }
 
 // MARK: - Header / Hero

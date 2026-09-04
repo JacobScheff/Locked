@@ -30,6 +30,9 @@ final class LogicStore {
     @AppStorage("emergencyOverrideUntil", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var emergencyOverrideUntil: Double = 0
     
+    @AppStorage("innerVaultUnlockedUntil", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    var innerVaultUnlockedUntil: Double = 0
+    
     // Dates still rely on the standard defaults.object fallback
     private let defaults = UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked")!
     
@@ -41,6 +44,7 @@ final class LogicStore {
         let expiry = Date().addingTimeInterval(EmergencyOverride.duration).timeIntervalSince1970
         defaults.set(expiry, forKey: EmergencyOverride.untilKey)
         emergencyOverrideUntil = expiry
+        lockInnerVault()
         ScreenTimeShields.clear()
         ScreenTimeMonitor.startEmergencyOverrideWindow(until: Date(timeIntervalSince1970: expiry))
     }
@@ -48,8 +52,20 @@ final class LogicStore {
     func endEmergencyOverride() {
         defaults.set(0.0, forKey: EmergencyOverride.untilKey)
         emergencyOverrideUntil = 0
+        lockInnerVault()
         ScreenTimeMonitor.stopEmergencyOverrideWindow()
         ScreenTimeShields.sync()
+    }
+    
+    func unlockInnerVault() {
+        let until = defaults.double(forKey: EmergencyOverride.untilKey)
+        defaults.set(until, forKey: InnerVault.unlockedUntilKey)
+        innerVaultUnlockedUntil = until
+    }
+    
+    func lockInnerVault() {
+        defaults.set(0.0, forKey: InnerVault.unlockedUntilKey)
+        innerVaultUnlockedUntil = 0
     }
     
     private init() {}
@@ -203,4 +219,40 @@ final class LockScheduler: ObservableObject {
     }
 
     deinit { stop() }
+}
+
+// MARK: - Inner vault
+
+enum InnerVault {
+    static let unlockedUntilKey = "innerVaultUnlockedUntil"
+    static let holdDuration: TimeInterval = 2.4
+    static let boltCount = 4
+
+    static func isUnlocked(
+        at date: Date = .now,
+        defaults: UserDefaults = AppGroupStore.defaults
+    ) -> Bool {
+        guard EmergencyOverride.isActive(at: date, defaults: defaults) else { return false }
+        let unlockedUntil = defaults.double(forKey: unlockedUntilKey)
+        let overrideUntil = defaults.double(forKey: EmergencyOverride.untilKey)
+        return unlockedUntil > 0 && abs(unlockedUntil - overrideUntil) < 0.5
+    }
+}
+
+func clampKeys(_ value: Double) -> Double {
+    max(0, value)
+}
+
+func clampKarma(_ value: Double) -> Double {
+    min(100, max(0, value))
+}
+
+func adjustedKeys(from current: Double, by delta: Int) -> Double {
+    let base = Int(clampKeys(current).rounded(.towardZero))
+    return Double(max(0, base + delta))
+}
+
+func adjustedKarma(from current: Double, by delta: Int) -> Double {
+    let base = Int(clampKarma(current).rounded(.towardZero))
+    return Double(min(100, max(0, base + delta)))
 }

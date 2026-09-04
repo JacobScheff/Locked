@@ -160,6 +160,7 @@ struct OverrideStatusBanner: View {
 
 struct BreakGlassView: View {
     var onReleased: () -> Void
+    var onOpenVault: () -> Void = {}
 
     @Environment(\.dismiss) private var dismiss
 
@@ -578,16 +579,31 @@ struct BreakGlassView: View {
                     .multilineTextAlignment(.center)
             }
 
-            Button {
-                dismiss()
-            } label: {
-                Text("Continue")
-                    .font(.headline)
-                    .foregroundStyle(.black)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color.hazardYellow)
-                    .clipShape(Capsule())
+            VStack(spacing: 10) {
+                Button {
+                    dismiss()
+                } label: {
+                    Text("Continue")
+                        .font(.headline)
+                        .foregroundStyle(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.hazardYellow)
+                        .clipShape(Capsule())
+                }
+
+                Button {
+                    onOpenVault()
+                    dismiss()
+                } label: {
+                    Text("Open the inner vault")
+                        .font(.headline)
+                        .foregroundStyle(Color.hazardYellow)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.white.opacity(0.1))
+                        .clipShape(Capsule())
+                }
             }
             .padding(.horizontal, 36)
             .padding(.top, 8)
