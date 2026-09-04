@@ -93,8 +93,7 @@ struct MainPage: View {
                 AppCountsCard(
                     appCounts: $appCounts,
                     lockedApps: $lockedApps,
-                    overrideActive: overrideActive,
-                    onManageApps: { screenTime.presentPicker() }
+                    overrideActive: overrideActive
                 )
 
                 if !overrideActive {
@@ -544,7 +543,6 @@ struct AppCountsCard: View {
     @Binding var appCounts: [String: Int]
     @Binding var lockedApps: [String]
     var overrideActive: Bool = false
-    var onManageApps: (() -> Void)? = nil
 
     private var visibleAppCounts: [String: Int] {
         ExcludedApps.strippingExcluded(appCounts)
@@ -565,18 +563,7 @@ struct AppCountsCard: View {
             LockedSectionLabel(
                 title: "App usage",
                 icon: "chart.bar.fill"
-            ) {
-                if let onManageApps {
-                    Button("Apps", action: onManageApps)
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.lockedTeal.opacity(0.14))
-                        .foregroundStyle(Color.lockedTeal)
-                        .clipShape(Capsule())
-                        .buttonStyle(.plain)
-                }
-            }
+            )
 
             VStack(alignment: .leading, spacing: 0) {
                 if visibleAppCounts.isEmpty {
