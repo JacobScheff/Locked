@@ -1,7 +1,4 @@
-import FamilyControls
-import ManagedSettings
 import SwiftUI
-import UIKit
 import WidgetKit
 
 struct MainPage: View {
@@ -83,7 +80,7 @@ struct MainPage: View {
                     appCount: visibleAppCounts.count
                 )
 
-                if screenTime.needsSetup {
+                if screenTime.isReady && screenTime.needsSetup {
                     ScreenTimeSetupCard(manager: screenTime)
                 }
 
@@ -133,11 +130,6 @@ struct MainPage: View {
                 }
             }
         }
-        .background {
-            if screenTime.isAuthorized {
-                UsageReportHost(selection: screenTime.selection)
-            }
-        }
         .onAppear {
             now = Date()
             refreshScreenTime()
@@ -153,9 +145,8 @@ struct MainPage: View {
                 refreshScreenTime()
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-            now = Date()
-            refreshScreenTime()
+        .onChange(of: screenTime.usageRevision) { _, _ in
+            applyUsageSnapshot()
         }
     }
 
@@ -166,21 +157,28 @@ struct MainPage: View {
     private func refreshScreenTime() {
         screenTime.refreshStatus()
         applyUsageSnapshot()
-        ScreenTimeShields.sync()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            applyUsageSnapshot()
-        }
     }
 
     private func applyUsageSnapshot() {
+        let newCounts: [String: Int]
+        let newLocked: [String]
         if UsageStore.hasSnapshot {
-            appCounts = UsageStore.loadAppCounts()
-            lockedApps = UsageStore.loadLockedApps()
+            newCounts = UsageStore.loadAppCounts()
+            newLocked = UsageStore.loadLockedApps()
         } else {
-            appCounts = ExcludedApps.strippingExcluded(appCounts)
-            lockedApps = ExcludedApps.strippingExcluded(lockedApps)
+            newCounts = ExcludedApps.strippingExcluded(appCounts)
+            newLocked = ExcludedApps.strippingExcluded(lockedApps)
         }
-        screentime = appCounts.values.reduce(0, +)
+        if appCounts != newCounts {
+            appCounts = newCounts
+        }
+        if lockedApps != newLocked {
+            lockedApps = newLocked
+        }
+        let total = newCounts.values.reduce(0, +)
+        if screentime != total {
+            screentime = total
+        }
     }
 
     private var header: some View {

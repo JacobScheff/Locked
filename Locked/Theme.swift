@@ -151,6 +151,58 @@ struct LockedBackground: View {
     }
 }
 
+struct LockedLaunchOverlay: View {
+    @State private var spin = false
+    @State private var glow = false
+
+    var body: some View {
+        ZStack {
+            LockedBackground()
+
+            VStack(spacing: 22) {
+                ZStack {
+                    Circle()
+                        .fill(Color.lockedIndigo.opacity(glow ? 0.16 : 0.08))
+                        .frame(width: 108, height: 108)
+
+                    Circle()
+                        .stroke(Color.lockedIndigo.opacity(0.16), lineWidth: 4)
+                        .frame(width: 78, height: 78)
+
+                    Circle()
+                        .trim(from: 0.08, to: 0.72)
+                        .stroke(
+                            LockedTheme.karmaGradient,
+                            style: StrokeStyle(lineWidth: 4, lineCap: .round)
+                        )
+                        .frame(width: 78, height: 78)
+                        .rotationEffect(.degrees(spin ? 360 : 0))
+
+                    Image(systemName: "lock.fill")
+                        .font(.title2.weight(.bold))
+                        .foregroundStyle(Color.lockedIndigo)
+                }
+
+                VStack(spacing: 6) {
+                    Text("Locked")
+                        .font(.lockedTitle(28))
+                    Text("Getting things ready")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .onAppear {
+            withAnimation(.linear(duration: 0.95).repeatForever(autoreverses: false)) {
+                spin = true
+            }
+            withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
+                glow = true
+            }
+        }
+    }
+}
+
 // MARK: - Rings
 
 struct ProgressRing: View {
@@ -233,7 +285,7 @@ func karmaStatusCopy(karma: Double, appCount: Int) -> (headline: String, detail:
 
     let detail: String
     if appCount == 0 {
-        return (headline, "Allow Screen Time and choose apps to see what would lock.")
+        return (headline, "Connect Screen Time to see which apps would lock.")
     }
     if numToLock == 0 {
         return ("You're fully protected", "No apps are scheduled to lock this Sunday.")

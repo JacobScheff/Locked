@@ -5,31 +5,48 @@ struct ContentView: View {
     @EnvironmentObject private var screenTime: ScreenTimeManager
 
     var body: some View {
-        TabView {
-            NavigationStack {
-                MainPage()
-            }
-            .tabItem {
-                Label("Home", systemImage: "house.fill")
-            }
-
-            NavigationStack {
-                CoursesPage()
-            }
-            .tabItem {
-                Label("Courses", systemImage: "book.fill")
+        ZStack {
+            if screenTime.shouldCollectUsage {
+                UsageReportHost(
+                    selection: screenTime.selection,
+                    dayKey: screenTime.reportDayKey
+                )
             }
 
-            NavigationStack {
-                HowToUseView()
+            TabView {
+                NavigationStack {
+                    MainPage()
+                }
+                .tabItem {
+                    Label("Home", systemImage: "house.fill")
+                }
+
+                NavigationStack {
+                    CoursesPage()
+                }
+                .tabItem {
+                    Label("Courses", systemImage: "book.fill")
+                }
+
+                NavigationStack {
+                    HowToUseView()
+                }
+                .tabItem {
+                    Label("Guide", systemImage: "questionmark.circle.fill")
+                }
             }
-            .tabItem {
-                Label("Guide", systemImage: "questionmark.circle.fill")
+            .opacity(screenTime.isReady ? 1 : 0)
+            .allowsHitTesting(screenTime.isReady)
+
+            if !screenTime.isReady {
+                LockedLaunchOverlay()
+                    .transition(.opacity)
             }
         }
         .tint(.lockedIndigo)
         .fontDesign(.rounded)
         .familyActivityPicker(isPresented: $screenTime.isPickerPresented, selection: $screenTime.selection)
+        .animation(.easeOut(duration: 0.32), value: screenTime.isReady)
     }
 }
 

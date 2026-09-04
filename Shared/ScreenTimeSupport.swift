@@ -460,9 +460,11 @@ enum EmergencyOverride {
 }
 
 func usageFilter(for selection: FamilyActivitySelection, days: Int = 7) -> DeviceActivityFilter {
-    let now = Date()
-    let start = Calendar.current.date(byAdding: .day, value: -days, to: now) ?? now
-    let interval = DateInterval(start: start, end: now)
+    let calendar = Calendar.current
+    let startOfToday = calendar.startOfDay(for: Date())
+    let start = calendar.date(byAdding: .day, value: -days, to: startOfToday) ?? startOfToday
+    let end = calendar.date(byAdding: .day, value: 1, to: startOfToday) ?? Date()
+    let interval = DateInterval(start: start, end: end)
     let applications = selection.applicationTokens.subtracting(ExcludedApps.tokens)
 
     if applications.isEmpty && selection.categoryTokens.isEmpty {
