@@ -86,12 +86,15 @@ final class ScreenTimeManager: ObservableObject {
         try? await Task.sleep(for: .milliseconds(160))
         refreshStatus()
 
-        if !shouldCollectUsage || UsageStore.hasSnapshot {
+        if !shouldCollectUsage {
             markReady()
             return
         }
 
-        try? await Task.sleep(for: .seconds(5))
+        // Wait for the hidden report to finish (or time out) so the system
+        // "Select apps to use Screen Time API" placeholder never appears.
+        let timeout: TimeInterval = UsageStore.hasSnapshot ? 3 : 6
+        try? await Task.sleep(for: .seconds(timeout))
         markReady()
     }
 
