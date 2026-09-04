@@ -219,7 +219,7 @@ func karmaStatusCopy(karma: Double, appCount: Int) -> (headline: String, detail:
 
     let detail: String
     if appCount == 0 {
-        return (headline, "Track usage in the Guide to see what would lock.")
+        return (headline, "Allow Screen Time and choose apps to see what would lock.")
     }
     if numToLock == 0 {
         return ("You're fully protected", "No apps are scheduled to lock this Sunday.")

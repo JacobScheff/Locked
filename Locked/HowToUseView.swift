@@ -35,37 +35,32 @@ struct HowToUseView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 12) {
-                    LockedSectionLabel(title: "Shortcuts setup", icon: "bolt.fill")
+                    LockedSectionLabel(title: "Screen Time setup", icon: "hourglass")
 
-                    Text("Locked tracks which apps you open through the Shortcuts app. Do this once.")
+                    Text("Locked uses Apple’s Screen Time APIs to measure usage and lock apps. Do this once.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
 
                     StepCard(
                         stepNumber: 1,
-                        title: "When an app opens",
+                        title: "Allow Screen Time",
                         instructions: [
-                            "Open **Shortcuts** → **Automation**.",
-                            "Create a new automation and choose **App**.",
-                            "Select **Is Opened** and **Run Immediately**. Turn off *Notify When Run*.",
-                            "Pick the apps you want Locked to manage.",
-                            "Add **Get Current App**, then Locked’s **On App Open** action.",
-                            "Set *App Name* to the *Current App* variable.",
-                            "Add an **If** block: **If** *On App Open Result* is **True**.",
-                            "Inside the If, add **Go to Home Screen** so locked apps bounce you out."
+                            "On Home, tap **Allow Screen Time** and approve Locked.",
+                            "This lets Locked read app usage and place a system lock screen on apps you haven’t earned back."
                         ]
                     )
 
                     StepCard(
                         stepNumber: 2,
-                        title: "When an app closes",
+                        title: "Choose apps",
                         instructions: [
-                            "Create another **App** automation.",
-                            "Choose **Is Closed** and **Run Immediately**. Turn off *Notify When Run*.",
-                            "Select the same apps as before.",
-                            "Add Locked’s **On App Close** action. No extra parameters needed."
+                            "Tap **Choose Apps** and pick what Locked is allowed to manage.",
+                            "You can select individual apps or whole categories.",
+                            "**Locked, Settings, Phone, Messages, FaceTime, Find My, Wallet, and Clock never appear and never lock** — they also don’t count toward usage percentages."
                         ]
                     )
+
+                    ScreenTimeGuideActions()
                 }
 
                 VStack(alignment: .leading, spacing: 12) {
@@ -86,7 +81,7 @@ struct HowToUseView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Break glass")
                                 .font(.headline)
-                            Text("If you truly cannot wait — a ride, a family call, a real emergency — break the glass on Home. Strike it three times. Every lock lifts for one hour, then snaps back on its own. It does not spend Keys or change Karma. This is a last resort, not a shortcut.")
+                            Text("If you truly cannot wait — a ride, a family call, a real emergency — break the glass on Home. Strike it three times. Every lock lifts for one hour, then snaps back on its own. It does not spend Keys or change Karma. This is a last resort.")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -203,5 +198,37 @@ struct StepCard: View {
         }
         .padding(18)
         .background(LockedCardBackground())
+    }
+}
+
+private struct ScreenTimeGuideActions: View {
+    @EnvironmentObject private var screenTime: ScreenTimeManager
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Button {
+                if screenTime.isAuthorized {
+                    screenTime.presentPicker()
+                } else {
+                    Task { await screenTime.requestAuthorization() }
+                }
+            } label: {
+                Label(
+                    screenTime.isAuthorized ? "Choose apps" : "Allow Screen Time",
+                    systemImage: screenTime.isAuthorized ? "apps.iphone" : "checkmark.shield.fill"
+                )
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.lockedIndigo)
+
+            if screenTime.isAuthorized && screenTime.hasSelection {
+                Text("Screen Time is connected. You can change the app list any time.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 }

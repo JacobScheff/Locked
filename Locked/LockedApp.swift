@@ -7,7 +7,6 @@
 
 import SwiftUI
 import SwiftData
-import AppIntents
 
 // Enable arrays to be stored in @AppStorage
 extension Array: @retroactive RawRepresentable where Element: Codable {
@@ -54,16 +53,16 @@ extension Dictionary: @retroactive RawRepresentable where Key == String, Value: 
 struct LockedApp: App {
     @StateObject private var lockScheduler = LockScheduler()
     
-    init() {
-        LibraryAppShortcuts.updateAppShortcutParameters()
-    }
-    
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .tint(.lockedIndigo)
                 .fontDesign(.rounded)
-                .onAppear { lockScheduler.start() }
+                .environmentObject(ScreenTimeManager.shared)
+                .onAppear {
+                    lockScheduler.start()
+                    ScreenTimeManager.shared.refreshStatus()
+                }
                 .onDisappear { lockScheduler.stop() }
         }
     }
