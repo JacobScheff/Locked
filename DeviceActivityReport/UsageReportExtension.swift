@@ -29,15 +29,17 @@ struct UsageReport: DeviceActivityReportScene {
                 for await category in segment.categories {
                     for await applicationActivity in category.applications {
                         let bundleID = applicationActivity.application.bundleIdentifier
-                        let name = applicationActivity.application.localizedDisplayName
-                        guard InstalledApps.isPresent(bundleIdentifier: bundleID, displayName: name),
+                        let rawName = applicationActivity.application.localizedDisplayName
+                        let name = rawName?.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let seconds = Int(applicationActivity.totalActivityDuration.rounded())
+                        guard seconds > 0,
+                              InstalledApps.isPresent(bundleIdentifier: bundleID, displayName: name),
                               let name,
                               !ExcludedApps.isExcluded(bundleIdentifier: bundleID, displayName: name)
                         else {
                             continue
                         }
 
-                        let seconds = Int(applicationActivity.totalActivityDuration.rounded())
                         secondsByApp[name, default: 0] += seconds
                         if let bundleID {
                             bundleIDsByApp[name] = bundleID

@@ -10,6 +10,8 @@ extension Color {
     static let lockedRose = Color(red: 0.93, green: 0.33, blue: 0.46)
     static let hazardYellow = Color(red: 0.98, green: 0.78, blue: 0.12)
     static let hazardRed = Color(red: 0.76, green: 0.12, blue: 0.18)
+    static let vaultBrass = Color(red: 0.86, green: 0.70, blue: 0.38)
+    static let vaultSteel = Color(red: 0.18, green: 0.22, blue: 0.26)
 }
 
 extension ShapeStyle where Self == Color {
@@ -20,6 +22,8 @@ extension ShapeStyle where Self == Color {
     static var lockedRose: Color { Color.lockedRose }
     static var hazardYellow: Color { Color.hazardYellow }
     static var hazardRed: Color { Color.hazardRed }
+    static var vaultBrass: Color { Color.vaultBrass }
+    static var vaultSteel: Color { Color.vaultSteel }
 }
 
 enum LockedTheme {

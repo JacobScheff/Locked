@@ -30,11 +30,18 @@ struct MainPage: View {
     @AppStorage("emergencyOverrideUntil", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var emergencyOverrideUntil: Double = 0
 
-    @State private var showingBreakGlass = false
+    @AppStorage("innerVaultUnlockedUntil", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    var innerVaultUnlockedUntil: Double = 0
+
+    @State private var presentedRitual: HomeRitual?
     @State private var now = Date()
 
     private var overrideActive: Bool {
         Date(timeIntervalSince1970: emergencyOverrideUntil) > now
+    }
+
+    private var vaultUnlocked: Bool {
+        overrideActive && innerVaultUnlockedUntil > 0 && abs(innerVaultUnlockedUntil - emergencyOverrideUntil) < 0.5
     }
 
     private var upcomingItems: [(course: Course, assignment: Assignment)] {
@@ -96,9 +103,13 @@ struct MainPage: View {
                     overrideActive: overrideActive
                 )
 
-                if !overrideActive {
+                if overrideActive {
+                    VaultSealCard(unlocked: vaultUnlocked) {
+                        presentedRitual = .vault
+                    }
+                } else {
                     EmergencySealCard {
-                        showingBreakGlass = true
+                        presentedRitual = .glass
                     }
                 }
             }
@@ -106,22 +117,18 @@ struct MainPage: View {
             .padding(.bottom, 36)
         }
         .background(LockedBackground())
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                HStack(spacing: 6) {
-                    Image(systemName: overrideActive ? "lock.open.fill" : "lock.fill")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(overrideActive ? Color.hazardYellow : Color.lockedIndigo)
-                    Text("Locked")
-                        .font(.headline.weight(.bold))
+        .toolbar(.hidden, for: .navigationBar)
+        .fullScreenCover(item: $presentedRitual) { ritual in
+            switch ritual {
+            case .glass:
+                BreakGlassView {
+                    now = Date()
+                    updateWidget()
                 }
-            }
-        }
-        .fullScreenCover(isPresented: $showingBreakGlass) {
-            BreakGlassView {
-                now = Date()
-                updateWidget()
+            case .vault:
+                InnerVaultView {
+                    updateWidget()
+                }
             }
         }
         .background {
@@ -183,12 +190,18 @@ struct MainPage: View {
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(overrideActive ? Color.hazardRed : Color.secondary)
         }
-        .padding(.top, 8)
     }
 
     func updateWidget() {
         WidgetCenter.shared.reloadTimelines(ofKind: "Locked_Widget")
     }
+}
+
+private enum HomeRitual: String, Identifiable {
+    case glass
+    case vault
+
+    var id: String { rawValue }
 }
 
 // MARK: - Header / Hero
