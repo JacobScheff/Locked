@@ -227,8 +227,23 @@ enum InnerVault {
     static let unlockedUntilKey = "innerVaultUnlockedUntil"
     static let tickCount = 40
     static let degreesPerTick = 360.0 / Double(tickCount)
-    static let combination = [18, 7, 29]
+    static let combinationLength = 3
     static let resetWrongWay = 55.0
+
+    static func randomCombination() -> [Int] {
+        var numbers: [Int] = []
+        while numbers.count < combinationLength {
+            let candidate = Int.random(in: 0..<tickCount)
+            let tooClose = numbers.contains { number in
+                let gap = abs(number - candidate)
+                return min(gap, tickCount - gap) < 5
+            }
+            if !tooClose {
+                numbers.append(candidate)
+            }
+        }
+        return numbers
+    }
 
     static func minimumTravel(for step: Int) -> Double {
         step == 0 ? 330 : 160

@@ -70,6 +70,7 @@ struct InnerVaultView: View {
     @AppStorage("emergencyOverrideUntil", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var emergencyOverrideUntil: Double = 0
 
+    @State private var combination = InnerVault.randomCombination()
     @State private var dialAngle = 0.0
     @State private var lastFingerAngle: Double?
     @State private var lastTick = 0
@@ -158,14 +159,14 @@ struct InnerVaultView: View {
     }
 
     private var instruction: String {
-        guard step < InnerVault.combination.count else { return "Opening" }
-        let number = InnerVault.combination[step]
+        guard step < combination.count else { return "Opening" }
+        let number = combination[step]
         return requiredClockwise ? "Turn right to \(number)" : "Turn left to \(number)"
     }
 
     private var combinationReadout: some View {
         HStack(spacing: 14) {
-            ForEach(Array(InnerVault.combination.enumerated()), id: \.offset) { index, number in
+            ForEach(Array(combination.enumerated()), id: \.offset) { index, number in
                 Text(String(format: "%02d", number))
                     .font(.lockedNumber(22))
                     .foregroundStyle(index < step ? Color.lockedTeal : (index == step ? Color.vaultBrass : .white.opacity(0.28)))
@@ -177,7 +178,7 @@ struct InnerVaultView: View {
                     )
             }
         }
-        .accessibilityLabel("Combination \(InnerVault.combination.map(String.init).joined(separator: ", "))")
+        .accessibilityLabel("Combination \(combination.map(String.init).joined(separator: ", "))")
     }
 
     private var treasury: some View {
@@ -259,7 +260,7 @@ struct InnerVaultView: View {
                 dialFace
                     .rotationEffect(.degrees(dialAngle))
 
-                ForEach(0..<InnerVault.combination.count, id: \.self) { index in
+                ForEach(0..<combination.count, id: \.self) { index in
                     bolt(retracted: index < retractedBolts)
                         .rotationEffect(.degrees(Double(index) * 120 + 60))
                 }
@@ -441,8 +442,8 @@ struct InnerVaultView: View {
             glow = 0.55
         }
         if InnerVault.isUnlocked() {
-            step = InnerVault.combination.count
-            retractedBolts = InnerVault.combination.count
+            step = combination.count
+            retractedBolts = combination.count
             finishing = true
             irisOpen = true
             bloom = 1
@@ -477,7 +478,7 @@ struct InnerVaultView: View {
             travelInDirection += abs(delta)
             wrongWay = 0
             onTarget = travelInDirection >= InnerVault.minimumTravel(for: step)
-                && tick == InnerVault.combination[step]
+                && tick == combination[step]
         } else if onTarget {
             acceptStep()
             if !finishing {
@@ -507,7 +508,7 @@ struct InnerVaultView: View {
         travelInDirection = 0
         wrongWay = 0
         step += 1
-        if step >= InnerVault.combination.count {
+        if step >= combination.count {
             completeUnlock()
         } else {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
