@@ -184,6 +184,7 @@ struct BreakGlassView: View {
     @State private var keyUnlocked = false
     @State private var shackleOpen = false
     @State private var keySpin: Double = 0
+    @State private var spinTick = 0
 
     private let needed = EmergencyOverride.strikesToBreak
 
@@ -224,6 +225,15 @@ struct BreakGlassView: View {
                 glow = 0.7
                 instructionPulse = true
             }
+        }
+        .onDisappear {
+            spinTick = 0
+        }
+        .onReceive(Timer.publish(every: 0.65, on: .main, in: .common).autoconnect()) { _ in
+            guard keyUnlocked else { return }
+            spinTick += 1
+            let generator = UIImpactFeedbackGenerator(style: spinTick.isMultiple(of: 4) ? .medium : .rigid)
+            generator.impactOccurred(intensity: spinTick.isMultiple(of: 4) ? 0.95 : 0.7)
         }
     }
 
@@ -347,18 +357,20 @@ struct BreakGlassView: View {
                 )
                 .allowsHitTesting(false)
             } else {
+                Color.white.opacity(0.10)
+
                 LinearGradient(
                     colors: [
-                        Color(red: 0.55, green: 0.66, blue: 0.78).opacity(0.26 + 0.05 * Double(strikes)),
-                        Color(red: 0.22, green: 0.28, blue: 0.36).opacity(0.30),
-                        Color(red: 0.62, green: 0.72, blue: 0.82).opacity(0.16)
+                        Color(red: 0.62, green: 0.74, blue: 0.86).opacity(0.58),
+                        Color(red: 0.28, green: 0.36, blue: 0.46).opacity(0.62),
+                        Color(red: 0.70, green: 0.80, blue: 0.90).opacity(0.40)
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
 
                 LinearGradient(
-                    colors: [.white.opacity(0.22), .clear, .white.opacity(0.08)],
+                    colors: [.white.opacity(0.34), .clear, .white.opacity(0.16)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
@@ -402,29 +414,33 @@ struct BreakGlassView: View {
                 .foregroundStyle(
                     LinearGradient(
                         colors: [
-                            Color.white.opacity(shackleOpen ? 0.55 : 0.28),
-                            Color.white.opacity(shackleOpen ? 0.22 : 0.10)
+                            Color.white.opacity(shackleOpen ? 0.55 : 0.14),
+                            Color.white.opacity(shackleOpen ? 0.22 : 0.06)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
                     )
                 )
+                .blur(radius: shattered ? 0 : 1.8)
+                .opacity(shattered ? 1 : 0.45)
                 .shadow(color: .black.opacity(0.55), radius: 8, y: 6)
                 .offset(x: shackleOpen ? 10 : 0, y: 20)
                 .animation(.spring(response: 0.42, dampingFraction: 0.62), value: shackleOpen)
 
             SculptedKey()
-                .scaleEffect(keyScale * (instructionPulse && !shattered ? 1.02 : 1))
-                .rotationEffect(Angle.degrees(-40 + keyTurn))
+                .scaleEffect((shattered ? keyScale : 0.86) * (instructionPulse && !shattered ? 1.02 : 1))
+                .rotationEffect(Angle.degrees(-40 + keyTurn + keySpin))
                 .rotation3DEffect(
-                    Angle.degrees(keySpin),
-                    axis: (x: 0.18, y: 1.0, z: 0.12),
-                    perspective: 0.45
+                    Angle.degrees(shattered ? 9 : 14),
+                    axis: (x: 0.85, y: 0.18, z: 0),
+                    perspective: 0.32
                 )
-                .offset(y: keyUnlocked ? -8 : 2)
-                .shadow(color: Color.hazardYellow.opacity(keyGlow * 0.55), radius: keyUnlocked ? 18 : 10, y: 6)
+                .offset(y: keyUnlocked ? -8 : 6)
+                .blur(radius: shattered ? 0 : 2.2)
+                .saturation(shattered ? 1 : 0.55)
+                .opacity(shattered ? 1 : 0.38)
+                .shadow(color: Color.hazardYellow.opacity(shattered ? keyGlow * 0.55 : 0.12), radius: shattered ? 14 : 4, y: 4)
         }
-        .opacity(shattered ? 1 : 0.92)
         .allowsHitTesting(false)
     }
 
@@ -543,10 +559,11 @@ struct BreakGlassView: View {
                     .stroke(Color.hazardYellow.opacity(0.35), lineWidth: 2)
                     .frame(width: 168, height: 168)
                 SculptedKey()
+                    .rotationEffect(Angle.degrees(-40 + keyTurn + keySpin))
                     .rotation3DEffect(
-                        Angle.degrees(keySpin),
-                        axis: (x: 0.18, y: 1.0, z: 0.12),
-                        perspective: 0.45
+                        Angle.degrees(9),
+                        axis: (x: 0.85, y: 0.18, z: 0),
+                        perspective: 0.32
                     )
             }
 
@@ -641,12 +658,17 @@ struct BreakGlassView: View {
     }
 
     private func haptic(for count: Int) {
-        let style: UIImpactFeedbackGenerator.FeedbackStyle = count >= needed ? .heavy : .rigid
-        let generator = UIImpactFeedbackGenerator(style: style)
-        generator.prepare()
-        generator.impactOccurred(intensity: min(1.0, 0.5 + 0.22 * CGFloat(count)))
+        let heavy = UIImpactFeedbackGenerator(style: .heavy)
+        heavy.prepare()
+        heavy.impactOccurred(intensity: 1.0)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.045) {
+            UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 1.0)
+        }
         if count >= needed {
-            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.11) {
+                UIImpactFeedbackGenerator(style: .heavy).impactOccurred(intensity: 1.0)
+            }
         }
     }
 
@@ -732,11 +754,11 @@ struct BreakGlassView: View {
 
         let heavy = UIImpactFeedbackGenerator(style: .heavy)
         heavy.impactOccurred(intensity: 1)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-            UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 0.9)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
+            UIImpactFeedbackGenerator(style: .heavy).impactOccurred(intensity: 1)
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred(intensity: 0.6)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
+            UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 1)
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
