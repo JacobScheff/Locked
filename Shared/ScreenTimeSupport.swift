@@ -121,16 +121,20 @@ enum ExcludedApps {
         isExcluded(bundleIdentifier: nil, displayName: name)
     }
 
+    static func isBlankName(_ name: String) -> Bool {
+        name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     static var tokens: Set<ApplicationToken> {
         Set(bundleIdentifiers.compactMap { Application(bundleIdentifier: $0).token })
     }
 
     static func strippingExcluded(_ counts: [String: Int]) -> [String: Int] {
-        counts.filter { !isExcludedName($0.key) }
+        counts.filter { !isExcludedName($0.key) && !isBlankName($0.key) && $0.value > 0 }
     }
 
     static func strippingExcluded(_ names: [String]) -> [String] {
-        names.filter { !isExcludedName($0) }
+        names.filter { !isExcludedName($0) && !isBlankName($0) }
     }
 }
 
@@ -138,7 +142,7 @@ enum InstalledApps {
     /// Screen Time still reports deleted apps historically. A current
     /// display name, and a live token when we have a bundle ID, mean the app is still on the device.
     static func isPresent(bundleIdentifier: String?, displayName: String?) -> Bool {
-        guard let displayName, !displayName.isEmpty else { return false }
+        guard let displayName, !ExcludedApps.isBlankName(displayName) else { return false }
         if let bundleIdentifier, Application(bundleIdentifier: bundleIdentifier).token == nil {
             return false
         }
