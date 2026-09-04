@@ -192,6 +192,7 @@ func performSundayLocking() -> [String] {
 
     let lockedTokens = Set(locked.compactMap { tokenByName[$0] })
     let displayNames = locked.filter { !$0.hasPrefix("token:") }
+    UsageStore.saveTokens(tokenByName)
     LockedTokenStore.save(lockedTokens)
     UsageStore.saveLockedApps(displayNames)
     store.lockedApps = displayNames
