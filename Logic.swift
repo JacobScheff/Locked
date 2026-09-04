@@ -106,7 +106,7 @@ func lockAppByKarma(from snapshot: [String: Int]) -> String {
     let distribution = GKGaussianDistribution(
         randomSource: GKARC4RandomSource(),
         mean: meanZScore * precision,
-        deviation: 1.0 * precision
+        deviation: precision
     )
 
     let zRand = Double(distribution.nextInt()) / Double(precision)
