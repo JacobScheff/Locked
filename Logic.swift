@@ -33,8 +33,26 @@ final class LogicStore {
     @AppStorage("eventState", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var eventState: String = "Close"
     
+    @AppStorage("emergencyOverrideUntil", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    var emergencyOverrideUntil: Double = 0
+    
     // Dates still rely on the standard defaults.object fallback
     private let defaults = UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked")!
+    
+    var isEmergencyOverrideActive: Bool {
+        Date(timeIntervalSince1970: defaults.double(forKey: EmergencyOverride.untilKey)) > Date()
+    }
+    
+    func activateEmergencyOverride() {
+        let expiry = Date().addingTimeInterval(EmergencyOverride.duration).timeIntervalSince1970
+        defaults.set(expiry, forKey: EmergencyOverride.untilKey)
+        emergencyOverrideUntil = expiry
+    }
+    
+    func endEmergencyOverride() {
+        defaults.set(0.0, forKey: EmergencyOverride.untilKey)
+        emergencyOverrideUntil = 0
+    }
     
     var lastOpened: Date {
         get { defaults.object(forKey: "lastOpened") as? Date ?? Date() }
@@ -198,4 +216,33 @@ final class LockScheduler: ObservableObject {
     }
 
     deinit { stop() }
+}
+
+// MARK: - Emergency Override
+
+enum EmergencyOverride {
+    static let suiteName = "group.com.Jacob-Scheff.Locked"
+    static let untilKey = "emergencyOverrideUntil"
+    static let duration: TimeInterval = 60 * 60
+    static let strikesToBreak = 3
+    
+    static func isActive(at date: Date = .now, defaults: UserDefaults? = UserDefaults(suiteName: suiteName)) -> Bool {
+        remaining(at: date, defaults: defaults) > 0
+    }
+    
+    static func remaining(at date: Date = .now, defaults: UserDefaults? = UserDefaults(suiteName: suiteName)) -> TimeInterval {
+        let until = defaults?.double(forKey: untilKey) ?? 0
+        return max(0, Date(timeIntervalSince1970: until).timeIntervalSince(date))
+    }
+    
+    static func formatRemaining(_ interval: TimeInterval) -> String {
+        let total = max(0, Int(interval.rounded()))
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        let seconds = total % 60
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        }
+        return String(format: "%d:%02d", minutes, seconds)
+    }
 }

@@ -12,8 +12,8 @@ struct OnAppOpen: AppIntent {
     func perform() async throws -> some IntentResult & ReturnsValue<Bool> {
         let store = LogicStore.shared
         
-        // 1. Check if the app is locked
-        if store.lockedApps.contains(appName) {
+        // 1. Check if the app is locked (emergency override suspends enforcement)
+        if !store.isEmergencyOverrideActive && store.lockedApps.contains(appName) {
             // Returns 'true' so the Shortcuts app knows to execute "Go to Home Screen"
             return .result(value: true)
         }
