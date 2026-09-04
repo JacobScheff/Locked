@@ -165,12 +165,19 @@ struct BreakGlassView: View {
     @State private var strikes = 0
     @State private var cracks: [GlassCrack] = []
     @State private var shards: [GlassShard] = GlassShard.makeSet()
+    @State private var debris: [GlassDebris] = []
+    @State private var ripples: [ImpactRipple] = []
     @State private var shattered = false
     @State private var released = false
     @State private var flash = 0.0
+    @State private var burstFlash = 0.0
     @State private var shake: CGFloat = 0
+    @State private var shakeY: CGFloat = 0
+    @State private var paneScale: CGFloat = 1
     @State private var glow = 0.35
     @State private var instructionPulse = false
+    @State private var impactPoint = CGPoint(x: 0.5, y: 0.45)
+    @State private var letteringBreak: CGFloat = 0
 
     private let needed = EmergencyOverride.strikesToBreak
 
@@ -183,27 +190,24 @@ struct BreakGlassView: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
 
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 20) {
-                        warningCopy
-                        glassBox
-                        strikeMeter
-                            .padding(.top, 8)
-                        footerCopy
-                            .padding(.top, 12)
-                    }
-                    .padding(.horizontal, 28)
-                    .padding(.bottom, 28)
-                    .offset(x: shake)
+                VStack(spacing: 18) {
+                    warningCopy
+                    glassBox
+                    strikeMeter
+                    footerCopy
                 }
+                .padding(.horizontal, 28)
+                .padding(.bottom, 24)
             }
+            .opacity(released ? 0.08 : 1)
+
+            Color.white.opacity(burstFlash)
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
 
             if released {
-                Color.black.opacity(0.78)
-                    .ignoresSafeArea()
-                    .transition(.opacity)
                 releasedOverlay
-                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                    .transition(.opacity.combined(with: .scale(scale: 0.92)))
             }
         }
         .preferredColorScheme(.dark)
@@ -224,14 +228,14 @@ struct BreakGlassView: View {
             Color.black
             RadialGradient(
                 colors: [
-                    Color.hazardRed.opacity(shattered ? 0.45 : 0.22),
+                    Color.hazardRed.opacity(shattered ? 0.55 : 0.22),
                     Color.black
                 ],
                 center: .center,
-                startRadius: 20,
-                endRadius: 420
+                startRadius: 10,
+                endRadius: 460
             )
-            .animation(.easeIn(duration: 0.6), value: shattered)
+            .animation(.easeIn(duration: 0.45), value: shattered)
         }
         .ignoresSafeArea()
     }
@@ -276,21 +280,9 @@ struct BreakGlassView: View {
                     )
                     .shadow(color: Color.hazardRed.opacity(glow * 0.55), radius: 30, y: 10)
 
-                VStack(spacing: 0) {
-                    HazardStripeBar()
-                        .frame(height: 16)
-                    Rectangle()
-                        .fill(Color(red: 0.18, green: 0.18, blue: 0.19))
-                        .frame(height: 10)
-                    glassPane(in: size)
-                    Rectangle()
-                        .fill(Color(red: 0.18, green: 0.18, blue: 0.19))
-                        .frame(height: 10)
-                    HazardStripeBar()
-                        .frame(height: 16)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .padding(10)
+                interior(size: size)
+
+                fxLayer(size: size)
 
                 if !shattered {
                     Color.white.opacity(flash)
@@ -299,6 +291,8 @@ struct BreakGlassView: View {
                         .allowsHitTesting(false)
                 }
             }
+            .scaleEffect(paneScale)
+            .offset(x: shake, y: shakeY)
             .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .gesture(strikeGesture(in: size))
         }
@@ -307,28 +301,63 @@ struct BreakGlassView: View {
         .frame(maxWidth: .infinity)
     }
 
+    private func interior(size: CGSize) -> some View {
+        VStack(spacing: 0) {
+            HazardStripeBar()
+                .frame(height: 16)
+            Rectangle()
+                .fill(Color(red: 0.18, green: 0.18, blue: 0.19))
+                .frame(height: 10)
+            glassPane(in: size)
+            Rectangle()
+                .fill(Color(red: 0.18, green: 0.18, blue: 0.19))
+                .frame(height: 10)
+            HazardStripeBar()
+                .frame(height: 16)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(10)
+    }
+
     private func glassPane(in size: CGSize) -> some View {
         ZStack {
-            LinearGradient(
-                colors: [
-                    Color(red: 0.55, green: 0.66, blue: 0.78).opacity(0.45),
-                    Color(red: 0.22, green: 0.28, blue: 0.36).opacity(0.55),
-                    Color(red: 0.62, green: 0.72, blue: 0.82).opacity(0.28)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            if shattered {
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.18, green: 0.03, blue: 0.05),
+                        Color.black
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                RadialGradient(
+                    colors: [Color.hazardRed.opacity(0.55), .clear],
+                    center: UnitPoint(x: impactPoint.x, y: impactPoint.y),
+                    startRadius: 4,
+                    endRadius: 160
+                )
+            } else {
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.55, green: 0.66, blue: 0.78).opacity(0.45 + 0.12 * Double(strikes)),
+                        Color(red: 0.22, green: 0.28, blue: 0.36).opacity(0.55),
+                        Color(red: 0.62, green: 0.72, blue: 0.82).opacity(0.28)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
 
-            LinearGradient(
-                colors: [.white.opacity(0.28), .clear, .white.opacity(0.08)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .blendMode(.screen)
+                LinearGradient(
+                    colors: [.white.opacity(0.28), .clear, .white.opacity(0.08)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .blendMode(.screen)
 
-            if !shattered {
                 paneLettering
                     .padding(20)
+                    .blur(radius: letteringBreak * 1.2)
+                    .opacity(1 - letteringBreak * 0.35)
 
                 Canvas { context, canvasSize in
                     for crack in cracks {
@@ -336,31 +365,62 @@ struct BreakGlassView: View {
                     }
                 }
                 .allowsHitTesting(false)
-            } else {
-                GeometryReader { pane in
-                    ForEach(shards) { shard in
-                        shard.path(in: pane.size)
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        Color.white.opacity(0.28 * shard.opacity),
-                                        Color.cyan.opacity(0.12 * shard.opacity)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .overlay(
-                                shard.path(in: pane.size)
-                                    .stroke(Color.white.opacity(0.45 * shard.opacity), lineWidth: 0.8)
-                            )
-                            .offset(shard.drift)
-                            .rotationEffect(Angle.degrees(shard.rotation))
-                            .opacity(shard.opacity)
-                    }
-                }
             }
         }
+    }
+
+    private func fxLayer(size: CGSize) -> some View {
+        let pane = paneRect(in: size)
+        return ZStack {
+            ForEach(ripples) { ripple in
+                Circle()
+                    .stroke(
+                        Color.white.opacity((1 - ripple.progress) * 0.85),
+                        lineWidth: 3 - ripple.progress * 2
+                    )
+                    .frame(
+                        width: 18 + ripple.progress * pane.width * 0.85,
+                        height: 18 + ripple.progress * pane.width * 0.85
+                    )
+                    .position(
+                        x: pane.minX + ripple.origin.x * pane.width,
+                        y: pane.minY + ripple.origin.y * pane.height
+                    )
+                    .blendMode(.screen)
+            }
+
+            if shattered {
+                ForEach(shards) { shard in
+                    shard.path(in: pane.size)
+                        .fill(shard.fill)
+                        .overlay(
+                            shard.path(in: pane.size)
+                                .stroke(Color.white.opacity(0.55 * shard.opacity), lineWidth: 0.9)
+                        )
+                        .frame(width: pane.width, height: pane.height)
+                        .position(x: pane.midX, y: pane.midY)
+                        .offset(shard.drift)
+                        .rotationEffect(Angle.degrees(shard.rotation))
+                        .opacity(shard.opacity)
+                        .shadow(color: .white.opacity(0.25 * shard.opacity), radius: 6)
+                }
+            }
+
+            ForEach(debris) { speck in
+                Capsule()
+                    .fill(speck.spark ? Color.white : Color.white.opacity(0.7))
+                    .frame(width: speck.size, height: speck.spark ? speck.size : speck.size * 0.35)
+                    .rotationEffect(Angle.degrees(speck.rotation))
+                    .position(
+                        x: pane.minX + speck.origin.x * pane.width,
+                        y: pane.minY + speck.origin.y * pane.height
+                    )
+                    .offset(speck.drift)
+                    .opacity(speck.opacity)
+                    .blendMode(.screen)
+            }
+        }
+        .allowsHitTesting(false)
     }
 
     private var paneLettering: some View {
@@ -395,6 +455,7 @@ struct BreakGlassView: View {
                 Capsule()
                     .fill(index < strikes ? Color.hazardYellow : Color.white.opacity(0.18))
                     .frame(width: 42, height: 6)
+                    .scaleEffect(index == strikes - 1 ? 1.18 : 1)
                     .animation(.spring(response: 0.3, dampingFraction: 0.6), value: strikes)
             }
         }
@@ -420,7 +481,11 @@ struct BreakGlassView: View {
             ZStack {
                 Circle()
                     .fill(Color.hazardYellow.opacity(0.15))
-                    .frame(width: 120, height: 120)
+                    .frame(width: 132, height: 132)
+                    .scaleEffect(released ? 1 : 0.6)
+                Circle()
+                    .stroke(Color.hazardYellow.opacity(0.35), lineWidth: 2)
+                    .frame(width: 150, height: 150)
                 Image(systemName: "lock.open.fill")
                     .font(.system(size: 52, weight: .bold))
                     .foregroundStyle(Color.hazardYellow)
@@ -456,6 +521,10 @@ struct BreakGlassView: View {
 
     // MARK: Interaction
 
+    private func paneRect(in size: CGSize) -> CGRect {
+        CGRect(x: 10, y: 36, width: max(size.width - 20, 1), height: max(size.height - 72, 1))
+    }
+
     private func strikeGesture(in size: CGSize) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onEnded { value in
@@ -465,40 +534,106 @@ struct BreakGlassView: View {
     }
 
     private func strike(at location: CGPoint, in size: CGSize) {
-        let pane = CGRect(x: 10, y: 26, width: size.width - 20, height: size.height - 52)
+        let pane = paneRect(in: size)
         let local = CGPoint(
-            x: (location.x - pane.minX) / max(pane.width, 1),
-            y: (location.y - pane.minY) / max(pane.height, 1)
+            x: (location.x - pane.minX) / pane.width,
+            y: (location.y - pane.minY) / pane.height
         )
         let origin = CGPoint(
             x: min(max(local.x, 0.08), 0.92),
             y: min(max(local.y, 0.08), 0.92)
         )
+        impactPoint = origin
 
-        cracks.append(GlassCrack.spider(from: origin, seed: strikes))
+        cracks.append(GlassCrack.spider(from: origin, seed: strikes, intensity: strikes + 1))
+        if strikes >= 1 {
+            cracks.append(GlassCrack.edgeStress(from: origin, seed: strikes + 17))
+        }
+
+        spawnRipple(at: origin)
+        spawnDebris(at: origin, count: 10 + strikes * 6, exploding: false)
 
         strikes += 1
-        flashImpact()
+        flashImpact(final: strikes >= needed)
         haptic(for: strikes)
 
+        withAnimation(.easeOut(duration: 0.35)) {
+            letteringBreak = CGFloat(strikes) / CGFloat(needed)
+        }
+
         if strikes >= needed {
-            shatter()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
+                shatter()
+            }
         }
     }
 
-    private func flashImpact() {
-        flash = 0.55
-        shake = strikes == needed ? 14 : 8
-        withAnimation(.easeOut(duration: 0.18)) { flash = 0 }
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.45)) { shake = 0 }
+    private func flashImpact(final: Bool) {
+        flash = final ? 0.9 : 0.55
+        paneScale = final ? 0.94 : 0.97
+        shake = final ? 16 : 9
+        shakeY = final ? -10 : -5
+        withAnimation(.easeOut(duration: 0.16)) { flash = 0 }
+        withAnimation(.interpolatingSpring(stiffness: 280, damping: 16)) {
+            paneScale = 1
+            shake = 0
+            shakeY = 0
+        }
     }
 
     private func haptic(for count: Int) {
         let style: UIImpactFeedbackGenerator.FeedbackStyle = count >= needed ? .heavy : .rigid
         let generator = UIImpactFeedbackGenerator(style: style)
-        generator.impactOccurred(intensity: min(1.0, 0.55 + 0.2 * CGFloat(count)))
+        generator.prepare()
+        generator.impactOccurred(intensity: min(1.0, 0.5 + 0.22 * CGFloat(count)))
         if count >= needed {
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        }
+    }
+
+    private func spawnRipple(at origin: CGPoint) {
+        let ripple = ImpactRipple(origin: origin)
+        ripples.append(ripple)
+        let id = ripple.id
+        withAnimation(.easeOut(duration: 0.55)) {
+            if let index = ripples.firstIndex(where: { $0.id == id }) {
+                ripples[index].progress = 1
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            ripples.removeAll { $0.id == id }
+        }
+    }
+
+    private func spawnDebris(at origin: CGPoint, count: Int, exploding: Bool) {
+        var additions: [GlassDebris] = []
+        var flights: [(drift: CGSize, rotation: Double)] = []
+        for index in 0..<count {
+            let angle = Double(index) / Double(max(count, 1)) * .pi * 2 + Double.random(in: -0.3...0.3)
+            let speed = exploding ? CGFloat.random(in: 90...240) : CGFloat.random(in: 18...70)
+            additions.append(
+                GlassDebris(
+                    origin: origin,
+                    size: exploding ? CGFloat.random(in: 2...7) : CGFloat.random(in: 1.5...4),
+                    spark: index.isMultiple(of: 3)
+                )
+            )
+            flights.append((
+                CGSize(
+                    width: CGFloat(cos(angle)) * speed,
+                    height: CGFloat(sin(angle)) * speed * (exploding ? 0.85 : 0.55) + (exploding ? CGFloat.random(in: 40...140) : 0)
+                ),
+                Double.random(in: -80...80)
+            ))
+        }
+        let start = debris.count
+        debris.append(contentsOf: additions)
+        withAnimation(.easeOut(duration: exploding ? 0.9 : 0.45)) {
+            for offset in flights.indices {
+                debris[start + offset].drift = flights[offset].drift
+                debris[start + offset].rotation = flights[offset].rotation
+                debris[start + offset].opacity = 0
+            }
         }
     }
 
@@ -507,18 +642,45 @@ struct BreakGlassView: View {
         LogicStore.shared.activateEmergencyOverride()
         onReleased()
 
-        withAnimation(.easeIn(duration: 0.55)) {
-            for index in shards.indices {
+        burstFlash = 0.92
+        paneScale = 1.04
+        withAnimation(.easeOut(duration: 0.45)) {
+            burstFlash = 0
+            paneScale = 1
+        }
+
+        spawnDebris(at: impactPoint, count: 28, exploding: true)
+        spawnRipple(at: impactPoint)
+
+        for index in shards.indices {
+            let center = shards[index].centroid
+            let dx = center.x - impactPoint.x
+            let dy = center.y - impactPoint.y
+            let dist = max(0.04, hypot(dx, dy))
+            let push = 140 + dist * 280
+            let delay = dist * 0.22
+            let fall = 220 + CGFloat.random(in: 40...180)
+
+            withAnimation(.easeIn(duration: 0.62 + dist * 0.4).delay(delay)) {
                 shards[index].drift = CGSize(
-                    width: CGFloat.random(in: -120...120),
-                    height: CGFloat.random(in: 160...380)
+                    width: (dx / dist) * push + CGFloat.random(in: -30...30),
+                    height: (dy / dist) * (push * 0.45) + fall
                 )
-                shards[index].rotation = Double.random(in: -40...40)
+                shards[index].rotation = Double.random(in: -70...70)
                 shards[index].opacity = 0
             }
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+        let heavy = UIImpactFeedbackGenerator(style: .heavy)
+        heavy.impactOccurred(intensity: 1)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+            UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 0.9)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred(intensity: 0.6)
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.05) {
             withAnimation(.spring(response: 0.55, dampingFraction: 0.78)) {
                 released = true
             }
@@ -549,22 +711,39 @@ struct HazardStripeBar: View {
     }
 }
 
+struct ImpactRipple: Identifiable {
+    let id = UUID()
+    var origin: CGPoint
+    var progress: CGFloat = 0.02
+}
+
+struct GlassDebris: Identifiable {
+    let id = UUID()
+    var origin: CGPoint
+    var drift: CGSize = .zero
+    var rotation: Double = 0
+    var opacity: Double = 1
+    var size: CGFloat
+    var spark: Bool
+}
+
 struct GlassCrack {
     var branches: [[CGPoint]]
+    var weight: CGFloat
 
-    static func spider(from origin: CGPoint, seed: Int) -> GlassCrack {
+    static func spider(from origin: CGPoint, seed: Int, intensity: Int) -> GlassCrack {
         var rng = SeededRandom(seed: seed &* 7919 &+ Int(origin.x * 1000) &+ Int(origin.y * 100))
         var branches: [[CGPoint]] = []
-        let armCount = 5 + seed * 2
+        let armCount = 6 + intensity * 3
         for i in 0..<armCount {
-            let base = (Double(i) / Double(armCount)) * .pi * 2 + rng.next() * 0.4
+            let base = (Double(i) / Double(armCount)) * .pi * 2 + rng.next() * 0.35
             var points = [origin]
             var current = origin
             var angle = base
-            let steps = 4 + seed
+            let steps = 5 + intensity * 2
             for _ in 0..<steps {
-                angle += (rng.next() - 0.5) * 0.9
-                let length = 0.06 + rng.next() * 0.16
+                angle += (rng.next() - 0.5) * 0.85
+                let length = 0.07 + rng.next() * (0.12 + Double(intensity) * 0.04)
                 current = CGPoint(
                     x: current.x + CGFloat(cos(angle) * length),
                     y: current.y + CGFloat(sin(angle) * length)
@@ -573,14 +752,14 @@ struct GlassCrack {
             }
             branches.append(points)
 
-            if rng.next() > 0.45 {
-                let forkOrigin = points[points.count / 2]
+            if rng.next() > 0.35 {
+                let forkOrigin = points[max(1, points.count / 2)]
                 var fork = [forkOrigin]
                 var forkPoint = forkOrigin
-                var forkAngle = angle + (rng.next() > 0.5 ? 0.7 : -0.7)
-                for _ in 0..<3 {
-                    forkAngle += (rng.next() - 0.5) * 0.6
-                    let length = 0.05 + rng.next() * 0.1
+                var forkAngle = angle + (rng.next() > 0.5 ? 0.8 : -0.8)
+                for _ in 0..<(2 + intensity) {
+                    forkAngle += (rng.next() - 0.5) * 0.55
+                    let length = 0.05 + rng.next() * 0.11
                     forkPoint = CGPoint(
                         x: forkPoint.x + CGFloat(cos(forkAngle) * length),
                         y: forkPoint.y + CGFloat(sin(forkAngle) * length)
@@ -590,7 +769,33 @@ struct GlassCrack {
                 branches.append(fork)
             }
         }
-        return GlassCrack(branches: branches)
+        return GlassCrack(branches: branches, weight: 0.9 + CGFloat(intensity) * 0.35)
+    }
+
+    static func edgeStress(from origin: CGPoint, seed: Int) -> GlassCrack {
+        var rng = SeededRandom(seed: seed)
+        let edges = [
+            CGPoint(x: origin.x, y: 0),
+            CGPoint(x: origin.x, y: 1),
+            CGPoint(x: 0, y: origin.y),
+            CGPoint(x: 1, y: origin.y)
+        ]
+        var branches: [[CGPoint]] = []
+        for edge in edges {
+            var points = [origin]
+            var current = origin
+            let steps = 4
+            for step in 1...steps {
+                let t = CGFloat(step) / CGFloat(steps)
+                current = CGPoint(
+                    x: origin.x + (edge.x - origin.x) * t + CGFloat(rng.next() - 0.5) * 0.05,
+                    y: origin.y + (edge.y - origin.y) * t + CGFloat(rng.next() - 0.5) * 0.05
+                )
+                points.append(current)
+            }
+            branches.append(points)
+        }
+        return GlassCrack(branches: branches, weight: 1.1)
     }
 
     func draw(in context: inout GraphicsContext, size: CGSize) {
@@ -601,8 +806,21 @@ struct GlassCrack {
             for point in branch.dropFirst() {
                 path.addLine(to: CGPoint(x: point.x * size.width, y: point.y * size.height))
             }
-            context.stroke(path, with: .color(.white.opacity(0.92)), style: StrokeStyle(lineWidth: 1.35, lineCap: .round, lineJoin: .round))
-            context.stroke(path, with: .color(.black.opacity(0.25)), style: StrokeStyle(lineWidth: 0.5, lineCap: .round))
+            context.stroke(
+                path,
+                with: .color(.white.opacity(0.25)),
+                style: StrokeStyle(lineWidth: weight + 2.2, lineCap: .round, lineJoin: .round)
+            )
+            context.stroke(
+                path,
+                with: .color(.white.opacity(0.92)),
+                style: StrokeStyle(lineWidth: weight, lineCap: .round, lineJoin: .round)
+            )
+            context.stroke(
+                path,
+                with: .color(.black.opacity(0.28)),
+                style: StrokeStyle(lineWidth: 0.45, lineCap: .round)
+            )
         }
     }
 }
@@ -613,6 +831,25 @@ struct GlassShard: Identifiable {
     var drift: CGSize = .zero
     var rotation: Double = 0
     var opacity: Double = 1
+
+    var centroid: CGPoint {
+        let count = CGFloat(max(points.count, 1))
+        return CGPoint(
+            x: points.reduce(0) { $0 + $1.x } / count,
+            y: points.reduce(0) { $0 + $1.y } / count
+        )
+    }
+
+    var fill: LinearGradient {
+        LinearGradient(
+            colors: [
+                Color.white.opacity(0.34 * opacity),
+                Color(red: 0.55, green: 0.72, blue: 0.88).opacity(0.18 * opacity)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
 
     func path(in size: CGSize) -> Path {
         var path = Path()
@@ -626,18 +863,43 @@ struct GlassShard: Identifiable {
     }
 
     static func makeSet() -> [GlassShard] {
-        let polygons: [[CGPoint]] = [
-            [CGPoint(x: 0, y: 0), CGPoint(x: 0.38, y: 0), CGPoint(x: 0.22, y: 0.36), CGPoint(x: 0, y: 0.28)],
-            [CGPoint(x: 0.38, y: 0), CGPoint(x: 0.72, y: 0), CGPoint(x: 0.6, y: 0.3), CGPoint(x: 0.22, y: 0.36)],
-            [CGPoint(x: 0.72, y: 0), CGPoint(x: 1, y: 0), CGPoint(x: 1, y: 0.34), CGPoint(x: 0.6, y: 0.3)],
-            [CGPoint(x: 0, y: 0.28), CGPoint(x: 0.22, y: 0.36), CGPoint(x: 0.18, y: 0.7), CGPoint(x: 0, y: 0.66)],
-            [CGPoint(x: 0.22, y: 0.36), CGPoint(x: 0.6, y: 0.3), CGPoint(x: 0.55, y: 0.68), CGPoint(x: 0.18, y: 0.7)],
-            [CGPoint(x: 0.6, y: 0.3), CGPoint(x: 1, y: 0.34), CGPoint(x: 1, y: 0.7), CGPoint(x: 0.55, y: 0.68)],
-            [CGPoint(x: 0, y: 0.66), CGPoint(x: 0.18, y: 0.7), CGPoint(x: 0.32, y: 1), CGPoint(x: 0, y: 1)],
-            [CGPoint(x: 0.18, y: 0.7), CGPoint(x: 0.55, y: 0.68), CGPoint(x: 0.7, y: 1), CGPoint(x: 0.32, y: 1)],
-            [CGPoint(x: 0.55, y: 0.68), CGPoint(x: 1, y: 0.7), CGPoint(x: 1, y: 1), CGPoint(x: 0.7, y: 1)]
-        ]
-        return polygons.map { GlassShard(points: $0) }
+        let cols = 4
+        let rows = 5
+        var rng = SeededRandom(seed: 42)
+        var nodes: [[CGPoint]] = []
+        for row in 0...rows {
+            var line: [CGPoint] = []
+            for col in 0...cols {
+                let onEdge = row == 0 || row == rows || col == 0 || col == cols
+                let jitterX = onEdge ? 0 : CGFloat(rng.next() - 0.5) * 0.12
+                let jitterY = onEdge ? 0 : CGFloat(rng.next() - 0.5) * 0.10
+                line.append(
+                    CGPoint(
+                        x: CGFloat(col) / CGFloat(cols) + jitterX,
+                        y: CGFloat(row) / CGFloat(rows) + jitterY
+                    )
+                )
+            }
+            nodes.append(line)
+        }
+
+        var shards: [GlassShard] = []
+        for row in 0..<rows {
+            for col in 0..<cols {
+                let topLeft = nodes[row][col]
+                let topRight = nodes[row][col + 1]
+                let bottomRight = nodes[row + 1][col + 1]
+                let bottomLeft = nodes[row + 1][col]
+                if rng.next() > 0.5 {
+                    shards.append(GlassShard(points: [topLeft, topRight, bottomRight]))
+                    shards.append(GlassShard(points: [topLeft, bottomRight, bottomLeft]))
+                } else {
+                    shards.append(GlassShard(points: [topLeft, topRight, bottomLeft]))
+                    shards.append(GlassShard(points: [topRight, bottomRight, bottomLeft]))
+                }
+            }
+        }
+        return shards
     }
 }
 
