@@ -1,6 +1,5 @@
 import SwiftUI
 import UIKit
-import Combine
 
 // MARK: - Home: dormant seal
 
@@ -169,7 +168,9 @@ struct BreakGlassView: View {
     @State private var debris: [GlassDebris] = []
     @State private var ripples: [ImpactRipple] = []
     @State private var shattered = false
+    @State private var breaking = false
     @State private var released = false
+    @State private var lastStrikeAt = Date.distantPast
     @State private var flash = 0.0
     @State private var burstFlash = 0.0
     @State private var shake: CGFloat = 0
@@ -185,9 +186,13 @@ struct BreakGlassView: View {
     @State private var keyUnlocked = false
     @State private var shackleOpen = false
     @State private var keySpin: Double = 0
-    @State private var spinTick = 0
 
     private let needed = EmergencyOverride.strikesToBreak
+    private let strikeCooldown: TimeInterval = 0.22
+
+    private var acceptsStrikes: Bool {
+        !shattered && !breaking && strikes < needed
+    }
 
     var body: some View {
         ZStack {
@@ -220,21 +225,12 @@ struct BreakGlassView: View {
         }
         .preferredColorScheme(.dark)
         .persistentSystemOverlays(.hidden)
-        .interactiveDismissDisabled(shattered)
+        .interactiveDismissDisabled(shattered || breaking)
         .onAppear {
             withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) {
                 glow = 0.7
                 instructionPulse = true
             }
-        }
-        .onDisappear {
-            spinTick = 0
-        }
-        .onReceive(Timer.publish(every: 0.65, on: .main, in: .common).autoconnect()) { _ in
-            guard keyUnlocked else { return }
-            spinTick += 1
-            let generator = UIImpactFeedbackGenerator(style: spinTick.isMultiple(of: 4) ? .medium : .rigid)
-            generator.impactOccurred(intensity: spinTick.isMultiple(of: 4) ? 0.95 : 0.7)
         }
     }
 
@@ -289,29 +285,34 @@ struct BreakGlassView: View {
         GeometryReader { geo in
             let size = geo.size
             ZStack {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color(red: 0.12, green: 0.12, blue: 0.13))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 2)
-                    )
-                    .shadow(color: Color.hazardRed.opacity(glow * 0.55), radius: 30, y: 10)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color(red: 0.12, green: 0.12, blue: 0.13))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.12), lineWidth: 2)
+                        )
+                        .shadow(color: Color.hazardRed.opacity(glow * 0.55), radius: 30, y: 10)
 
-                interior(size: size)
+                    interior(size: size)
 
-                fxLayer(size: size)
+                    fxLayer(size: size)
 
-                if !shattered {
-                    Color.white.opacity(flash)
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .padding(10)
-                        .allowsHitTesting(false)
+                    if !shattered {
+                        Color.white.opacity(flash)
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .padding(10)
+                    }
                 }
+                .scaleEffect(paneScale)
+                .offset(x: shake, y: shakeY)
+                .allowsHitTesting(false)
+
+                Color.clear
+                    .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .highPriorityGesture(strikeGesture(in: size))
+                    .allowsHitTesting(acceptsStrikes)
             }
-            .scaleEffect(paneScale)
-            .offset(x: shake, y: shakeY)
-            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .gesture(strikeGesture(in: size))
         }
         .aspectRatio(0.78, contentMode: .fit)
         .frame(maxWidth: 340)
@@ -527,20 +528,16 @@ struct BreakGlassView: View {
         HStack(spacing: 10) {
             ForEach(0..<needed, id: \.self) { index in
                 Capsule()
-                    .fill(index < strikes ? Color.hazardYellow : Color.white.opacity(0.18))
+                    .fill(index < min(strikes, needed) ? Color.hazardYellow : Color.white.opacity(0.18))
                     .frame(width: 42, height: 6)
-                    .scaleEffect(index == strikes - 1 ? 1.18 : 1)
+                    .scaleEffect(index == min(strikes, needed) - 1 ? 1.18 : 1)
                     .animation(.spring(response: 0.3, dampingFraction: 0.6), value: strikes)
             }
         }
         .opacity(released ? 0 : 1)
-        .overlay(alignment: .bottom) {
-            Text(strikes == 0 ? "Strike the glass" : (shattered ? " " : "\(needed - strikes) more"))
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.white.opacity(0.45))
-                .offset(y: 18)
-        }
-        .padding(.bottom, 10)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Emergency glass")
+        .accessibilityValue("\(min(strikes, needed)) of \(needed) strikes")
     }
 
     private var footerCopy: some View {
@@ -602,14 +599,18 @@ struct BreakGlassView: View {
     }
 
     private func strikeGesture(in size: CGSize) -> some Gesture {
-        DragGesture(minimumDistance: 0)
+        SpatialTapGesture()
             .onEnded { value in
-                guard !shattered else { return }
                 strike(at: value.location, in: size)
             }
     }
 
     private func strike(at location: CGPoint, in size: CGSize) {
+        guard acceptsStrikes else { return }
+        let now = Date()
+        guard now.timeIntervalSince(lastStrikeAt) >= strikeCooldown else { return }
+        lastStrikeAt = now
+
         let pane = paneRect(in: size)
         let local = CGPoint(
             x: (location.x - pane.minX) / pane.width,
@@ -630,15 +631,19 @@ struct BreakGlassView: View {
         spawnDebris(at: origin, count: 10 + strikes * 6, exploding: false)
 
         strikes += 1
-        flashImpact(final: strikes >= needed)
+        let isFinal = strikes >= needed
+        if isFinal {
+            breaking = true
+        }
+        flashImpact(final: isFinal)
         haptic(for: strikes)
 
         withAnimation(.easeOut(duration: 0.35)) {
-            letteringBreak = CGFloat(strikes) / CGFloat(needed)
-            keyGlow = 0.4 + Double(strikes) * 0.18
+            letteringBreak = min(CGFloat(strikes) / CGFloat(needed), 1)
+            keyGlow = 0.4 + Double(min(strikes, needed)) * 0.18
         }
 
-        if strikes >= needed {
+        if isFinal {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
                 shatter()
             }
@@ -720,9 +725,16 @@ struct BreakGlassView: View {
     }
 
     private func shatter() {
+        guard !shattered else { return }
         shattered = true
-        LogicStore.shared.activateEmergencyOverride()
-        onReleased()
+        breaking = true
+        glow = 0.55
+        instructionPulse = false
+
+        DispatchQueue.main.async {
+            LogicStore.shared.activateEmergencyOverride()
+            onReleased()
+        }
 
         burstFlash = 0.92
         paneScale = 1.04

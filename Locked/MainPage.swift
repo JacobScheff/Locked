@@ -1,7 +1,6 @@
 import FamilyControls
 import ManagedSettings
 import SwiftUI
-import UIKit
 import WidgetKit
 
 struct MainPage: View {
@@ -83,7 +82,7 @@ struct MainPage: View {
                     appCount: visibleAppCounts.count
                 )
 
-                if screenTime.needsSetup {
+                if screenTime.isReady && screenTime.needsSetup {
                     ScreenTimeSetupCard(manager: screenTime)
                 }
 
@@ -133,11 +132,6 @@ struct MainPage: View {
                 }
             }
         }
-        .background {
-            if screenTime.isAuthorized {
-                UsageReportHost(selection: screenTime.selection)
-            }
-        }
         .onAppear {
             now = Date()
             refreshScreenTime()
@@ -153,9 +147,8 @@ struct MainPage: View {
                 refreshScreenTime()
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-            now = Date()
-            refreshScreenTime()
+        .onChange(of: screenTime.usageRevision) { _, _ in
+            applyUsageSnapshot()
         }
     }
 
@@ -166,21 +159,28 @@ struct MainPage: View {
     private func refreshScreenTime() {
         screenTime.refreshStatus()
         applyUsageSnapshot()
-        ScreenTimeShields.sync()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            applyUsageSnapshot()
-        }
     }
 
     private func applyUsageSnapshot() {
+        let newCounts: [String: Int]
+        let newLocked: [String]
         if UsageStore.hasSnapshot {
-            appCounts = UsageStore.loadAppCounts()
-            lockedApps = UsageStore.loadLockedApps()
+            newCounts = UsageStore.loadAppCounts()
+            newLocked = UsageStore.loadLockedApps()
         } else {
-            appCounts = ExcludedApps.strippingExcluded(appCounts)
-            lockedApps = ExcludedApps.strippingExcluded(lockedApps)
+            newCounts = ExcludedApps.strippingExcluded(appCounts)
+            newLocked = ExcludedApps.strippingExcluded(lockedApps)
         }
-        screentime = appCounts.values.reduce(0, +)
+        if appCounts != newCounts {
+            appCounts = newCounts
+        }
+        if lockedApps != newLocked {
+            lockedApps = newLocked
+        }
+        let total = newCounts.values.reduce(0, +)
+        if screentime != total {
+            screentime = total
+        }
     }
 
     private var header: some View {
@@ -381,7 +381,7 @@ struct LockedAppsSection: View {
 
     @State private var showUnlockAlert = false
     @State private var appToUnlock: String?
-    @State private var tokenToUnlock: ApplicationToken?
+    @State private var unnamedAppToUnlock: UnnamedLockedApp?
     @State private var unlockCost: Int = 0
 
     var body: some View {
@@ -408,10 +408,9 @@ struct LockedAppsSection: View {
                 }
             } else {
                 VStack(spacing: 10) {
-                    ForEach(unnamedLockedTokens, id: \.self) { token in
+                    ForEach(unnamedLockedTokens) { item in
                         HStack(spacing: 12) {
-                            Label(token)
-                                .labelStyle(.titleAndIcon)
+                            UnnamedLockedAppLabel(app: item)
                                 .font(.body.weight(.semibold))
                             Spacer()
                             if overrideActive {
@@ -426,7 +425,7 @@ struct LockedAppsSection: View {
                                 Button {
                                     appToUnlock = "this app"
                                     unlockCost = calculateUnlockCost(for: "App")
-                                    tokenToUnlock = token
+                                    unnamedAppToUnlock = item
                                     showUnlockAlert = true
                                 } label: {
                                     Text("Unlock")
@@ -472,7 +471,7 @@ struct LockedAppsSection: View {
                                 Button {
                                     appToUnlock = name
                                     unlockCost = calculateUnlockCost(for: name)
-                                    tokenToUnlock = nil
+                                    unnamedAppToUnlock = nil
                                     showUnlockAlert = true
                                 } label: {
                                     Text("Unlock")
@@ -496,9 +495,9 @@ struct LockedAppsSection: View {
             if keys >= Double(unlockCost) {
                 Button("Unlock (\(unlockCost) Keys)") {
                     keys -= Double(unlockCost)
-                    if let token = tokenToUnlock {
-                        LockedTokenStore.remove(token)
-                        tokenToUnlock = nil
+                    if let unnamed = unnamedAppToUnlock {
+                        LockedTokenStore.remove(unnamed)
+                        unnamedAppToUnlock = nil
                     } else {
                         lockedApps.removeAll { $0 == app }
                         UsageStore.unlock(name: app)
@@ -519,11 +518,8 @@ struct LockedAppsSection: View {
         }
     }
 
-    private var unnamedLockedTokens: [ApplicationToken] {
-        let named = Set(visibleLockedApps.compactMap { UsageStore.token(for: $0) })
-        return LockedTokenStore.load()
-            .subtracting(named)
-            .sorted { TokenCoding.id(for: $0) < TokenCoding.id(for: $1) }
+    private var unnamedLockedTokens: [UnnamedLockedApp] {
+        LockedTokenStore.unnamedApps(excludingNames: visibleLockedApps)
     }
 
     private var visibleLockedApps: [String] {
