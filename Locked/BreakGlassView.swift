@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import Combine
 
 // MARK: - Home: dormant seal
 
@@ -397,8 +398,8 @@ struct BreakGlassView: View {
                 .fill(
                     RadialGradient(
                         colors: [
-                            Color.hazardYellow.opacity(keyUnlocked ? 0.42 : 0.14 + 0.06 * Double(strikes)),
-                            Color.orange.opacity(keyUnlocked ? 0.12 : 0.04),
+                            Color.hazardYellow.opacity(keyUnlocked ? 0.42 : 0.06 + 0.03 * Double(strikes)),
+                            Color.orange.opacity(keyUnlocked ? 0.12 : 0.02),
                             Color.clear
                         ],
                         center: .center,
