@@ -7,10 +7,5 @@
 		<key>EXExtensionPointIdentifier</key>
 		<string>com.apple.deviceactivityui.report-extension</string>
 	</dict>
-	<key>NSExtension</key>
-	<dict>
-		<key>NSExtensionPointIdentifier</key>
-		<string>com.apple.deviceactivityui.report-extension</string>
-	</dict>
 </dict>
 </plist>
