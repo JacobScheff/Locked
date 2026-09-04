@@ -12,6 +12,16 @@ extension Color {
     static let hazardRed = Color(red: 0.76, green: 0.12, blue: 0.18)
 }
 
+extension ShapeStyle where Self == Color {
+    static var lockedIndigo: Color { Color.lockedIndigo }
+    static var lockedViolet: Color { Color.lockedViolet }
+    static var lockedTeal: Color { Color.lockedTeal }
+    static var lockedAmber: Color { Color.lockedAmber }
+    static var lockedRose: Color { Color.lockedRose }
+    static var hazardYellow: Color { Color.hazardYellow }
+    static var hazardRed: Color { Color.hazardRed }
+}
+
 enum LockedTheme {
     static let cardRadius: CGFloat = 22
 

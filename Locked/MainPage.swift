@@ -326,7 +326,7 @@ struct LockedAppsSection: View {
                     HStack(spacing: 12) {
                         Image(systemName: "checkmark.seal.fill")
                             .font(.title2)
-                            .foregroundStyle(.lockedTeal)
+                            .foregroundStyle(Color.lockedTeal)
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Nothing is locked")
                                 .font(.headline)
