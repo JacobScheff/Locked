@@ -81,7 +81,7 @@ struct HowToUseView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Break glass")
                                 .font(.headline)
-                            Text("If you truly cannot wait — a ride, a family call, a real emergency — break the glass on Home. Strike it three times. Every lock lifts for one hour, then snaps back on its own. While the seal is broken, an inner vault appears. Hold it open to add or remove Keys and Karma one step at a time. Keys stay at 0 or above; Karma stays between 0 and 100. This is a last resort.")
+                            Text("If you truly cannot wait — a ride, a family call, a real emergency — break the glass on Home. Strike it three times. Every lock lifts for one hour, then snaps back on its own. While the seal is broken, an inner vault card appears at the bottom of Home in place of the glass. Open it to add or remove Keys and Karma one step at a time. Keys stay at 0 or above; Karma stays between 0 and 100. This is a last resort.")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
