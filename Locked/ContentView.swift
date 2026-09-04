@@ -9,7 +9,8 @@ struct ContentView: View {
             if screenTime.isReady && screenTime.shouldCollectUsage {
                 UsageReportHost(
                     selection: screenTime.selection,
-                    dayKey: screenTime.reportDayKey
+                    dayKey: screenTime.reportDayKey,
+                    nonce: screenTime.usageReportNonce
                 )
             }
 

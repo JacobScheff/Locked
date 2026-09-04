@@ -149,20 +149,23 @@ func lockAppByKarma(from snapshot: [String: Int]) -> String {
 /// Locks the appropriate number of apps based on current karma.
 /// Returns the list of names that were locked. Safety-critical apps are never included.
 @discardableResult
-func performSundayLocking() -> [String] {
+func performSundayLocking(
+    using selection: FamilyActivitySelection? = nil,
+    minimumLockCount: Int = 0
+) -> [String] {
     let store = LogicStore.shared
     let karma = AppGroupStore.defaults.double(forKey: "karma")
-    let selection = ActivitySelectionStore.load()
+    let picker = ActivitySelectionStore.expandingCategories(selection ?? ActivitySelectionStore.load())
     
     var snapshot = ExcludedApps.strippingExcluded(UsageStore.loadAppCounts())
-    var tokenByName: [String: ApplicationToken] = [:]
-    for name in snapshot.keys {
+    var tokenByName: [String: ApplicationToken] = UsageStore.loadTokenMap()
+    for name in snapshot.keys where tokenByName[name] == nil {
         if let token = UsageStore.token(for: name) {
             tokenByName[name] = token
         }
     }
 
-    var unusedSelected = selection.applicationTokens.subtracting(ExcludedApps.tokens)
+    var unusedSelected = picker.applicationTokens.subtracting(ExcludedApps.tokens)
     for token in tokenByName.values {
         unusedSelected.remove(token)
     }
@@ -177,22 +180,24 @@ func performSundayLocking() -> [String] {
 
     // 100 Karma = 0% locked. 77 Karma = 23% locked. 0 Karma = 100% locked.
     let lockPercent = max(0.0, min(100.0, 100.0 - karma))
-    let numToLock = Int((lockPercent / 100.0 * Double(totalApps)).rounded(.up))
+    var numToLock = Int((lockPercent / 100.0 * Double(totalApps)).rounded(.up))
+    numToLock = max(numToLock, min(minimumLockCount, totalApps))
 
     var locked: [String] = []
     var lockedTokens: Set<ApplicationToken> = []
     var attempts = 0
-    while lockedTokens.count < numToLock && !snapshot.isEmpty && attempts < totalApps + numToLock + 8 {
+    while locked.count < numToLock && !snapshot.isEmpty && attempts < totalApps + numToLock + 8 {
         attempts += 1
         let picked = lockAppByKarma(from: snapshot)
         snapshot.removeValue(forKey: picked)
         guard !picked.isEmpty,
               !locked.contains(picked),
-              !ExcludedApps.isExcludedName(picked),
-              let token = tokenByName[picked] ?? UsageStore.token(for: picked)
+              !ExcludedApps.isExcludedName(picked)
         else { continue }
         locked.append(picked)
-        lockedTokens.insert(token)
+        if let token = tokenByName[picked] ?? UsageStore.token(for: picked) {
+            lockedTokens.insert(token)
+        }
     }
 
     let displayNames = locked.filter { !$0.hasPrefix("token:") }
@@ -203,10 +208,10 @@ func performSundayLocking() -> [String] {
     }
     UsageStore.saveLockedApps(displayNames)
     store.lockedApps = displayNames
-    if lockedTokens.isEmpty {
-        ScreenTimeShields.sync(using: selection)
-    } else {
+    if !lockedTokens.isEmpty {
         ScreenTimeShields.lock(tokens: lockedTokens)
+    } else {
+        ScreenTimeShields.sync(using: picker)
     }
     return displayNames
 }

@@ -19,6 +19,7 @@ final class ScreenTimeManager: ObservableObject {
     @Published var isPickerPresented = false
     @Published private(set) var isReady = false
     @Published private(set) var usageRevision = 0
+    @Published private(set) var usageReportNonce = 0
 
     private var didStartDailyMonitor = false
     private var launchedAt = Date()
@@ -82,6 +83,18 @@ final class ScreenTimeManager: ObservableObject {
         isPickerPresented = true
     }
 
+    func reloadUsageReport() {
+        usageReportNonce += 1
+    }
+
+    func simulateWeeklyLock() {
+        _ = performSundayLocking(using: selection, minimumLockCount: 1)
+        reloadUsageReport()
+        didStartDailyMonitor = false
+        ScreenTimeMonitor.startDaily()
+        didStartDailyMonitor = true
+    }
+
     func noteUsageUpdated() {
         usageRevision += 1
         ScreenTimeShields.sync(using: selection)
@@ -133,9 +146,10 @@ extension DeviceActivityReport.Context {
 struct UsageReportHost: View {
     let selection: FamilyActivitySelection
     let dayKey: String
+    var nonce: Int = 0
 
     private var identity: String {
-        "\(dayKey)-\(selection.applicationTokens.hashValue)-\(selection.categoryTokens.hashValue)"
+        "\(dayKey)-\(nonce)-\(selection.applicationTokens.hashValue)-\(selection.categoryTokens.hashValue)"
     }
 
     var body: some View {

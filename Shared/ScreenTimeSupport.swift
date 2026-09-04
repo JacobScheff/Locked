@@ -384,7 +384,9 @@ enum UsageStore {
                 keepNames.insert(name)
             }
         }
-        let filteredTokens = mergedTokens.filter { keepNames.contains($0.key) }
+        let filteredTokens = mergedTokens.filter {
+            keepNames.contains($0.key) || remainingNames.contains($0.key)
+        }
         let total = filteredCounts.values.reduce(0, +)
 
         var ids = loadBundleIDs()
@@ -599,8 +601,10 @@ enum ScreenTimeMonitor {
             intervalEnd: DateComponents(hour: 23, minute: 59),
             repeats: true
         )
+        let center = DeviceActivityCenter()
+        center.stopMonitoring([.daily])
         do {
-            try DeviceActivityCenter().startMonitoring(.daily, during: schedule)
+            try center.startMonitoring(.daily, during: schedule)
         } catch {
             print("Failed to start daily Screen Time monitoring: \(error)")
         }
