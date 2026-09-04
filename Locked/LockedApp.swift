@@ -11,6 +11,10 @@ import SwiftData
 @main
 struct LockedApp: App {
     @StateObject private var lockScheduler = LockScheduler()
+
+    init() {
+        AppGroupStore.prepareContainer()
+    }
     
     var body: some Scene {
         WindowGroup {

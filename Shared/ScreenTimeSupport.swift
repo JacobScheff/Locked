@@ -57,7 +57,22 @@ enum AppGroupStore {
     /// One suite instance. Repeated `UserDefaults(suiteName:)` lookups from
     /// Device Activity extensions trigger CFPrefs `kCFPreferencesAnyUser`
     /// failures and detach from cfprefsd.
-    static let defaults: UserDefaults = UserDefaults(suiteName: suiteName) ?? .standard
+    static let defaults: UserDefaults = {
+        prepareContainer()
+        return UserDefaults(suiteName: suiteName) ?? .standard
+    }()
+
+    /// Create the group container before any suite read. Doing this after
+    /// a `UserDefaults(suiteName:)` lookup is what triggers the
+    /// `kCFPreferencesAnyUser` / cfprefsd detach on first launch.
+    static func prepareContainer() {
+        guard let url = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: suiteName) else {
+            return
+        }
+        if !FileManager.default.fileExists(atPath: url.path) {
+            try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        }
+    }
 
     static var containerURL: URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: suiteName)
@@ -114,6 +129,10 @@ enum AppGroupStore {
         guard let raw, let data = raw.data(using: .utf8) else { return nil }
         return TokenCoding.decode(type, from: data)
     }
+}
+
+extension UserDefaults {
+    static var lockedGroup: UserDefaults { AppGroupStore.defaults }
 }
 
 enum TokenCoding {
@@ -528,10 +547,12 @@ enum ScreenTimeShields {
     private static func apply(_ tokens: Set<ApplicationToken>) {
         let isolated = isolatedTokens(from: tokens)
         guard !isolated.isEmpty else { return }
-        store.clearAllSettings()
-        store.shield.applications = isolated
+        // Do not call clearAllSettings() here. That write is applied
+        // asynchronously and can wipe the assignment that follows, which
+        // leaves the UI saying "Locked" while SpringBoard has no shield.
         store.shield.applicationCategories = nil
         store.shield.webDomains = nil
+        store.shield.applications = isolated
     }
 
     static func isolatedTokens(from tokens: Set<ApplicationToken>) -> Set<ApplicationToken> {
@@ -550,30 +571,24 @@ enum ScreenTimeShields {
         lockedNames: [String],
         selection: FamilyActivitySelection
     ) -> Set<ApplicationToken> {
+        _ = selection
         var tokens = LockedTokenStore.load()
         let named = UsageStore.loadTokenMap()
-        for (name, token) in named {
-            if lockedNames.contains(name) {
+        for name in lockedNames {
+            if let token = named[name] ?? UsageStore.token(for: name) {
                 tokens.insert(token)
-            } else {
-                tokens.remove(token)
             }
         }
-
-        // If the picker has individual app tokens, drop unnamed leftovers
-        // that are no longer in the authorized pool. Skip this when the
-        // picker is category-only — those tokens come from the usage map.
-        let selected = selection.applicationTokens.subtracting(ExcludedApps.tokens)
-        if !selected.isEmpty {
-            let namedLocked = Set(lockedNames.compactMap { named[$0] })
-            tokens.subtract(tokens.subtracting(namedLocked).subtracting(selected))
+        for (name, token) in named where !lockedNames.contains(name) {
+            tokens.remove(token)
         }
-
         return isolatedTokens(from: tokens)
     }
 
     static func clear() {
-        store.clearAllSettings()
+        store.shield.applications = nil
+        store.shield.applicationCategories = nil
+        store.shield.webDomains = nil
     }
 }
 

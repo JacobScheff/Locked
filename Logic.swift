@@ -180,16 +180,21 @@ func performSundayLocking() -> [String] {
     let numToLock = Int((lockPercent / 100.0 * Double(totalApps)).rounded(.up))
 
     var locked: [String] = []
-    
-    for _ in 0 ..< numToLock {
+    var lockedTokens: Set<ApplicationToken> = []
+    var attempts = 0
+    while lockedTokens.count < numToLock && !snapshot.isEmpty && attempts < totalApps + numToLock + 8 {
+        attempts += 1
         let picked = lockAppByKarma(from: snapshot)
-        if !picked.isEmpty && !locked.contains(picked) && !ExcludedApps.isExcludedName(picked) {
-            locked.append(picked)
-            snapshot.removeValue(forKey: picked)
-        }
+        snapshot.removeValue(forKey: picked)
+        guard !picked.isEmpty,
+              !locked.contains(picked),
+              !ExcludedApps.isExcludedName(picked),
+              let token = tokenByName[picked] ?? UsageStore.token(for: picked)
+        else { continue }
+        locked.append(picked)
+        lockedTokens.insert(token)
     }
 
-    let lockedTokens = Set(locked.compactMap { tokenByName[$0] })
     let displayNames = locked.filter { !$0.hasPrefix("token:") }
     for name in displayNames {
         if let token = tokenByName[name] {
@@ -199,8 +204,6 @@ func performSundayLocking() -> [String] {
     UsageStore.saveLockedApps(displayNames)
     store.lockedApps = displayNames
     if lockedTokens.isEmpty {
-        // Names are saved. The usage report applies the real tokens in-process
-        // once Screen Time hands them over — do not wipe live shields here.
         ScreenTimeShields.sync(using: selection)
     } else {
         ScreenTimeShields.lock(tokens: lockedTokens)

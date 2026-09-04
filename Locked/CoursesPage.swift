@@ -43,7 +43,7 @@ struct Course: Identifiable, Codable, Equatable {
 // MARK: - Courses Page
 
 struct CoursesPage: View {
-    @AppStorage("courses", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    @AppStorage("courses", store: .lockedGroup)
     var courses: [Course] = []
 
     @State private var editingCourse: Course?
@@ -349,8 +349,8 @@ struct CourseDetailView: View {
     @Binding var courses: [Course]
     let courseID: UUID
 
-    @AppStorage("keys", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked")) var keys: Double = 0.0
-    @AppStorage("karma", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked")) var karma: Double = 0.0
+    @AppStorage("keys", store: .lockedGroup) var keys: Double = 0.0
+    @AppStorage("karma", store: .lockedGroup) var karma: Double = 0.0
 
     @State private var editingAssignment: Assignment?
     @State private var assignmentToDelete: Assignment?
