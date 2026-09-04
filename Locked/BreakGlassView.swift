@@ -183,6 +183,7 @@ struct BreakGlassView: View {
     @State private var keyGlow: Double = 0.4
     @State private var keyUnlocked = false
     @State private var shackleOpen = false
+    @State private var keySpin: Double = 0
 
     private let needed = EmergencyOverride.strikesToBreak
 
@@ -348,9 +349,9 @@ struct BreakGlassView: View {
             } else {
                 LinearGradient(
                     colors: [
-                        Color(red: 0.55, green: 0.66, blue: 0.78).opacity(0.38 + 0.08 * Double(strikes)),
-                        Color(red: 0.22, green: 0.28, blue: 0.36).opacity(0.42),
-                        Color(red: 0.62, green: 0.72, blue: 0.82).opacity(0.22)
+                        Color(red: 0.55, green: 0.66, blue: 0.78).opacity(0.26 + 0.05 * Double(strikes)),
+                        Color(red: 0.22, green: 0.28, blue: 0.36).opacity(0.30),
+                        Color(red: 0.62, green: 0.72, blue: 0.82).opacity(0.16)
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
@@ -384,45 +385,46 @@ struct BreakGlassView: View {
                 .fill(
                     RadialGradient(
                         colors: [
-                            Color.hazardYellow.opacity(keyUnlocked ? 0.55 : 0.18 + 0.08 * Double(strikes)),
-                            Color.orange.opacity(keyUnlocked ? 0.18 : 0.05),
+                            Color.hazardYellow.opacity(keyUnlocked ? 0.42 : 0.14 + 0.06 * Double(strikes)),
+                            Color.orange.opacity(keyUnlocked ? 0.12 : 0.04),
                             Color.clear
                         ],
                         center: .center,
-                        startRadius: 8,
-                        endRadius: 120
+                        startRadius: 6,
+                        endRadius: 118
                     )
                 )
                 .frame(width: 240, height: 240)
-                .scaleEffect(instructionPulse && !keyUnlocked ? 1.06 : 1)
+                .scaleEffect(instructionPulse && !keyUnlocked ? 1.05 : 1)
 
             Image(systemName: shackleOpen ? "lock.open.fill" : "lock.fill")
                 .font(.system(size: 78, weight: .bold))
-                .foregroundStyle(Color.white.opacity(shackleOpen ? 0.42 : 0.16))
-                .offset(x: shackleOpen ? 10 : 0, y: 18)
-                .animation(.spring(response: 0.42, dampingFraction: 0.62), value: shackleOpen)
-
-            Image(systemName: "key.fill")
-                .font(.system(size: 96, weight: .bold))
                 .foregroundStyle(
                     LinearGradient(
                         colors: [
-                            Color.white,
-                            Color.hazardYellow,
-                            Color.orange
+                            Color.white.opacity(shackleOpen ? 0.55 : 0.28),
+                            Color.white.opacity(shackleOpen ? 0.22 : 0.10)
                         ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+                        startPoint: .top,
+                        endPoint: .bottom
                     )
                 )
-                .shadow(color: Color.hazardYellow.opacity(keyGlow), radius: keyUnlocked ? 32 : 16, y: 4)
-                .shadow(color: Color.orange.opacity(keyGlow * 0.5), radius: keyUnlocked ? 18 : 8)
+                .shadow(color: .black.opacity(0.55), radius: 8, y: 6)
+                .offset(x: shackleOpen ? 10 : 0, y: 20)
+                .animation(.spring(response: 0.42, dampingFraction: 0.62), value: shackleOpen)
+
+            SculptedKey()
+                .scaleEffect(keyScale * (instructionPulse && !shattered ? 1.02 : 1))
                 .rotationEffect(Angle.degrees(-40 + keyTurn))
-                .scaleEffect(keyScale * (instructionPulse && !shattered ? 1.03 : 1))
-                .offset(y: keyUnlocked ? -6 : 4)
+                .rotation3DEffect(
+                    Angle.degrees(keySpin),
+                    axis: (x: 0.18, y: 1.0, z: 0.12),
+                    perspective: 0.45
+                )
+                .offset(y: keyUnlocked ? -8 : 2)
+                .shadow(color: Color.hazardYellow.opacity(keyGlow * 0.55), radius: keyUnlocked ? 18 : 10, y: 6)
         }
-        .blur(radius: shattered ? 0 : 0.8)
-        .opacity(shattered ? 1 : 0.72)
+        .opacity(shattered ? 1 : 0.92)
         .allowsHitTesting(false)
     }
 
@@ -535,16 +537,17 @@ struct BreakGlassView: View {
         VStack(spacing: 22) {
             ZStack {
                 Circle()
-                    .fill(Color.hazardYellow.opacity(0.15))
-                    .frame(width: 132, height: 132)
-                    .scaleEffect(released ? 1 : 0.6)
+                    .fill(Color.hazardYellow.opacity(0.16))
+                    .frame(width: 150, height: 150)
                 Circle()
                     .stroke(Color.hazardYellow.opacity(0.35), lineWidth: 2)
-                    .frame(width: 150, height: 150)
-                Image(systemName: "lock.open.fill")
-                    .font(.system(size: 52, weight: .bold))
-                    .foregroundStyle(Color.hazardYellow)
-                    .symbolEffect(.bounce.up, value: released)
+                    .frame(width: 168, height: 168)
+                SculptedKey()
+                    .rotation3DEffect(
+                        Angle.degrees(keySpin),
+                        axis: (x: 0.18, y: 1.0, z: 0.12),
+                        perspective: 0.45
+                    )
             }
 
             VStack(spacing: 8) {
@@ -751,6 +754,9 @@ struct BreakGlassView: View {
                 keyScale = 1.18
             }
             UINotificationFeedbackGenerator().notificationOccurred(.success)
+            withAnimation(.linear(duration: 2.6).repeatForever(autoreverses: false)) {
+                keySpin = 360
+            }
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.45) {
@@ -762,6 +768,50 @@ struct BreakGlassView: View {
 }
 
 // MARK: - Drawing helpers
+
+private struct SculptedKey: View {
+    var body: some View {
+        ZStack {
+            Image(systemName: "key.fill")
+                .font(.system(size: 96, weight: .bold))
+                .foregroundStyle(Color(red: 0.32, green: 0.16, blue: 0.02))
+                .offset(x: 5, y: 7)
+
+            Image(systemName: "key.fill")
+                .font(.system(size: 96, weight: .bold))
+                .foregroundStyle(Color(red: 0.78, green: 0.46, blue: 0.08))
+                .offset(x: 2.5, y: 3.5)
+
+            Image(systemName: "key.fill")
+                .font(.system(size: 96, weight: .bold))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 1.0, green: 0.97, blue: 0.78),
+                            Color.hazardYellow,
+                            Color(red: 0.86, green: 0.52, blue: 0.10)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(alignment: .topLeading) {
+                    Image(systemName: "key.fill")
+                        .font(.system(size: 96, weight: .bold))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.65), Color.clear],
+                                startPoint: .topLeading,
+                                endPoint: .center
+                            )
+                        )
+                }
+        }
+        .compositingGroup()
+        .shadow(color: .black.opacity(0.6), radius: 8, y: 7)
+        .shadow(color: Color.hazardYellow.opacity(0.3), radius: 10, y: 1)
+    }
+}
 
 struct HazardStripeBar: View {
     var body: some View {
