@@ -178,6 +178,11 @@ struct BreakGlassView: View {
     @State private var instructionPulse = false
     @State private var impactPoint = CGPoint(x: 0.5, y: 0.45)
     @State private var letteringBreak: CGFloat = 0
+    @State private var keyTurn: Double = 0
+    @State private var keyScale: CGFloat = 1
+    @State private var keyGlow: Double = 0.4
+    @State private var keyUnlocked = false
+    @State private var shackleOpen = false
 
     private let needed = EmergencyOverride.strikesToBreak
 
@@ -321,43 +326,47 @@ struct BreakGlassView: View {
 
     private func glassPane(in size: CGSize) -> some View {
         ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.10, green: 0.07, blue: 0.04),
+                    Color.black
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            sealedPrize
+
             if shattered {
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.18, green: 0.03, blue: 0.05),
-                        Color.black
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
                 RadialGradient(
-                    colors: [Color.hazardRed.opacity(0.55), .clear],
-                    center: UnitPoint(x: impactPoint.x, y: impactPoint.y),
-                    startRadius: 4,
-                    endRadius: 160
+                    colors: [Color.hazardYellow.opacity(0.22), .clear],
+                    center: .center,
+                    startRadius: 8,
+                    endRadius: 170
                 )
+                .allowsHitTesting(false)
             } else {
                 LinearGradient(
                     colors: [
-                        Color(red: 0.55, green: 0.66, blue: 0.78).opacity(0.45 + 0.12 * Double(strikes)),
-                        Color(red: 0.22, green: 0.28, blue: 0.36).opacity(0.55),
-                        Color(red: 0.62, green: 0.72, blue: 0.82).opacity(0.28)
+                        Color(red: 0.55, green: 0.66, blue: 0.78).opacity(0.38 + 0.08 * Double(strikes)),
+                        Color(red: 0.22, green: 0.28, blue: 0.36).opacity(0.42),
+                        Color(red: 0.62, green: 0.72, blue: 0.82).opacity(0.22)
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
 
                 LinearGradient(
-                    colors: [.white.opacity(0.28), .clear, .white.opacity(0.08)],
+                    colors: [.white.opacity(0.22), .clear, .white.opacity(0.08)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
                 .blendMode(.screen)
 
                 paneLettering
-                    .padding(20)
+                    .padding(18)
                     .blur(radius: letteringBreak * 1.2)
-                    .opacity(1 - letteringBreak * 0.35)
+                    .opacity(1 - letteringBreak * 0.4)
 
                 Canvas { context, canvasSize in
                     for crack in cracks {
@@ -367,6 +376,54 @@ struct BreakGlassView: View {
                 .allowsHitTesting(false)
             }
         }
+    }
+
+    private var sealedPrize: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color.hazardYellow.opacity(keyUnlocked ? 0.55 : 0.18 + 0.08 * Double(strikes)),
+                            Color.orange.opacity(keyUnlocked ? 0.18 : 0.05),
+                            Color.clear
+                        ],
+                        center: .center,
+                        startRadius: 8,
+                        endRadius: 120
+                    )
+                )
+                .frame(width: 240, height: 240)
+                .scaleEffect(instructionPulse && !keyUnlocked ? 1.06 : 1)
+
+            Image(systemName: shackleOpen ? "lock.open.fill" : "lock.fill")
+                .font(.system(size: 78, weight: .bold))
+                .foregroundStyle(Color.white.opacity(shackleOpen ? 0.42 : 0.16))
+                .offset(x: shackleOpen ? 10 : 0, y: 18)
+                .animation(.spring(response: 0.42, dampingFraction: 0.62), value: shackleOpen)
+
+            Image(systemName: "key.fill")
+                .font(.system(size: 96, weight: .bold))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [
+                            Color.white,
+                            Color.hazardYellow,
+                            Color.orange
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .shadow(color: Color.hazardYellow.opacity(keyGlow), radius: keyUnlocked ? 32 : 16, y: 4)
+                .shadow(color: Color.orange.opacity(keyGlow * 0.5), radius: keyUnlocked ? 18 : 8)
+                .rotationEffect(Angle.degrees(-40 + keyTurn))
+                .scaleEffect(keyScale * (instructionPulse && !shattered ? 1.03 : 1))
+                .offset(y: keyUnlocked ? -6 : 4)
+        }
+        .blur(radius: shattered ? 0 : 0.8)
+        .opacity(shattered ? 1 : 0.72)
+        .allowsHitTesting(false)
     }
 
     private func fxLayer(size: CGSize) -> some View {
@@ -424,16 +481,15 @@ struct BreakGlassView: View {
     }
 
     private var paneLettering: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "lock.fill")
-                .font(.system(size: 36, weight: .bold))
-                .foregroundStyle(Color.hazardRed.opacity(0.9))
-
-            Text("In case of\nemergency")
-                .font(.system(size: 28, weight: .heavy, design: .rounded))
+        VStack(spacing: 6) {
+            Text("In case of emergency")
+                .font(.system(size: 15, weight: .heavy, design: .rounded))
                 .foregroundStyle(Color(red: 0.72, green: 0.08, blue: 0.14))
+                .textCase(.uppercase)
+                .tracking(1.2)
                 .multilineTextAlignment(.center)
-                .lineSpacing(2)
+
+            Spacer()
 
             Text("Break glass")
                 .font(.system(size: 13, weight: .bold, design: .rounded))
@@ -445,7 +501,6 @@ struct BreakGlassView: View {
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.white.opacity(0.55))
                 .multilineTextAlignment(.center)
-                .padding(.top, 4)
         }
     }
 
@@ -559,6 +614,7 @@ struct BreakGlassView: View {
 
         withAnimation(.easeOut(duration: 0.35)) {
             letteringBreak = CGFloat(strikes) / CGFloat(needed)
+            keyGlow = 0.4 + Double(strikes) * 0.18
         }
 
         if strikes >= needed {
@@ -680,7 +736,24 @@ struct BreakGlassView: View {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred(intensity: 0.6)
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.05) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
+            withAnimation(.spring(response: 0.48, dampingFraction: 0.62)) {
+                keyTurn = 95
+                keyScale = 1.12
+                keyGlow = 1.0
+            }
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.72) {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.58)) {
+                shackleOpen = true
+                keyUnlocked = true
+                keyScale = 1.18
+            }
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.45) {
             withAnimation(.spring(response: 0.55, dampingFraction: 0.78)) {
                 released = true
             }
