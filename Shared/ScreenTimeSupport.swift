@@ -59,7 +59,10 @@ enum AppGroupStore {
     }
 
     static func encodeJSON<T: Encodable>(_ value: T) -> String? {
-        guard let data = TokenCoding.encode(value),
+        // TokenCoding prefers binary plists, which cannot be stored as UTF-8
+        // UserDefaults strings. Usage snapshots (counts, tokens, bundle IDs)
+        // must stay JSON so the report extension can persist them.
+        guard let data = try? JSONEncoder().encode(value),
               let string = String(data: data, encoding: .utf8)
         else { return nil }
         return string
@@ -67,6 +70,7 @@ enum AppGroupStore {
 
     static func decodeJSON<T: Decodable>(_ type: T.Type, from raw: String?) -> T? {
         guard let raw, let data = raw.data(using: .utf8) else { return nil }
+        if let value = try? JSONDecoder().decode(type, from: data) { return value }
         return TokenCoding.decode(type, from: data)
     }
 }
@@ -185,7 +189,7 @@ enum ActivitySelectionStore {
         guard let data = AppGroupStore.defaults.data(forKey: key),
               let selection = TokenCoding.decode(FamilyActivitySelection.self, from: data)
         else {
-            return FamilyActivitySelection(includeEntireCategory: true)
+            return FamilyActivitySelection()
         }
         return selection
     }
@@ -227,13 +231,38 @@ enum UsageStore {
         AppGroupStore.defaults.bool(forKey: "hasUsageSnapshot")
     }
 
+    static let tokensDataKey = "appTokensData"
+
     static func loadTokens() -> [String: Data] {
-        AppGroupStore.decodeJSON([String: Data].self, from: AppGroupStore.defaults.string(forKey: "appTokens")) ?? [:]
+        if let data = AppGroupStore.defaults.data(forKey: tokensDataKey),
+           let tokens = TokenCoding.decode([String: Data].self, from: data) {
+            return tokens
+        }
+        return AppGroupStore.decodeJSON([String: Data].self, from: AppGroupStore.defaults.string(forKey: "appTokens")) ?? [:]
+    }
+
+    static func saveTokens(_ tokens: [String: Data]) {
+        if let data = TokenCoding.encode(tokens) {
+            AppGroupStore.defaults.set(data, forKey: tokensDataKey)
+        }
+        if let raw = AppGroupStore.encodeJSON(tokens) {
+            AppGroupStore.defaults.set(raw, forKey: "appTokens")
+        }
     }
 
     static func token(for name: String) -> ApplicationToken? {
         guard let data = loadTokens()[name] else { return nil }
         return TokenCoding.decode(ApplicationToken.self, from: data)
+    }
+
+    static func tokensByName() -> [String: ApplicationToken] {
+        var result: [String: ApplicationToken] = [:]
+        for (name, data) in loadTokens() {
+            if let token = TokenCoding.decode(ApplicationToken.self, from: data) {
+                result[name] = token
+            }
+        }
+        return result
     }
 
     static func loadBundleIDs() -> [String: String] {
@@ -255,7 +284,12 @@ enum UsageStore {
     ) {
         let filteredCounts = ExcludedApps.strippingExcluded(appCounts)
         let remainingNames = Set(filteredCounts.keys)
-        let filteredTokens = tokens.filter { remainingNames.contains($0.key) }
+        let lockedNames = Set(loadLockedApps())
+        var mergedTokens = loadTokens()
+        for (name, data) in tokens where remainingNames.contains(name) {
+            mergedTokens[name] = data
+        }
+        mergedTokens = mergedTokens.filter { remainingNames.contains($0.key) || lockedNames.contains($0.key) }
         let total = filteredCounts.values.reduce(0, +)
 
         var ids = loadBundleIDs()
@@ -269,9 +303,7 @@ enum UsageStore {
         if let raw = AppGroupStore.encodeJSON(filteredCounts) {
             AppGroupStore.defaults.set(raw, forKey: "appCounts")
         }
-        if let raw = AppGroupStore.encodeJSON(filteredTokens) {
-            AppGroupStore.defaults.set(raw, forKey: "appTokens")
-        }
+        saveTokens(mergedTokens)
         if let raw = AppGroupStore.encodeJSON(ids) {
             AppGroupStore.defaults.set(raw, forKey: "appBundleIDs")
         }
@@ -290,9 +322,7 @@ enum UsageStore {
 
     static func unlock(name: String) {
         saveLockedApps(loadLockedApps().filter { $0 != name })
-        if let token = token(for: name) {
-            LockedTokenStore.remove(token)
-        }
+        LockedTokenStore.remove(name: name)
     }
 
     static func pingMainApp() {
@@ -313,10 +343,24 @@ struct UnnamedLockedApp: Identifiable, Hashable {
 
 enum LockedTokenStore {
     static let key = "lockedAppTokens"
+    static let byNameKey = "lockedAppTokensByName"
 
     static func load() -> Set<ApplicationToken> {
         guard let data = AppGroupStore.defaults.data(forKey: key) else { return [] }
         return TokenCoding.decode(Set<ApplicationToken>.self, from: data) ?? []
+    }
+
+    static func loadNamed() -> [String: ApplicationToken] {
+        guard let data = AppGroupStore.defaults.data(forKey: byNameKey),
+              let encoded = TokenCoding.decode([String: Data].self, from: data)
+        else { return [:] }
+        var named: [String: ApplicationToken] = [:]
+        for (name, tokenData) in encoded {
+            if let token = TokenCoding.decode(ApplicationToken.self, from: tokenData) {
+                named[name] = token
+            }
+        }
+        return named
     }
 
     static func save(_ tokens: Set<ApplicationToken>) {
@@ -326,10 +370,40 @@ enum LockedTokenStore {
         }
     }
 
+    static func saveNamed(_ named: [String: ApplicationToken]) {
+        var encoded: [String: Data] = [:]
+        for (name, token) in named where !ExcludedApps.isExcludedName(name) {
+            if let data = TokenCoding.encode(token) {
+                encoded[name] = data
+            }
+        }
+        if let data = TokenCoding.encode(encoded) {
+            AppGroupStore.defaults.set(data, forKey: byNameKey)
+        }
+    }
+
+    static func replace(named: [String: ApplicationToken], unnamed: Set<ApplicationToken> = []) {
+        let filteredNamed = named.filter { !ExcludedApps.isExcludedName($0.key) }
+        saveNamed(filteredNamed)
+        save(unnamed.union(filteredNamed.values))
+    }
+
     static func remove(_ token: ApplicationToken) {
         var tokens = load()
         tokens.remove(token)
         save(tokens)
+        saveNamed(loadNamed().filter { $0.value != token })
+    }
+
+    static func remove(name: String) {
+        var named = loadNamed()
+        let token = named.removeValue(forKey: name) ?? UsageStore.token(for: name)
+        saveNamed(named)
+        if let token {
+            var tokens = load()
+            tokens.remove(token)
+            save(tokens)
+        }
     }
 
     static func remove(_ app: UnnamedLockedApp) {
@@ -337,74 +411,109 @@ enum LockedTokenStore {
     }
 
     static func unnamedApps(excludingNames names: [String]) -> [UnnamedLockedApp] {
-        let named = Set(names.compactMap { UsageStore.token(for: $0) })
+        var namedTokens = Set(names.compactMap { UsageStore.token(for: $0) })
+        namedTokens.formUnion(loadNamed().filter { names.contains($0.key) }.map(\.value))
         return load()
-            .subtracting(named)
+            .subtracting(namedTokens)
             .map { UnnamedLockedApp(id: TokenCoding.id(for: $0), token: $0) }
             .sorted { $0.id < $1.id }
     }
 }
 
+/// Decides which tokens belong on the home-screen shield.
+/// Named apps stay locked only while they are still in `lockedNames`.
+/// Stored tokens that do not belong to any known display name stay locked
+/// until they are unlocked explicitly (picker apps with no usage name yet).
+enum ShieldTokenResolution {
+    static func resolve<Token: Hashable>(
+        lockedNames: [String],
+        tokenByName: [String: Token],
+        storedTokens: Set<Token>,
+        knownNamedTokens: Set<Token>
+    ) -> Set<Token> {
+        var tokens = Set(lockedNames.compactMap { tokenByName[$0] })
+        for token in storedTokens where !knownNamedTokens.contains(token) {
+            tokens.insert(token)
+        }
+        return tokens
+    }
+}
+
 enum ScreenTimeShields {
+    static let applicationLimit = 50
+
     static var store: ManagedSettingsStore {
         ManagedSettingsStore(named: .locked)
     }
 
     /// Applies or clears shields from the current lock list and emergency-override state.
     static func sync(using selection: FamilyActivitySelection? = nil) {
+        _ = selection
         if EmergencyOverride.isActive() {
             clear()
             return
         }
 
-        let picker = selection ?? ActivitySelectionStore.load()
         let lockedNames = UsageStore.loadLockedApps()
-        var tokens = tokensToShield(lockedNames: lockedNames, selection: picker)
-
-        LockedTokenStore.save(tokens)
-        tokens = Set(Array(tokens).prefix(50))
-
-        store.shield.applications = tokens.isEmpty ? nil : tokens
-        if tokens.isEmpty, !lockedNames.isEmpty, !picker.categoryTokens.isEmpty {
-            store.shield.applicationCategories = .specific(picker.categoryTokens)
-        } else {
-            store.shield.applicationCategories = nil
+        var named = LockedTokenStore.loadNamed()
+        let usageTokens = UsageStore.tokensByName()
+        for name in lockedNames {
+            if let token = usageTokens[name] {
+                named[name] = token
+            }
         }
+        named = named.filter { lockedNames.contains($0.key) }
+
+        var tokenByName = usageTokens
+        for (name, token) in named {
+            tokenByName[name] = token
+        }
+
+        let knownNamedTokens = Set(usageTokens.values).union(named.values)
+        var tokens = ShieldTokenResolution.resolve(
+            lockedNames: lockedNames,
+            tokenByName: tokenByName,
+            storedTokens: LockedTokenStore.load(),
+            knownNamedTokens: knownNamedTokens
+        )
+        tokens.subtract(ExcludedApps.tokens)
+
+        LockedTokenStore.replace(
+            named: named,
+            unnamed: tokens.subtracting(Set(named.values))
+        )
+
+        let applications = capped(tokens, lockedNames: lockedNames, named: named)
+        store.shield.applications = applications.isEmpty ? nil : applications
+        // Never fall back to category shields — that locks every app in the
+        // category (often the whole home screen) until the last named lock
+        // is spent. Individual unlocks must uns shield that app immediately.
+        store.shield.applicationCategories = nil
         store.shield.webDomains = nil
     }
 
-    /// Resolves Screen Time tokens for the named lock list.
-    /// Name lookup often fails in the main app, so this falls back to the
-    /// FamilyActivityPicker selection the user already approved.
-    static func tokensToShield(
+    static func capped(
+        _ tokens: Set<ApplicationToken>,
         lockedNames: [String],
-        selection: FamilyActivitySelection
+        named: [String: ApplicationToken]
     ) -> Set<ApplicationToken> {
-        var tokens = LockedTokenStore.load()
-        for name in lockedNames {
-            if let token = UsageStore.token(for: name) {
-                tokens.insert(token)
-            }
+        guard tokens.count > applicationLimit else { return tokens }
+        let counts = UsageStore.loadAppCounts()
+        var result: [ApplicationToken] = []
+        var seen = Set<ApplicationToken>()
+        for name in lockedNames.sorted(by: { (counts[$0] ?? 0) > (counts[$1] ?? 0) }) {
+            guard let token = named[name] ?? UsageStore.token(for: name),
+                  tokens.contains(token),
+                  seen.insert(token).inserted
+            else { continue }
+            result.append(token)
+            if result.count == applicationLimit { return Set(result) }
         }
-        tokens.subtract(ExcludedApps.tokens)
-
-        let selected = selection.applicationTokens.subtracting(ExcludedApps.tokens)
-        if tokens.count < lockedNames.count {
-            for token in selected where !tokens.contains(token) {
-                guard tokens.count < max(lockedNames.count, 1) else { break }
-                tokens.insert(token)
-            }
+        for token in tokens where seen.insert(token).inserted {
+            result.append(token)
+            if result.count == applicationLimit { return Set(result) }
         }
-
-        if tokens.isEmpty && !lockedNames.isEmpty {
-            tokens = Set(Array(selected).prefix(lockedNames.count))
-        }
-
-        if tokens.isEmpty && lockedNames.isEmpty && !selected.isEmpty {
-            tokens = LockedTokenStore.load().intersection(selected)
-        }
-
-        return tokens.subtracting(ExcludedApps.tokens)
+        return Set(result)
     }
 
     static func clear() {

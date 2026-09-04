@@ -55,7 +55,7 @@ struct HowToUseView: View {
                         title: "Choose apps",
                         instructions: [
                             "Tap **Choose Apps** and pick what Locked is allowed to manage.",
-                            "You can select individual apps or whole categories.",
+                            "You can select individual apps or whole categories. Categories are only for tracking — home-screen locks stay on the specific apps that were locked, and unlocking one app unlocks just that app.",
                             "**Locked, Settings, Phone, Messages, FaceTime, Find My, Wallet, and Clock never appear and never lock** — they also don’t count toward usage percentages."
                         ]
                     )

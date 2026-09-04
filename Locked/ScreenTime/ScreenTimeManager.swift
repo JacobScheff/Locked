@@ -79,6 +79,7 @@ final class ScreenTimeManager: ObservableObject {
 
     func noteUsageUpdated() {
         usageRevision += 1
+        ScreenTimeShields.sync(using: selection)
         markReady()
     }
 

@@ -190,9 +190,18 @@ func performSundayLocking() -> [String] {
         }
     }
 
-    let lockedTokens = Set(locked.compactMap { tokenByName[$0] })
+    var named: [String: ApplicationToken] = [:]
+    var unnamed: Set<ApplicationToken> = []
+    for name in locked {
+        guard let token = tokenByName[name] else { continue }
+        if name.hasPrefix("token:") {
+            unnamed.insert(token)
+        } else {
+            named[name] = token
+        }
+    }
     let displayNames = locked.filter { !$0.hasPrefix("token:") }
-    LockedTokenStore.save(lockedTokens)
+    LockedTokenStore.replace(named: named, unnamed: unnamed)
     UsageStore.saveLockedApps(displayNames)
     store.lockedApps = displayNames
     ScreenTimeShields.sync(using: selection)
