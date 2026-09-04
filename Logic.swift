@@ -225,8 +225,21 @@ final class LockScheduler: ObservableObject {
 
 enum InnerVault {
     static let unlockedUntilKey = "innerVaultUnlockedUntil"
-    static let holdDuration: TimeInterval = 2.4
-    static let boltCount = 4
+    static let tickCount = 40
+    static let degreesPerTick = 360.0 / Double(tickCount)
+    static let combination = [18, 7, 29]
+    static let resetWrongWay = 55.0
+
+    static func minimumTravel(for step: Int) -> Double {
+        step == 0 ? 330 : 160
+    }
+
+    static func number(at dialAngle: Double) -> Int {
+        let ticks = (dialAngle / degreesPerTick).rounded()
+        var number = Int(ticks) % tickCount
+        if number < 0 { number += tickCount }
+        return number
+    }
 
     static func isUnlocked(
         at date: Date = .now,

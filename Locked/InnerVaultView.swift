@@ -18,7 +18,7 @@ struct VaultSealCard: View {
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
                                 .strokeBorder(Color.vaultBrass.opacity(0.4), lineWidth: 1)
                         )
-                    Image(systemName: unlocked ? "lock.open.fill" : "gearshape.circle.fill")
+                    Image(systemName: unlocked ? "lock.open.fill" : "lock.rotation")
                         .font(.title3.weight(.bold))
                         .foregroundStyle(Color.vaultBrass)
                 }
@@ -32,7 +32,7 @@ struct VaultSealCard: View {
                         .tracking(0.8)
                     Text(unlocked
                          ? "Add or remove Keys and Karma one step at a time."
-                         : "Hold the vault open to adjust Keys and Karma. Extreme use only.")
+                         : "Spin the combination to adjust Keys and Karma. Extreme use only.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.leading)
@@ -50,11 +50,11 @@ struct VaultSealCard: View {
         .buttonStyle(.plain)
         .accessibilityLabel(unlocked
             ? "Inner vault is open. Adjust keys and karma."
-            : "Inner vault. Hold to unlock, then adjust keys and karma.")
+            : "Inner vault. Spin the combination, then adjust keys and karma.")
     }
 }
 
-// MARK: - Clockwork vault ritual
+// MARK: - Combination lock
 
 struct InnerVaultView: View {
     var onChanged: () -> Void
@@ -70,20 +70,35 @@ struct InnerVaultView: View {
     @AppStorage("emergencyOverrideUntil", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var emergencyOverrideUntil: Double = 0
 
-    @State private var holding = false
-    @State private var holdStartedAt: Date?
-    @State private var charge = 0.0
+    @State private var dialAngle = 0.0
+    @State private var lastFingerAngle: Double?
+    @State private var lastTick = 0
+    @State private var step = 0
+    @State private var travelInDirection = 0.0
+    @State private var wrongWay = 0.0
+    @State private var onTarget = false
+    @State private var spinning = false
     @State private var retractedBolts = 0
     @State private var irisOpen = false
     @State private var finishing = false
     @State private var revealed = false
-    @State private var idleSpin = 0.0
     @State private var glow = 0.28
-    @State private var hubPulse = false
     @State private var bloom = 0.0
+
+    @State private var tickFeedback = UISelectionFeedbackGenerator()
+    @State private var notchFeedback = UIImpactFeedbackGenerator(style: .rigid)
+    @State private var catchFeedback = UIImpactFeedbackGenerator(style: .heavy)
 
     private var displayedKeys: Int { Int(clampKeys(keys).rounded(.towardZero)) }
     private var displayedKarma: Int { Int(clampKarma(karma).rounded(.towardZero)) }
+
+    private var currentNumber: Int {
+        InnerVault.number(at: dialAngle)
+    }
+
+    private var requiredClockwise: Bool {
+        step % 2 == 0
+    }
 
     var body: some View {
         ZStack {
@@ -110,12 +125,8 @@ struct InnerVaultView: View {
         .persistentSystemOverlays(.hidden)
         .interactiveDismissDisabled(!revealed)
         .onAppear(perform: prepare)
-        .onReceive(Timer.publish(every: 1.0 / 30.0, on: .main, in: .common).autoconnect()) { date in
-            if !EmergencyOverride.isActive(at: date) {
-                dismiss()
-                return
-            }
-            tickHold(at: date)
+        .onReceive(Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()) { date in
+            if !EmergencyOverride.isActive(at: date) { dismiss() }
         }
         .onChange(of: emergencyOverrideUntil) { _, _ in
             if !EmergencyOverride.isActive() { dismiss() }
@@ -125,7 +136,7 @@ struct InnerVaultView: View {
     // MARK: Stages
 
     private var lockedStage: some View {
-        VStack(spacing: 22) {
+        VStack(spacing: 20) {
             VStack(spacing: 8) {
                 Text("Inner vault")
                     .font(.system(size: 12, weight: .heavy, design: .rounded))
@@ -133,20 +144,40 @@ struct InnerVaultView: View {
                     .tracking(2.4)
                     .textCase(.uppercase)
 
-                Text(holding ? "Retracting bolts" : "Hold the hub to open the vault.")
+                Text(instruction)
                     .font(.title3.weight(.bold))
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
             }
 
-            vaultDoor
-                .frame(width: 292, height: 292)
+            combinationReadout
 
-            Text("A different lock sits behind the broken glass. Keys stay at 0 or above. Karma stays between 0 and 100.")
-                .font(.caption)
-                .foregroundStyle(.white.opacity(0.42))
-                .multilineTextAlignment(.center)
+            combinationDial
+                .frame(width: 300, height: 300)
         }
+    }
+
+    private var instruction: String {
+        guard step < InnerVault.combination.count else { return "Opening" }
+        let number = InnerVault.combination[step]
+        return requiredClockwise ? "Turn right to \(number)" : "Turn left to \(number)"
+    }
+
+    private var combinationReadout: some View {
+        HStack(spacing: 14) {
+            ForEach(Array(InnerVault.combination.enumerated()), id: \.offset) { index, number in
+                Text(String(format: "%02d", number))
+                    .font(.lockedNumber(22))
+                    .foregroundStyle(index < step ? Color.lockedTeal : (index == step ? Color.vaultBrass : .white.opacity(0.28)))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(index == step ? Color.vaultBrass.opacity(0.14) : Color.white.opacity(0.05))
+                    )
+            }
+        }
+        .accessibilityLabel("Combination \(InnerVault.combination.map(String.init).joined(separator: ", "))")
     }
 
     private var treasury: some View {
@@ -194,79 +225,97 @@ struct InnerVaultView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: Door
+    // MARK: Dial
 
-    private var vaultDoor: some View {
-        let wheel = idleSpin * 0.12 + charge * 210
-        return ZStack {
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            Color(red: 0.16, green: 0.20, blue: 0.24),
-                            Color(red: 0.06, green: 0.07, blue: 0.09)
-                        ],
-                        center: .center,
-                        startRadius: 10,
-                        endRadius: 160
+    private var combinationDial: some View {
+        GeometryReader { geo in
+            let size = geo.size
+            ZStack {
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                Color(red: 0.18, green: 0.20, blue: 0.23),
+                                Color(red: 0.06, green: 0.07, blue: 0.08)
+                            ],
+                            center: .center,
+                            startRadius: 12,
+                            endRadius: 160
+                        )
                     )
-                )
-                .shadow(color: Color.lockedTeal.opacity(glow * (irisOpen ? 0.7 : 0.28)), radius: 28, y: 8)
+                    .shadow(color: Color.lockedTeal.opacity(glow * (irisOpen ? 0.7 : 0.22)), radius: 26, y: 8)
 
-            gearRing(teeth: 24, radius: 138, tooth: CGSize(width: 11, height: 17), angle: wheel)
-            gearRing(teeth: 16, radius: 108, tooth: CGSize(width: 8, height: 12), angle: -wheel * 0.7)
+                Circle()
+                    .stroke(
+                        LinearGradient(
+                            colors: [Color.vaultBrass, Color.vaultBrass.opacity(0.35), Color.vaultBrass],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 8
+                    )
+                    .padding(10)
 
-            Circle()
-                .stroke(
-                    LinearGradient(
-                        colors: [Color.vaultBrass, Color.vaultBrass.opacity(0.35), Color.vaultBrass],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 7
-                )
-                .padding(18)
+                dialFace
+                    .rotationEffect(.degrees(dialAngle))
 
-            Circle()
-                .trim(from: 0, to: charge)
-                .stroke(
-                    Color.lockedTeal,
-                    style: StrokeStyle(lineWidth: 5, lineCap: .round)
-                )
-                .padding(30)
-                .rotationEffect(.degrees(-90))
+                ForEach(0..<InnerVault.combination.count, id: \.self) { index in
+                    bolt(retracted: index < retractedBolts)
+                        .rotationEffect(.degrees(Double(index) * 120 + 60))
+                }
 
-            ForEach(0..<InnerVault.boltCount, id: \.self) { index in
-                bolt(retracted: index < retractedBolts)
-                    .rotationEffect(.degrees(Double(index) * 90 + wheel * 0.04))
+                Circle()
+                    .fill(Color.lockedTeal.opacity(bloom * 0.5))
+                    .blur(radius: 18)
+                    .padding(78)
+                    .opacity(irisOpen ? 1 : 0)
+
+                iris
+                    .padding(54)
+
+                hub
+
+                pointer
             }
-
-            Circle()
-                .fill(Color.lockedTeal.opacity(bloom * 0.55))
-                .blur(radius: 18)
-                .padding(70)
-                .opacity(irisOpen ? 1 : 0)
-
-            iris
-                .padding(48)
-
-            hub
+            .contentShape(Circle())
+            .gesture(spinGesture(in: size))
+            .accessibilityLabel("Combination dial. Current number \(currentNumber).")
         }
-        .gesture(holdGesture)
-        .accessibilityLabel("Vault hub. Hold to retract the bolts.")
-        .accessibilityAddTraits(.isButton)
     }
 
-    private func gearRing(teeth: Int, radius: CGFloat, tooth: CGSize, angle: Double) -> some View {
+    private var dialFace: some View {
         ZStack {
-            ForEach(0..<teeth, id: \.self) { index in
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(Color.vaultBrass.opacity(0.78))
-                    .frame(width: tooth.width, height: tooth.height)
-                    .offset(y: -radius)
-                    .rotationEffect(.degrees(Double(index) / Double(teeth) * 360 + angle))
+            ForEach(0..<InnerVault.tickCount, id: \.self) { tick in
+                let major = tick.isMultiple(of: 5)
+                Capsule()
+                    .fill(major ? Color.vaultBrass : Color.white.opacity(0.38))
+                    .frame(width: major ? 3 : 1.5, height: major ? 16 : 9)
+                    .offset(y: -128)
+                    .rotationEffect(.degrees(Double(tick) * InnerVault.degreesPerTick))
+            }
+
+            ForEach(Array(stride(from: 0, to: InnerVault.tickCount, by: 5)), id: \.self) { number in
+                Text("\(number)")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.vaultBrass)
+                    .offset(y: -106)
+                    .rotationEffect(.degrees(Double(number) * InnerVault.degreesPerTick))
             }
         }
+        .allowsHitTesting(false)
+    }
+
+    private var pointer: some View {
+        VStack(spacing: 0) {
+            Triangle()
+                .fill(Color.vaultBrass)
+                .frame(width: 16, height: 12)
+            Capsule()
+                .fill(Color.vaultBrass)
+                .frame(width: 4, height: 10)
+        }
+        .offset(y: -142)
+        .shadow(color: .black.opacity(0.5), radius: 2, y: 1)
         .allowsHitTesting(false)
     }
 
@@ -283,15 +332,12 @@ struct InnerVaultView: View {
                     endPoint: .bottom
                 )
             )
-            .frame(width: 16, height: 38)
-            .overlay(
-                Capsule()
-                    .stroke(Color.white.opacity(0.25), lineWidth: 1)
-            )
-            .shadow(color: .black.opacity(0.45), radius: 3, y: 2)
-            .offset(y: retracted ? -72 : -118)
-            .opacity(retracted ? 0.2 : 1)
+            .frame(width: 14, height: 32)
+            .overlay(Capsule().stroke(Color.white.opacity(0.25), lineWidth: 1))
+            .offset(y: retracted ? -70 : -118)
+            .opacity(retracted ? 0.18 : 1)
             .animation(.interpolatingSpring(stiffness: 260, damping: 16), value: retracted)
+            .allowsHitTesting(false)
     }
 
     private var iris: some View {
@@ -332,20 +378,19 @@ struct InnerVaultView: View {
                         ],
                         center: .center,
                         startRadius: 2,
-                        endRadius: 46
+                        endRadius: 44
                     )
                 )
             Circle()
-                .stroke(Color.vaultBrass.opacity(holding ? 0.95 : 0.55), lineWidth: 2)
-            Image(systemName: irisOpen ? "lock.open.fill" : "lock.fill")
-                .font(.system(size: 28, weight: .bold))
+                .stroke(Color.vaultBrass.opacity(spinning ? 0.95 : 0.5), lineWidth: 2)
+            Text("\(currentNumber)")
+                .font(.lockedNumber(28))
                 .foregroundStyle(Color.vaultBrass)
-                .scaleEffect(hubPulse && !holding ? 1.06 : 1)
-                .animation(.spring(response: 0.35, dampingFraction: 0.6), value: irisOpen)
+                .contentTransition(.numericText())
+                .monospacedDigit()
         }
-        .frame(width: 88, height: 88)
-        .scaleEffect(holding ? 0.94 : 1)
-        .animation(.easeOut(duration: 0.16), value: holding)
+        .frame(width: 86, height: 86)
+        .allowsHitTesting(false)
     }
 
     // MARK: Chrome
@@ -379,25 +424,25 @@ struct InnerVaultView: View {
 
     // MARK: Interaction
 
-    private var holdGesture: some Gesture {
+    private func spinGesture(in size: CGSize) -> some Gesture {
         DragGesture(minimumDistance: 0)
-            .onChanged { _ in beginHold() }
-            .onEnded { _ in cancelHold() }
+            .onChanged { value in spin(at: value.location, in: size) }
+            .onEnded { _ in endSpin() }
     }
 
     private func prepare() {
         keys = clampKeys(keys)
         karma = clampKarma(karma)
+        lastTick = currentNumber
+        tickFeedback.prepare()
+        notchFeedback.prepare()
+        catchFeedback.prepare()
         withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
             glow = 0.55
-            hubPulse = true
-        }
-        withAnimation(.linear(duration: 16).repeatForever(autoreverses: false)) {
-            idleSpin = 360
         }
         if InnerVault.isUnlocked() {
-            charge = 1
-            retractedBolts = InnerVault.boltCount
+            step = InnerVault.combination.count
+            retractedBolts = InnerVault.combination.count
             finishing = true
             irisOpen = true
             bloom = 1
@@ -405,45 +450,97 @@ struct InnerVaultView: View {
         }
     }
 
-    private func beginHold() {
-        guard !revealed, !finishing, !holding else { return }
-        holding = true
-        holdStartedAt = Date()
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred(intensity: 0.7)
+    private func spin(at location: CGPoint, in size: CGSize) {
+        guard !revealed, !finishing else { return }
+        let angle = fingerAngle(at: location, in: size)
+        guard let previous = lastFingerAngle else {
+            lastFingerAngle = angle
+            spinning = true
+            return
+        }
+
+        var delta = angle - previous
+        if delta > 180 { delta -= 360 }
+        if delta < -180 { delta += 360 }
+        lastFingerAngle = angle
+        guard abs(delta) > 0.05 else { return }
+
+        dialAngle += delta
+        let tick = currentNumber
+        if tick != lastTick {
+            lastTick = tick
+            playTick(for: tick)
+        }
+
+        let movingClockwise = delta > 0
+        if movingClockwise == requiredClockwise {
+            travelInDirection += abs(delta)
+            wrongWay = 0
+            onTarget = travelInDirection >= InnerVault.minimumTravel(for: step)
+                && tick == InnerVault.combination[step]
+        } else if onTarget {
+            acceptStep()
+            if !finishing {
+                travelInDirection += abs(delta)
+            }
+        } else {
+            wrongWay += abs(delta)
+            onTarget = false
+            if step > 0 && wrongWay >= InnerVault.resetWrongWay {
+                resetCombination()
+            }
+        }
     }
 
-    private func cancelHold() {
-        guard holding, !revealed, !finishing else { return }
-        holding = false
-        holdStartedAt = nil
-        withAnimation(.spring(response: 0.42, dampingFraction: 0.68)) {
-            charge = 0
-            retractedBolts = 0
+    private func endSpin() {
+        lastFingerAngle = nil
+        spinning = false
+        if onTarget {
+            acceptStep()
         }
+    }
+
+    private func acceptStep() {
+        onTarget = false
+        retractedBolts = step + 1
+        catchFeedback.impactOccurred(intensity: 1)
+        travelInDirection = 0
+        wrongWay = 0
+        step += 1
+        if step >= InnerVault.combination.count {
+            completeUnlock()
+        } else {
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        }
+    }
+
+    private func resetCombination() {
+        step = 0
+        retractedBolts = 0
+        travelInDirection = 0
+        wrongWay = 0
+        onTarget = false
         UINotificationFeedbackGenerator().notificationOccurred(.warning)
     }
 
-    private func tickHold(at date: Date) {
-        guard holding, let start = holdStartedAt, !revealed, !finishing else { return }
-        let progress = min(1, date.timeIntervalSince(start) / InnerVault.holdDuration)
-        charge = progress
-        let bolts = min(InnerVault.boltCount, Int(progress * Double(InnerVault.boltCount) + 0.001))
-        if bolts > retractedBolts {
-            retractedBolts = bolts
-            UIImpactFeedbackGenerator(style: bolts == InnerVault.boltCount ? .heavy : .rigid)
-                .impactOccurred(intensity: 1)
+    private func playTick(for number: Int) {
+        if number.isMultiple(of: 5) {
+            notchFeedback.impactOccurred(intensity: 0.85)
+            notchFeedback.prepare()
+        } else {
+            tickFeedback.selectionChanged()
+            tickFeedback.prepare()
         }
-        if progress >= 1 {
-            completeUnlock()
-        }
+    }
+
+    private func fingerAngle(at location: CGPoint, in size: CGSize) -> Double {
+        let dx = location.x - size.width / 2
+        let dy = location.y - size.height / 2
+        return atan2(dy, dx) * 180 / .pi
     }
 
     private func completeUnlock() {
         finishing = true
-        holding = false
-        holdStartedAt = nil
-        retractedBolts = InnerVault.boltCount
-        charge = 1
         LogicStore.shared.unlockInnerVault()
         UINotificationFeedbackGenerator().notificationOccurred(.success)
 
@@ -551,6 +648,17 @@ private struct IrisPetal: Shape {
         var path = Path()
         path.move(to: center)
         path.addArc(center: center, radius: radius, startAngle: start, endAngle: end, clockwise: false)
+        path.closeSubpath()
+        return path
+    }
+}
+
+private struct Triangle: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
         path.closeSubpath()
         return path
     }
