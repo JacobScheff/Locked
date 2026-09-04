@@ -52,11 +52,15 @@ final class ScreenTimeManager: ObservableObject {
     }
 }
 
+extension DeviceActivityReport.Context {
+    static let usage = Self(LockedReportContext.name)
+}
+
 struct UsageReportHost: View {
     let selection: FamilyActivitySelection
 
     var body: some View {
-        DeviceActivity.DeviceActivityReport(.usage, filter: usageFilter(for: selection))
+        DeviceActivityReport(.usage, filter: usageFilter(for: selection))
             .frame(width: 1, height: 1)
             .opacity(0.01)
             .accessibilityHidden(true)

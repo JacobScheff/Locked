@@ -5,14 +5,18 @@ import FamilyControls
 import ManagedSettings
 import SwiftUI
 
+extension DeviceActivityReport.Context {
+    static let usage = Self(LockedReportContext.name)
+}
+
 struct UsageSnapshot {
     var totalSeconds: Int
     var appCounts: [String: Int]
     var tokens: [String: Data]
 }
 
-struct UsageReport: DeviceActivity.DeviceActivityReportScene {
-    let context: DeviceActivity.DeviceActivityReport.Context = .usage
+struct UsageReport: DeviceActivityReportScene {
+    let context: DeviceActivityReport.Context = .usage
     let content: (UsageSnapshot) -> UsageReportView
 
     func makeConfiguration(representing data: DeviceActivityResults<DeviceActivityData>) async -> UsageSnapshot {
@@ -66,8 +70,8 @@ struct UsageReportView: View {
 }
 
 @main
-struct UsageReportExtension: DeviceActivity.DeviceActivityReportExtension {
-    var body: some DeviceActivity.DeviceActivityReportScene {
+struct UsageReportExtension: DeviceActivityReportExtension {
+    var body: some DeviceActivityReportScene {
         UsageReport { snapshot in
             UsageReportView(snapshot: snapshot)
         }

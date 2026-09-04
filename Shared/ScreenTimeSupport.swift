@@ -103,8 +103,8 @@ extension DeviceActivityName {
     static let emergencyOverride = Self("locked.emergencyOverride")
 }
 
-extension DeviceActivity.DeviceActivityReport.Context {
-    static let usage = Self("LockedUsage")
+enum LockedReportContext {
+    static let name = "LockedUsage"
 }
 
 enum ActivitySelectionStore {
