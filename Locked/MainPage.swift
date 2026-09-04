@@ -70,10 +70,6 @@ struct MainPage: View {
                             updateWidget()
                         }
                     )
-
-                    VaultSealCard(unlocked: vaultUnlocked) {
-                        presentedRitual = .vault
-                    }
                 }
 
                 StatusHero(
@@ -107,7 +103,11 @@ struct MainPage: View {
                     overrideActive: overrideActive
                 )
 
-                if !overrideActive {
+                if overrideActive {
+                    VaultSealCard(unlocked: vaultUnlocked) {
+                        presentedRitual = .vault
+                    }
+                } else {
                     EmergencySealCard {
                         presentedRitual = .glass
                     }
@@ -121,17 +121,10 @@ struct MainPage: View {
         .fullScreenCover(item: $presentedRitual) { ritual in
             switch ritual {
             case .glass:
-                BreakGlassView(
-                    onReleased: {
-                        now = Date()
-                        updateWidget()
-                    },
-                    onOpenVault: {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-                            presentedRitual = .vault
-                        }
-                    }
-                )
+                BreakGlassView {
+                    now = Date()
+                    updateWidget()
+                }
             case .vault:
                 InnerVaultView {
                     updateWidget()
