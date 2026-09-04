@@ -203,6 +203,16 @@ func formatScreenTime(days: Int, hours: Int, minutes: Int) -> String {
     return parts.joined(separator: " ")
 }
 
+func formatAppDuration(_ seconds: Int) -> String {
+    let hours = seconds / 3600
+    let minutes = (seconds % 3600) / 60
+    if hours > 0 && minutes > 0 { return "\(hours)h \(minutes)m" }
+    if hours > 0 { return "\(hours)h" }
+    if minutes > 0 { return "\(minutes)m" }
+    if seconds > 0 { return "<1m" }
+    return "0m"
+}
+
 func karmaStatusCopy(karma: Double, appCount: Int) -> (headline: String, detail: String) {
     let lockPercent = max(0.0, min(100.0, 100.0 - karma))
     let numToLock = appCount == 0
@@ -219,7 +229,7 @@ func karmaStatusCopy(karma: Double, appCount: Int) -> (headline: String, detail:
 
     let detail: String
     if appCount == 0 {
-        return (headline, "Track usage in the Guide to see what would lock.")
+        return (headline, "Allow Screen Time and choose apps to see what would lock.")
     }
     if numToLock == 0 {
         return ("You're fully protected", "No apps are scheduled to lock this Sunday.")
