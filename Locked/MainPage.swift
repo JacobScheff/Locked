@@ -117,18 +117,7 @@ struct MainPage: View {
             .padding(.bottom, 36)
         }
         .background(LockedBackground())
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                HStack(spacing: 6) {
-                    Image(systemName: overrideActive ? "lock.open.fill" : "lock.fill")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(overrideActive ? Color.hazardYellow : Color.lockedIndigo)
-                    Text("Locked")
-                        .font(.headline.weight(.bold))
-                }
-            }
-        }
+        .toolbar(.hidden, for: .navigationBar)
         .fullScreenCover(item: $presentedRitual) { ritual in
             switch ritual {
             case .glass:
@@ -208,7 +197,6 @@ struct MainPage: View {
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(overrideActive ? Color.hazardRed : Color.secondary)
         }
-        .padding(.top, 8)
     }
 
     func updateWidget() {
