@@ -1,6 +1,9 @@
+import FamilyControls
 import SwiftUI
 
 struct ContentView: View {
+    @EnvironmentObject private var screenTime: ScreenTimeManager
+
     var body: some View {
         TabView {
             NavigationStack {
@@ -26,9 +29,11 @@ struct ContentView: View {
         }
         .tint(.lockedIndigo)
         .fontDesign(.rounded)
+        .familyActivityPicker(isPresented: $screenTime.isPickerPresented, selection: $screenTime.selection)
     }
 }
 
 #Preview {
     ContentView()
+        .environmentObject(ScreenTimeManager.shared)
 }

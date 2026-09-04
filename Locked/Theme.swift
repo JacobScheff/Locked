@@ -10,6 +10,8 @@ extension Color {
     static let lockedRose = Color(red: 0.93, green: 0.33, blue: 0.46)
     static let hazardYellow = Color(red: 0.98, green: 0.78, blue: 0.12)
     static let hazardRed = Color(red: 0.76, green: 0.12, blue: 0.18)
+    static let vaultBrass = Color(red: 0.86, green: 0.70, blue: 0.38)
+    static let vaultSteel = Color(red: 0.18, green: 0.22, blue: 0.26)
 }
 
 extension ShapeStyle where Self == Color {
@@ -20,6 +22,8 @@ extension ShapeStyle where Self == Color {
     static var lockedRose: Color { Color.lockedRose }
     static var hazardYellow: Color { Color.hazardYellow }
     static var hazardRed: Color { Color.hazardRed }
+    static var vaultBrass: Color { Color.vaultBrass }
+    static var vaultSteel: Color { Color.vaultSteel }
 }
 
 enum LockedTheme {
@@ -203,6 +207,16 @@ func formatScreenTime(days: Int, hours: Int, minutes: Int) -> String {
     return parts.joined(separator: " ")
 }
 
+func formatAppDuration(_ seconds: Int) -> String {
+    let hours = seconds / 3600
+    let minutes = (seconds % 3600) / 60
+    if hours > 0 && minutes > 0 { return "\(hours)h \(minutes)m" }
+    if hours > 0 { return "\(hours)h" }
+    if minutes > 0 { return "\(minutes)m" }
+    if seconds > 0 { return "<1m" }
+    return "0m"
+}
+
 func karmaStatusCopy(karma: Double, appCount: Int) -> (headline: String, detail: String) {
     let lockPercent = max(0.0, min(100.0, 100.0 - karma))
     let numToLock = appCount == 0
@@ -219,7 +233,7 @@ func karmaStatusCopy(karma: Double, appCount: Int) -> (headline: String, detail:
 
     let detail: String
     if appCount == 0 {
-        return (headline, "Choose apps under Screen Time to see what would lock.")
+        return (headline, "Allow Screen Time and choose apps to see what would lock.")
     }
     if numToLock == 0 {
         return ("You're fully protected", "No apps are scheduled to lock this Sunday.")

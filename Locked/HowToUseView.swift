@@ -35,63 +35,39 @@ struct HowToUseView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 12) {
-                    LockedSectionLabel(title: "Screen Time", icon: "hourglass")
+                    LockedSectionLabel(title: "Screen Time setup", icon: "hourglass")
 
-                    Text("Allowing Screen Time is only permission. Apps stay open until Locked selects them and writes a shield.")
+                    Text("Locked uses Apple’s Screen Time APIs to measure usage and lock apps. Do this once.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
 
                     StepCard(
                         stepNumber: 1,
-                        title: "Allow and choose apps",
+                        title: "Allow Screen Time",
                         instructions: [
-                            "On Home, open **Screen Time**.",
-                            "Tap **Allow Screen Time** and approve the system prompt.",
-                            "Tap **Choose apps** and pick every app Locked should be able to block.",
-                            "Weekly locks now apply an iOS shield. A locked app opens to a restriction screen, not the app itself."
+                            "On Home, tap **Allow Screen Time** and approve Locked.",
+                            "This lets Locked read app usage and place a system lock screen on apps you haven’t earned back."
                         ]
                     )
-                }
-
-                VStack(alignment: .leading, spacing: 12) {
-                    LockedSectionLabel(title: "Shortcuts setup", icon: "bolt.fill")
-
-                    Text("Shortcuts only track usage and can bounce you home as a backup. They do not block an app the way Screen Time does.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
 
                     StepCard(
                         stepNumber: 2,
-                        title: "When an app opens",
+                        title: "Choose apps",
                         instructions: [
-                            "Open **Shortcuts** → **Automation**.",
-                            "Create a new automation and choose **App**.",
-                            "Select **Is Opened** and **Run Immediately**. Turn off *Notify When Run*.",
-                            "Pick the apps you want Locked to manage.",
-                            "Add **Get Current App**, then Locked’s **On App Open** action.",
-                            "Set *App Name* to the *Current App* variable.",
-                            "Add an **If** block: **If** *On App Open Result* is **True**.",
-                            "Inside the If, add **Go to Home Screen** so locked apps bounce you out."
+                            "Tap **Choose Apps** and pick what Locked is allowed to manage.",
+                            "You can select individual apps or whole categories.",
+                            "**Locked, Settings, Phone, Messages, FaceTime, Find My, Wallet, and Clock never appear and never lock** — they also don’t count toward usage percentages."
                         ]
                     )
 
-                    StepCard(
-                        stepNumber: 3,
-                        title: "When an app closes",
-                        instructions: [
-                            "Create another **App** automation.",
-                            "Choose **Is Closed** and **Run Immediately**. Turn off *Notify When Run*.",
-                            "Select the same apps as before.",
-                            "Add Locked’s **On App Close** action. No extra parameters needed."
-                        ]
-                    )
+                    ScreenTimeGuideActions()
                 }
 
                 VStack(alignment: .leading, spacing: 12) {
-                    LockedSectionLabel(title: "Rankings", icon: "slider.horizontal.3")
+                    LockedSectionLabel(title: "Rankings", icon: "chart.bar.fill")
 
                     LockedCard {
-                        Text("App usage is ranked automatically. If you want a different lock order, tap Reorder on the Home screen and drag apps into place.")
+                        Text("App usage is always sorted from most time to least time. Deleted apps drop off the list and no longer count toward the totals.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -105,7 +81,7 @@ struct HowToUseView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Break glass")
                                 .font(.headline)
-                            Text("If you truly cannot wait — a ride, a family call, a real emergency — break the glass on Home. Strike it three times. Every lock lifts for one hour, then snaps back on its own. It does not spend Keys or change Karma. This is a last resort, not a shortcut.")
+                            Text("If you truly cannot wait — a ride, a family call, a real emergency — break the glass on Home. Strike it three times. Every lock lifts for one hour, then snaps back on its own. While the seal is broken, an inner vault card appears at the bottom of Home in place of the glass. Spin the 3-number combination to add or remove Keys and Karma one step at a time. Keys stay at 0 or above; Karma stays between 0 and 100. This is a last resort.")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -129,7 +105,7 @@ struct HowToUseView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Study first. Unlock later.")
                 .font(.lockedTitle(28))
-            Text("Locked shields distracting apps with Screen Time when coursework slips, and lifts those shields when you follow through.")
+            Text("Locked closes distracting apps when coursework slips, and opens them back up when you follow through.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -222,5 +198,37 @@ struct StepCard: View {
         }
         .padding(18)
         .background(LockedCardBackground())
+    }
+}
+
+private struct ScreenTimeGuideActions: View {
+    @EnvironmentObject private var screenTime: ScreenTimeManager
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Button {
+                if screenTime.isAuthorized {
+                    screenTime.presentPicker()
+                } else {
+                    Task { await screenTime.requestAuthorization() }
+                }
+            } label: {
+                Label(
+                    screenTime.isAuthorized ? "Choose apps" : "Allow Screen Time",
+                    systemImage: screenTime.isAuthorized ? "apps.iphone" : "checkmark.shield.fill"
+                )
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.lockedIndigo)
+
+            if screenTime.isAuthorized && screenTime.hasSelection {
+                Text("Screen Time is connected. You can change the app list any time.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 }

@@ -27,14 +27,11 @@ final class LogicStore {
     @AppStorage("lockedApps", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var lockedApps: [String] = []
     
-    @AppStorage("lastOpenedApp", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
-    var lastOpenedApp: String = ""
-    
-    @AppStorage("eventState", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
-    var eventState: String = "Close"
-    
     @AppStorage("emergencyOverrideUntil", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var emergencyOverrideUntil: Double = 0
+    
+    @AppStorage("innerVaultUnlockedUntil", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    var innerVaultUnlockedUntil: Double = 0
     
     // Dates still rely on the standard defaults.object fallback
     private let defaults = UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked")!
@@ -47,18 +44,28 @@ final class LogicStore {
         let expiry = Date().addingTimeInterval(EmergencyOverride.duration).timeIntervalSince1970
         defaults.set(expiry, forKey: EmergencyOverride.untilKey)
         emergencyOverrideUntil = expiry
-        ScreenTimeLockManager.shared.applyShields()
+        lockInnerVault()
+        ScreenTimeShields.clear()
+        ScreenTimeMonitor.startEmergencyOverrideWindow(until: Date(timeIntervalSince1970: expiry))
     }
     
     func endEmergencyOverride() {
         defaults.set(0.0, forKey: EmergencyOverride.untilKey)
         emergencyOverrideUntil = 0
-        ScreenTimeLockManager.shared.applyShields()
+        lockInnerVault()
+        ScreenTimeMonitor.stopEmergencyOverrideWindow()
+        ScreenTimeShields.sync()
     }
     
-    var lastOpened: Date {
-        get { defaults.object(forKey: "lastOpened") as? Date ?? Date() }
-        set { defaults.set(newValue, forKey: "lastOpened") }
+    func unlockInnerVault() {
+        let until = defaults.double(forKey: EmergencyOverride.untilKey)
+        defaults.set(until, forKey: InnerVault.unlockedUntilKey)
+        innerVaultUnlockedUntil = until
+    }
+    
+    func lockInnerVault() {
+        defaults.set(0.0, forKey: InnerVault.unlockedUntilKey)
+        innerVaultUnlockedUntil = 0
     }
     
     private init() {}
@@ -96,7 +103,7 @@ func unlockApp(numLockedApps: Int, usagePercentage: Double) {
 // MARK: - Z-Score
 
 func getZScoreFromKarma() -> Double {
-    let karma = LogicStore.shared.karma
+    let karma = AppGroupStore.defaults.double(forKey: "karma")
     // Karma 100 → z = -3, Karma 50 → z = 0, Karma 0 → z = 3
     return -0.06 * karma + 3
 }
@@ -115,7 +122,7 @@ func lockAppByKarma(from snapshot: [String: Int]) -> String {
     let distribution = GKGaussianDistribution(
         randomSource: GKARC4RandomSource(),
         mean: meanZScore * precision,
-        deviation: 1.0 * precision
+        deviation: precision
     )
 
     let zRand = Double(distribution.nextInt()) / Double(precision)
@@ -139,53 +146,56 @@ func lockAppByKarma(from snapshot: [String: Int]) -> String {
 }
 
 /// Locks the appropriate number of apps based on current karma.
-/// Returns the list of bundle IDs/names that were (would be) locked.
+/// Returns the list of names that were locked. Safety-critical apps are never included.
 @discardableResult
 func performSundayLocking() -> [String] {
     let store = LogicStore.shared
-    let karma = store.karma
+    let karma = AppGroupStore.defaults.double(forKey: "karma")
     
-    // Copy app counts to a working snapshot
-    var snapshot = store.appCounts
-    
-    // Prevent the app itself ("Locked") from ever being locked
-    snapshot.removeValue(forKey: "Locked")
+    var snapshot = ExcludedApps.strippingExcluded(UsageStore.loadAppCounts())
     
     let totalApps = snapshot.count
-    guard totalApps > 0 || ScreenTimeLockManager.shared.hasManagedApps else { return [] }
+    guard totalApps > 0 else { return [] }
 
-    // Corrected lock formula:
     // 100 Karma = 0% locked. 77 Karma = 23% locked. 0 Karma = 100% locked.
     let lockPercent = max(0.0, min(100.0, 100.0 - karma))
-    
-    // Calculate raw number of apps to lock, rounding up to ensure at least 1 app locks if lockPercent > 0
-    let numToLock = totalApps == 0
-        ? 0
-        : Int((lockPercent / 100.0 * Double(totalApps)).rounded(.up))
+    let numToLock = Int((lockPercent / 100.0 * Double(totalApps)).rounded(.up))
 
     var locked: [String] = []
     
     for _ in 0 ..< numToLock {
-        // Pass the updated snapshot to ensure we don't pick the same app twice
         let picked = lockAppByKarma(from: snapshot)
-        if !picked.isEmpty && !locked.contains(picked) {
+        if !picked.isEmpty && !locked.contains(picked) && !ExcludedApps.isExcludedName(picked) {
             locked.append(picked)
-            snapshot.removeValue(forKey: picked) // Remove so it isn't picked again
+            snapshot.removeValue(forKey: picked)
         }
     }
 
+    UsageStore.saveLockedApps(locked)
     store.lockedApps = locked
-    ScreenTimeLockManager.shared.lockForWeeklyKarma(lockedNames: locked, karma: karma)
+    ScreenTimeShields.sync()
     return locked
+}
+
+func checkAndPerformWeeklyLockIfNeeded() {
+    let defaults = AppGroupStore.defaults
+    let now = Date()
+    let calendar = Calendar.current
+    guard let startOfWeek = calendar.dateInterval(of: .weekOfYear, for: now)?.start else { return }
+
+    let currentWeekString = ISO8601DateFormatter().string(from: startOfWeek)
+    let lastLockKey = "lastWeeklyLockDate"
+    if defaults.string(forKey: lastLockKey) != currentWeekString {
+        defaults.set(currentWeekString, forKey: lastLockKey)
+        let locked = performSundayLocking()
+        print("Weekly lock: locked \(locked.count) app(s): \(locked)")
+    }
 }
 
 // MARK: - Sunday Scheduler
 
 final class LockScheduler: ObservableObject {
-    private let defaults = UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked")
     private var timer: Timer?
-
-    private var lastLockKey: String { "lastWeeklyLockDate" }
 
     func start() {
         checkAndLockIfNeeded()
@@ -201,53 +211,78 @@ final class LockScheduler: ObservableObject {
     }
 
     private func checkAndLockIfNeeded() {
-        let now = Date()
-        let calendar = Calendar.current
-        
-        // Scheduler fix kept: Ensures if they miss exactly 12:01 AM, it still fires.
-        guard let startOfWeek = calendar.dateInterval(of: .weekOfYear, for: now)?.start else { return }
-
-        let currentWeekString = ISO8601DateFormatter().string(from: startOfWeek)
-        
-        if defaults?.string(forKey: lastLockKey) != currentWeekString {
-            defaults?.set(currentWeekString, forKey: lastLockKey)
-            let locked = performSundayLocking()
-            print("Weekly lock: locked \(locked.count) app(s): \(locked)")
-            
-            DispatchQueue.main.async {
-                self.objectWillChange.send()
-            }
+        checkAndPerformWeeklyLockIfNeeded()
+        ScreenTimeShields.sync()
+        DispatchQueue.main.async {
+            self.objectWillChange.send()
         }
     }
 
     deinit { stop() }
 }
 
-// MARK: - Emergency Override
+// MARK: - Inner vault
 
-enum EmergencyOverride {
-    static let suiteName = "group.com.Jacob-Scheff.Locked"
-    static let untilKey = "emergencyOverrideUntil"
-    static let duration: TimeInterval = 60 * 60
-    static let strikesToBreak = 3
-    
-    static func isActive(at date: Date = .now, defaults: UserDefaults? = UserDefaults(suiteName: suiteName)) -> Bool {
-        remaining(at: date, defaults: defaults) > 0
-    }
-    
-    static func remaining(at date: Date = .now, defaults: UserDefaults? = UserDefaults(suiteName: suiteName)) -> TimeInterval {
-        let until = defaults?.double(forKey: untilKey) ?? 0
-        return max(0, Date(timeIntervalSince1970: until).timeIntervalSince(date))
-    }
-    
-    static func formatRemaining(_ interval: TimeInterval) -> String {
-        let total = max(0, Int(interval.rounded()))
-        let hours = total / 3600
-        let minutes = (total % 3600) / 60
-        let seconds = total % 60
-        if hours > 0 {
-            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+enum InnerVault {
+    static let unlockedUntilKey = "innerVaultUnlockedUntil"
+    static let tickCount = 40
+    static let degreesPerTick = 360.0 / Double(tickCount)
+    static let combinationLength = 3
+    static let resetWrongWay = 55.0
+
+    static func randomCombination() -> [Int] {
+        var numbers: [Int] = []
+        while numbers.count < combinationLength {
+            let candidate = Int.random(in: 0..<tickCount)
+            let tooClose = numbers.contains { number in
+                let gap = abs(number - candidate)
+                return min(gap, tickCount - gap) < 5
+            }
+            if !tooClose {
+                numbers.append(candidate)
+            }
         }
-        return String(format: "%d:%02d", minutes, seconds)
+        return numbers
     }
+
+    static func minimumTravel(for step: Int) -> Double {
+        step == 0 ? 330 : 160
+    }
+
+    static func number(at dialAngle: Double) -> Int {
+        // The face paints number N at +N ticks. A positive (clockwise) dial
+        // rotation therefore brings a lower number under the top pointer.
+        let ticks = (-dialAngle / degreesPerTick).rounded()
+        var number = Int(ticks) % tickCount
+        if number < 0 { number += tickCount }
+        return number
+    }
+
+    static func isUnlocked(
+        at date: Date = .now,
+        defaults: UserDefaults = AppGroupStore.defaults
+    ) -> Bool {
+        guard EmergencyOverride.isActive(at: date, defaults: defaults) else { return false }
+        let unlockedUntil = defaults.double(forKey: unlockedUntilKey)
+        let overrideUntil = defaults.double(forKey: EmergencyOverride.untilKey)
+        return unlockedUntil > 0 && abs(unlockedUntil - overrideUntil) < 0.5
+    }
+}
+
+func clampKeys(_ value: Double) -> Double {
+    max(0, value)
+}
+
+func clampKarma(_ value: Double) -> Double {
+    min(100, max(0, value))
+}
+
+func adjustedKeys(from current: Double, by delta: Int) -> Double {
+    let base = Int(clampKeys(current).rounded(.towardZero))
+    return Double(max(0, base + delta))
+}
+
+func adjustedKarma(from current: Double, by delta: Int) -> Double {
+    let base = Int(clampKarma(current).rounded(.towardZero))
+    return Double(min(100, max(0, base + delta)))
 }

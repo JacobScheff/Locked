@@ -1,10 +1,11 @@
 import SwiftUI
-import WidgetKit
 import UIKit
-import FamilyControls
-import ManagedSettings
+import WidgetKit
 
 struct MainPage: View {
+    @EnvironmentObject private var screenTime: ScreenTimeManager
+    @Environment(\.scenePhase) private var scenePhase
+
     @AppStorage("screentime", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var screentime: Int = 0
     var days: Int { screentime / 86400 }
@@ -13,9 +14,6 @@ struct MainPage: View {
 
     @AppStorage("appCounts", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var appCounts: [String: Int] = [:]
-
-    @AppStorage("appOrder", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
-    var appOrder: [String] = []
 
     @AppStorage("keys", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var keys: Double = 0.0
@@ -32,13 +30,18 @@ struct MainPage: View {
     @AppStorage("emergencyOverrideUntil", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var emergencyOverrideUntil: Double = 0
 
-    @State private var showingBreakGlass = false
+    @AppStorage("innerVaultUnlockedUntil", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    var innerVaultUnlockedUntil: Double = 0
+
+    @State private var presentedRitual: HomeRitual?
     @State private var now = Date()
-    @State private var showManagedApps = false
-    @ObservedObject private var screenTime = ScreenTimeLockManager.shared
 
     private var overrideActive: Bool {
         Date(timeIntervalSince1970: emergencyOverrideUntil) > now
+    }
+
+    private var vaultUnlocked: Bool {
+        overrideActive && innerVaultUnlockedUntil > 0 && abs(innerVaultUnlockedUntil - emergencyOverrideUntil) < 0.5
     }
 
     private var upcomingItems: [(course: Course, assignment: Assignment)] {
@@ -59,12 +62,11 @@ struct MainPage: View {
                     OverrideStatusBanner(
                         onRestore: {
                             now = Date()
-                            screenTime.applyShields()
                             updateWidget()
                         },
                         onExpired: {
                             now = Date()
-                            screenTime.applyShields()
+                            ScreenTimeShields.sync()
                             updateWidget()
                         }
                     )
@@ -76,16 +78,11 @@ struct MainPage: View {
                     days: days,
                     hours: hours,
                     minutes: minutes,
-                    appCount: max(
-                        appCounts.filter { $0.key != "Locked" }.count,
-                        screenTime.managedItemCount
-                    )
+                    appCount: visibleAppCounts.count
                 )
 
-                ScreenTimeSetupCard(manager: screenTime, showManagedApps: $showManagedApps)
-
-                if appCounts.isEmpty {
-                    SetupPromptCard()
+                if screenTime.needsSetup {
+                    ScreenTimeSetupCard(manager: screenTime)
                 }
 
                 LockedAppsSection(
@@ -93,8 +90,7 @@ struct MainPage: View {
                     keys: $keys,
                     appCounts: $appCounts,
                     overrideActive: overrideActive,
-                    updateWidget: updateWidget,
-                    screenTime: screenTime
+                    updateWidget: updateWidget
                 )
 
                 if !upcomingItems.isEmpty {
@@ -103,16 +99,17 @@ struct MainPage: View {
 
                 AppCountsCard(
                     appCounts: $appCounts,
-                    appOrder: $appOrder,
-                    keys: $keys,
                     lockedApps: $lockedApps,
-                    overrideActive: overrideActive,
-                    updateWidget: updateWidget
+                    overrideActive: overrideActive
                 )
 
-                if !overrideActive {
+                if overrideActive {
+                    VaultSealCard(unlocked: vaultUnlocked) {
+                        presentedRitual = .vault
+                    }
+                } else {
                     EmergencySealCard {
-                        showingBreakGlass = true
+                        presentedRitual = .glass
                     }
                 }
             }
@@ -120,35 +117,68 @@ struct MainPage: View {
             .padding(.bottom, 36)
         }
         .background(LockedBackground())
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                HStack(spacing: 6) {
-                    Image(systemName: overrideActive ? "lock.open.fill" : "lock.fill")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(overrideActive ? Color.hazardYellow : Color.lockedIndigo)
-                    Text("Locked")
-                        .font(.headline.weight(.bold))
+        .toolbar(.hidden, for: .navigationBar)
+        .fullScreenCover(item: $presentedRitual) { ritual in
+            switch ritual {
+            case .glass:
+                BreakGlassView {
+                    now = Date()
+                    updateWidget()
+                }
+            case .vault:
+                InnerVaultView {
+                    updateWidget()
                 }
             }
         }
-        .fullScreenCover(isPresented: $showingBreakGlass) {
-            BreakGlassView {
-                now = Date()
-                updateWidget()
+        .background {
+            if screenTime.isAuthorized {
+                UsageReportHost(selection: screenTime.selection)
             }
-        }
-        .navigationDestination(isPresented: $showManagedApps) {
-            ManagedAppsPage(manager: screenTime)
         }
         .onAppear {
             now = Date()
-            screenTime.bootstrap()
+            refreshScreenTime()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                now = Date()
+                refreshScreenTime()
+            }
+        }
+        .onChange(of: screenTime.isPickerPresented) { _, presented in
+            if !presented {
+                refreshScreenTime()
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             now = Date()
-            screenTime.bootstrap()
+            refreshScreenTime()
         }
+    }
+
+    private var visibleAppCounts: [String: Int] {
+        ExcludedApps.strippingExcluded(appCounts)
+    }
+
+    private func refreshScreenTime() {
+        screenTime.refreshStatus()
+        applyUsageSnapshot()
+        ScreenTimeShields.sync()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            applyUsageSnapshot()
+        }
+    }
+
+    private func applyUsageSnapshot() {
+        if UsageStore.hasSnapshot {
+            appCounts = UsageStore.loadAppCounts().filter { UsageStore.isStillInstalled(name: $0.key) }
+            lockedApps = UsageStore.loadLockedApps().filter { UsageStore.isStillInstalled(name: $0) }
+        } else {
+            appCounts = ExcludedApps.strippingExcluded(appCounts).filter { UsageStore.isStillInstalled(name: $0.key) }
+            lockedApps = ExcludedApps.strippingExcluded(lockedApps).filter { UsageStore.isStillInstalled(name: $0) }
+        }
+        screentime = appCounts.values.reduce(0, +)
     }
 
     private var header: some View {
@@ -160,12 +190,18 @@ struct MainPage: View {
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(overrideActive ? Color.hazardRed : Color.secondary)
         }
-        .padding(.top, 8)
     }
 
     func updateWidget() {
         WidgetCenter.shared.reloadTimelines(ofKind: "Locked_Widget")
     }
+}
+
+private enum HomeRitual: String, Identifiable {
+    case glass
+    case vault
+
+    var id: String { rawValue }
 }
 
 // MARK: - Header / Hero
@@ -285,13 +321,13 @@ private struct HeroMetric: View {
     }
 }
 
-private struct SetupPromptCard: View {
+private struct ScreenTimeSetupCard: View {
+    @ObservedObject var manager: ScreenTimeManager
+
     var body: some View {
-        NavigationLink {
-            HowToUseView()
-        } label: {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 14) {
-                Image(systemName: "bolt.fill")
+                Image(systemName: "hourglass.circle.fill")
                     .font(.title3)
                     .foregroundStyle(.white)
                     .frame(width: 44, height: 44)
@@ -301,22 +337,34 @@ private struct SetupPromptCard: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Finish setup")
                         .font(.headline)
-                        .foregroundStyle(.primary)
-                    Text("Optional: connect Shortcuts to track usage. Screen Time is what actually blocks apps.")
+                    Text(manager.isAuthorized
+                         ? "Choose the apps Locked is allowed to track and lock. Settings, Phone, and other safety apps stay out automatically."
+                         : "Allow Screen Time so Locked can track usage and lock apps for you.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tertiary)
             }
-            .padding(16)
-            .background(LockedCardBackground())
+
+            Button {
+                if manager.isAuthorized {
+                    manager.presentPicker()
+                } else {
+                    Task { await manager.requestAuthorization() }
+                }
+            } label: {
+                Text(manager.isAuthorized ? "Choose Apps" : "Allow Screen Time")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(LockedTheme.karmaGradient)
+                    .foregroundStyle(.white)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
+        .padding(16)
+        .background(LockedCardBackground())
     }
 }
 
@@ -328,37 +376,10 @@ struct LockedAppsSection: View {
     @Binding var appCounts: [String: Int]
     var overrideActive: Bool
     var updateWidget: () -> Void
-    @ObservedObject var screenTime: ScreenTimeLockManager
 
     @State private var showUnlockAlert = false
-    @State private var unlockTarget: UnlockTarget?
-
-    private enum UnlockTarget: Identifiable {
-        case named(String)
-        case application(ApplicationToken, String)
-        case category(ActivityCategoryToken)
-        case webDomain(WebDomainToken)
-
-        var id: String {
-            switch self {
-            case .named(let name): return "name:\(name)"
-            case .application(let token, _): return "app:" + ScreenTimeCoding.id(for: token)
-            case .category(let token): return "cat:" + ScreenTimeCoding.id(for: token)
-            case .webDomain(let token): return "web:" + ScreenTimeCoding.id(for: token)
-            }
-        }
-
-        var displayName: String {
-            switch self {
-            case .named(let name), .application(_, let name): return name
-            case .category: return "this category"
-            case .webDomain: return "this website"
-            }
-        }
-    }
-
-    private var hasScreenTimeLocks: Bool { !screenTime.lockedItems.isEmpty }
-    private var showsEmpty: Bool { lockedApps.isEmpty && !hasScreenTimeLocks }
+    @State private var appToUnlock: String?
+    @State private var unlockCost: Int = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -367,7 +388,7 @@ struct LockedAppsSection: View {
                 icon: overrideActive ? "lock.open.fill" : "lock.fill"
             )
 
-            if showsEmpty {
+            if visibleLockedApps.isEmpty {
                 LockedCard {
                     HStack(spacing: 12) {
                         Image(systemName: "checkmark.seal.fill")
@@ -382,134 +403,94 @@ struct LockedAppsSection: View {
                         }
                     }
                 }
-            } else if hasScreenTimeLocks {
-                VStack(spacing: 10) {
-                    ForEach(Array(screenTime.lockedItems.applications).sorted(by: tokenSort), id: \.self) { token in
-                        let name = screenTime.displayName(for: token) ?? "App"
-                        lockRow(costName: name) {
-                            Label(token).labelStyle(.titleAndIcon)
-                        } unlock: {
-                            presentUnlock(.application(token, name))
-                        }
-                    }
-                    ForEach(Array(screenTime.lockedItems.categories).sorted(by: tokenSort), id: \.self) { token in
-                        lockRow(costName: "Category") {
-                            Label(token).labelStyle(.titleAndIcon)
-                        } unlock: {
-                            presentUnlock(.category(token))
-                        }
-                    }
-                    ForEach(Array(screenTime.lockedItems.webDomains).sorted(by: tokenSort), id: \.self) { token in
-                        lockRow(costName: "Website") {
-                            Label(token).labelStyle(.titleAndIcon)
-                        } unlock: {
-                            presentUnlock(.webDomain(token))
-                        }
-                    }
-                }
             } else {
                 VStack(spacing: 10) {
-                    ForEach(lockedApps, id: \.self) { name in
-                        lockRow(costName: name) {
-                            HStack(spacing: 12) {
-                                AppIconView(appName: name)
-                                    .frame(width: 40, height: 40)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    ForEach(visibleLockedApps, id: \.self) { name in
+                        HStack(spacing: 12) {
+                            ManagedAppIcon(name: name, size: 40)
+
+                            VStack(alignment: .leading, spacing: 2) {
                                 Text(name)
                                     .font(.body.weight(.semibold))
+                                Text(formatAppDuration(appCounts[name] ?? 0))
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                Text(overrideActive ? "Accessible until the seal repairs" : "\(calculateUnlockCost(for: name)) keys to unlock")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
-                        } unlock: {
-                            presentUnlock(.named(name))
+
+                            Spacer()
+
+                            if overrideActive {
+                                Text("Open")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(Color.hazardYellow)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(Color.hazardYellow.opacity(0.15))
+                                    .clipShape(Capsule())
+                            } else {
+                                Button {
+                                    appToUnlock = name
+                                    unlockCost = calculateUnlockCost(for: name)
+                                    showUnlockAlert = true
+                                } label: {
+                                    Text("Unlock")
+                                        .font(.subheadline.weight(.semibold))
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 8)
+                                        .background(LockedTheme.keysGradient)
+                                        .foregroundStyle(.white)
+                                        .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
+                        .padding(14)
+                        .background(LockedCardBackground(cornerRadius: 18))
                     }
                 }
             }
         }
-        .alert("Unlock App", isPresented: $showUnlockAlert, presenting: unlockTarget) { target in
-            let cost = calculateUnlockCost(for: target.displayName)
-            if keys >= Double(cost) {
-                Button("Unlock (\(cost) Keys)") {
-                    keys -= Double(cost)
-                    performUnlock(target)
+        .alert("Unlock App", isPresented: $showUnlockAlert, presenting: appToUnlock) { app in
+            if keys >= Double(unlockCost) {
+                Button("Unlock (\(unlockCost) Keys)") {
+                    keys -= Double(unlockCost)
+                    lockedApps.removeAll { $0 == app }
+                    ScreenTimeShields.sync()
                     updateWidget()
                 }
                 Button("Cancel", role: .cancel) { }
             } else {
                 Button("OK", role: .cancel) { }
             }
-        } message: { target in
-            let cost = calculateUnlockCost(for: target.displayName)
-            if keys >= Double(cost) {
-                Text("Unlocking \(target.displayName) will cost \(cost) keys.")
+        } message: { app in
+            if keys >= Double(unlockCost) {
+                Text("Unlocking \(app) will cost \(unlockCost) keys.")
             } else {
-                Text("Unlocking \(target.displayName) needs \(cost) keys, but you only have \(Int(keys)). Finish assignments to earn more.")
+                Text("Unlocking \(app) needs \(unlockCost) keys, but you only have \(Int(keys)). Finish assignments to earn more.")
             }
         }
     }
 
-    private func lockRow<Title: View>(
-        costName: String,
-        @ViewBuilder title: () -> Title,
-        unlock: @escaping () -> Void
-    ) -> some View {
-        HStack(spacing: 12) {
-            title()
-            Spacer()
-            VStack(alignment: .trailing, spacing: 6) {
-                if overrideActive {
-                    Text("Open")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(Color.hazardYellow)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.hazardYellow.opacity(0.15))
-                        .clipShape(Capsule())
-                } else {
-                    Button(action: unlock) {
-                        Text("Unlock")
-                            .font(.subheadline.weight(.semibold))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .background(LockedTheme.keysGradient)
-                            .foregroundStyle(.white)
-                            .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                }
-                Text(overrideActive ? "Accessible until the seal repairs" : "\(calculateUnlockCost(for: costName)) keys to unlock")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+    private var visibleLockedApps: [String] {
+        ExcludedApps.strippingExcluded(lockedApps).sorted { lhs, rhs in
+            let left = appCounts[lhs] ?? 0
+            let right = appCounts[rhs] ?? 0
+            return left == right ? lhs < rhs : left > right
         }
-        .padding(14)
-        .background(LockedCardBackground(cornerRadius: 18))
     }
 
-    private func presentUnlock(_ target: UnlockTarget) {
-        unlockTarget = target
-        showUnlockAlert = true
-    }
-
-    private func performUnlock(_ target: UnlockTarget) {
-        switch target {
-        case .named(let name):
-            lockedApps.removeAll { $0 == name }
-            screenTime.unlock(name: name)
-        case .application(let token, _):
-            screenTime.unlockApplication(token)
-        case .category(let token):
-            screenTime.unlockCategory(token)
-        case .webDomain(let token):
-            screenTime.unlockWebDomain(token)
-        }
+    private var visibleAppCounts: [String: Int] {
+        ExcludedApps.strippingExcluded(appCounts)
     }
 
     private func calculateUnlockCost(for app: String) -> Int {
-        let totalUsage = Double(appCounts.values.reduce(0, +))
-        let appUsage = Double(appCounts[app] ?? 0)
+        let totalUsage = Double(visibleAppCounts.values.reduce(0, +))
+        let appUsage = Double(visibleAppCounts[app] ?? 0)
         let usagePercentage = totalUsage > 0 ? (appUsage / totalUsage) * 100.0 : 0.0
-        let lockCount = max(lockedApps.count, screenTime.lockedItems.count)
-        let cost = pow(Double(max(lockCount, 1)), 1.5) + 0.5 * pow(usagePercentage, 1.25) + 10.0
+        let cost = pow(Double(lockedApps.count), 1.5) + 0.5 * pow(usagePercentage, 1.25) + 10.0
         return Int(cost.rounded())
     }
 }
@@ -573,49 +554,33 @@ private struct UpcomingRow: View {
 
 struct AppCountsCard: View {
     @Binding var appCounts: [String: Int]
-    @Binding var appOrder: [String]
-    @Binding var keys: Double
     @Binding var lockedApps: [String]
     var overrideActive: Bool = false
-    var updateWidget: () -> Void
 
-    var totalAppCounts: Double { Double(appCounts.values.reduce(0, +)) }
-
-    @State private var isEditing = false
-    @State private var draftOrder: [String] = []
-    @State private var draggedItem: String? = nil
-
-    var activeOrder: [String] {
-        var current = appOrder.filter { appCounts.keys.contains($0) }
-        let missing = appCounts.keys.filter { !current.contains($0) }
-        let sortedMissing = missing.sorted { (appCounts[$0] ?? 0) > (appCounts[$1] ?? 0) }
-        current.append(contentsOf: sortedMissing)
-        return current
+    private var visibleAppCounts: [String: Int] {
+        ExcludedApps.strippingExcluded(appCounts)
     }
 
-    var displayOrder: [String] {
-        isEditing ? draftOrder : activeOrder
+    var totalAppCounts: Double { Double(visibleAppCounts.values.reduce(0, +)) }
+
+    private var displayOrder: [String] {
+        visibleAppCounts.keys.sorted { lhs, rhs in
+            let left = visibleAppCounts[lhs] ?? 0
+            let right = visibleAppCounts[rhs] ?? 0
+            return left == right ? lhs < rhs : left > right
+        }
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             LockedSectionLabel(
-                title: isEditing ? "Edit ranking" : "App usage",
+                title: "App usage",
                 icon: "chart.bar.fill"
-            ) {
-                editButton
-            }
+            )
 
             VStack(alignment: .leading, spacing: 0) {
-                if isEditing {
-                    editActions
-                        .padding(.horizontal, 16)
-                        .padding(.top, 16)
-                        .padding(.bottom, 8)
-                }
-
-                if appCounts.isEmpty {
-                    Text("No apps recorded yet. Set up Shortcuts in the Guide tab.")
+                if visibleAppCounts.isEmpty {
+                    Text("Usage appears after you spend time in the apps Locked is allowed to manage.")
                         .font(.subheadline)
                         .foregroundStyle(.tertiary)
                         .padding(20)
@@ -631,9 +596,7 @@ struct AppCountsCard: View {
                                         .foregroundStyle(.tertiary)
                                         .frame(width: 22, alignment: .leading)
 
-                                    AppIconView(appName: name)
-                                        .frame(width: 32, height: 32)
-                                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                    ManagedAppIcon(name: name, size: 32)
 
                                     Text(name)
                                         .font(.system(.body, design: .rounded, weight: .medium))
@@ -641,131 +604,50 @@ struct AppCountsCard: View {
 
                                     Spacer()
 
-                                    if isEditing {
-                                        reorderHandle(for: name)
-                                    } else if isLocked {
-                                        Label(overrideActive ? "Released" : "Locked", systemImage: overrideActive ? "lock.open.fill" : "lock.fill")
-                                            .font(.caption.weight(.semibold))
-                                            .foregroundStyle(overrideActive ? Color.hazardYellow : Color.secondary)
-                                            .labelStyle(.titleAndIcon)
+                                    if isLocked {
+                                        VStack(alignment: .trailing, spacing: 3) {
+                                            Label(overrideActive ? "Released" : "Locked", systemImage: overrideActive ? "lock.open.fill" : "lock.fill")
+                                                .font(.caption.weight(.semibold))
+                                                .foregroundStyle(overrideActive ? Color.hazardYellow : Color.secondary)
+                                                .labelStyle(.titleAndIcon)
+                                            Text(formatAppDuration(visibleAppCounts[name] ?? 0))
+                                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                                .foregroundStyle(.secondary)
+                                        }
                                     } else {
-                                        let count = Double(appCounts[name] ?? 0)
+                                        let count = Double(visibleAppCounts[name] ?? 0)
                                         let percentage = totalAppCounts > 0 ? count / totalAppCounts : 0
-                                        AppUsageBar(percentage: percentage)
+                                        AppUsageBar(seconds: visibleAppCounts[name] ?? 0, percentage: percentage)
                                             .frame(width: 108)
                                     }
                                 }
                                 .padding(.horizontal, 16)
-                                .frame(height: 54)
-                                .opacity(draggedItem == name ? 0.45 : 1.0)
+                                .frame(height: 62)
 
                                 if name != displayOrder.last {
                                     Divider().padding(.leading, 70)
                                 }
                             }
-                            .zIndex(draggedItem == name ? 1 : 0)
                         }
                     }
                     .padding(.vertical, 6)
-                    .coordinateSpace(.named("ListArea"))
                 }
             }
             .background(LockedCardBackground())
         }
     }
-
-    @ViewBuilder
-    private var editButton: some View {
-        if !isEditing && !appCounts.isEmpty {
-            Button {
-                draftOrder = activeOrder
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                    isEditing = true
-                }
-            } label: {
-                Text("Reorder")
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.lockedIndigo.opacity(0.12))
-                    .foregroundStyle(Color.lockedIndigo)
-                    .clipShape(Capsule())
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    private var editActions: some View {
-        HStack(spacing: 8) {
-            Button(role: .destructive) {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                    isEditing = false
-                }
-            } label: {
-                Text("Discard").font(.caption.bold()).frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .tint(.red)
-
-            Button {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                    draftOrder = draftOrder.sorted { a, b in
-                        let countA = appCounts[a] ?? 0
-                        let countB = appCounts[b] ?? 0
-                        return countA == countB ? a < b : countA > countB
-                    }
-                }
-            } label: {
-                Text("Default").font(.caption.bold()).frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .tint(.orange)
-
-            Button {
-                appOrder = draftOrder
-                updateWidget()
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                    isEditing = false
-                }
-            } label: {
-                Text("Save").font(.caption.bold()).frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.lockedTeal)
-        }
-    }
-
-    private func reorderHandle(for name: String) -> some View {
-        Image(systemName: "line.3.horizontal")
-            .font(.title3)
-            .foregroundStyle(.secondary)
-            .frame(width: 40, height: 40)
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 3, coordinateSpace: .named("ListArea"))
-                    .onChanged { value in
-                        if draggedItem == nil { draggedItem = name }
-                        let rowHeight: CGFloat = 55
-                        let clampedIndex = max(0, min(draftOrder.count - 1, Int(value.location.y / rowHeight)))
-                        if let currentIdx = draftOrder.firstIndex(of: name), currentIdx != clampedIndex {
-                            withAnimation(.spring(response: 0.3)) {
-                                draftOrder.move(
-                                    fromOffsets: IndexSet(integer: currentIdx),
-                                    toOffset: clampedIndex > currentIdx ? clampedIndex + 1 : clampedIndex
-                                )
-                            }
-                        }
-                    }
-                    .onEnded { _ in draggedItem = nil }
-            )
-    }
 }
 
 struct AppUsageBar: View {
+    let seconds: Int
     let percentage: Double
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 4) {
+            Text(formatAppDuration(seconds))
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .foregroundStyle(.primary)
+                .contentTransition(.numericText())
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule()
