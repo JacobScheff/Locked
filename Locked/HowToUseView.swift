@@ -64,10 +64,10 @@ struct HowToUseView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 12) {
-                    LockedSectionLabel(title: "Rankings", icon: "slider.horizontal.3")
+                    LockedSectionLabel(title: "Rankings", icon: "chart.bar.fill")
 
                     LockedCard {
-                        Text("App usage is ranked automatically. If you want a different lock order, tap Reorder on the Home screen and drag apps into place.")
+                        Text("App usage is always sorted from most time to least time. Deleted apps drop off the list and no longer count toward the totals.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)

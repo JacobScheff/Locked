@@ -232,8 +232,7 @@ enum UsageStore {
     static func saveUsage(
         appCounts: [String: Int],
         tokens: [String: Data],
-        bundleIDs: [String: String],
-        totalSeconds: Int
+        bundleIDs: [String: String]
     ) {
         let filteredCounts = ExcludedApps.strippingExcluded(appCounts)
         let remainingNames = Set(filteredCounts.keys)

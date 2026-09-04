@@ -15,9 +15,6 @@ struct MainPage: View {
     @AppStorage("appCounts", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var appCounts: [String: Int] = [:]
 
-    @AppStorage("appOrder", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
-    var appOrder: [String] = []
-
     @AppStorage("keys", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
     var keys: Double = 0.0
 
@@ -95,12 +92,9 @@ struct MainPage: View {
 
                 AppCountsCard(
                     appCounts: $appCounts,
-                    appOrder: $appOrder,
-                    keys: $keys,
                     lockedApps: $lockedApps,
                     overrideActive: overrideActive,
-                    onManageApps: { screenTime.presentPicker() },
-                    updateWidget: updateWidget
+                    onManageApps: { screenTime.presentPicker() }
                 )
 
                 if !overrideActive {
@@ -179,7 +173,6 @@ struct MainPage: View {
             lockedApps = ExcludedApps.strippingExcluded(lockedApps).filter { UsageStore.isStillInstalled(name: $0) }
         }
         screentime = appCounts.values.reduce(0, +)
-        appOrder = appOrder.filter { appCounts.keys.contains($0) }
     }
 
     private var header: some View {
@@ -470,7 +463,11 @@ struct LockedAppsSection: View {
     }
 
     private var visibleLockedApps: [String] {
-        ExcludedApps.strippingExcluded(lockedApps)
+        ExcludedApps.strippingExcluded(lockedApps).sorted { lhs, rhs in
+            let left = appCounts[lhs] ?? 0
+            let right = appCounts[rhs] ?? 0
+            return left == right ? lhs < rhs : left > right
+        }
     }
 
     private var visibleAppCounts: [String: Int] {
@@ -545,12 +542,9 @@ private struct UpcomingRow: View {
 
 struct AppCountsCard: View {
     @Binding var appCounts: [String: Int]
-    @Binding var appOrder: [String]
-    @Binding var keys: Double
     @Binding var lockedApps: [String]
     var overrideActive: Bool = false
     var onManageApps: (() -> Void)? = nil
-    var updateWidget: () -> Void
 
     private var visibleAppCounts: [String: Int] {
         ExcludedApps.strippingExcluded(appCounts)
@@ -558,51 +552,33 @@ struct AppCountsCard: View {
 
     var totalAppCounts: Double { Double(visibleAppCounts.values.reduce(0, +)) }
 
-    @State private var isEditing = false
-    @State private var draftOrder: [String] = []
-    @State private var draggedItem: String? = nil
-
-    var activeOrder: [String] {
-        var current = appOrder.filter { visibleAppCounts.keys.contains($0) }
-        let missing = visibleAppCounts.keys.filter { !current.contains($0) }
-        let sortedMissing = missing.sorted { (visibleAppCounts[$0] ?? 0) > (visibleAppCounts[$1] ?? 0) }
-        current.append(contentsOf: sortedMissing)
-        return current
-    }
-
-    var displayOrder: [String] {
-        isEditing ? draftOrder : activeOrder
+    private var displayOrder: [String] {
+        visibleAppCounts.keys.sorted { lhs, rhs in
+            let left = visibleAppCounts[lhs] ?? 0
+            let right = visibleAppCounts[rhs] ?? 0
+            return left == right ? lhs < rhs : left > right
+        }
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             LockedSectionLabel(
-                title: isEditing ? "Edit ranking" : "App usage",
+                title: "App usage",
                 icon: "chart.bar.fill"
             ) {
-                HStack(spacing: 8) {
-                    if let onManageApps {
-                        Button("Apps", action: onManageApps)
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Color.lockedTeal.opacity(0.14))
-                            .foregroundStyle(Color.lockedTeal)
-                            .clipShape(Capsule())
-                            .buttonStyle(.plain)
-                    }
-                    editButton
+                if let onManageApps {
+                    Button("Apps", action: onManageApps)
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.lockedTeal.opacity(0.14))
+                        .foregroundStyle(Color.lockedTeal)
+                        .clipShape(Capsule())
+                        .buttonStyle(.plain)
                 }
             }
 
             VStack(alignment: .leading, spacing: 0) {
-                if isEditing {
-                    editActions
-                        .padding(.horizontal, 16)
-                        .padding(.top, 16)
-                        .padding(.bottom, 8)
-                }
-
                 if visibleAppCounts.isEmpty {
                     Text("Usage appears after you spend time in the apps Locked is allowed to manage.")
                         .font(.subheadline)
@@ -628,9 +604,7 @@ struct AppCountsCard: View {
 
                                     Spacer()
 
-                                    if isEditing {
-                                        reorderHandle(for: name)
-                                    } else if isLocked {
+                                    if isLocked {
                                         VStack(alignment: .trailing, spacing: 3) {
                                             Label(overrideActive ? "Released" : "Locked", systemImage: overrideActive ? "lock.open.fill" : "lock.fill")
                                                 .font(.caption.weight(.semibold))
@@ -649,107 +623,18 @@ struct AppCountsCard: View {
                                 }
                                 .padding(.horizontal, 16)
                                 .frame(height: 62)
-                                .opacity(draggedItem == name ? 0.45 : 1.0)
 
                                 if name != displayOrder.last {
                                     Divider().padding(.leading, 70)
                                 }
                             }
-                            .zIndex(draggedItem == name ? 1 : 0)
                         }
                     }
                     .padding(.vertical, 6)
-                    .coordinateSpace(.named("ListArea"))
                 }
             }
             .background(LockedCardBackground())
         }
-    }
-
-    @ViewBuilder
-    private var editButton: some View {
-        if !isEditing && !visibleAppCounts.isEmpty {
-            Button {
-                draftOrder = activeOrder
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                    isEditing = true
-                }
-            } label: {
-                Text("Reorder")
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.lockedIndigo.opacity(0.12))
-                    .foregroundStyle(Color.lockedIndigo)
-                    .clipShape(Capsule())
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    private var editActions: some View {
-        HStack(spacing: 8) {
-            Button(role: .destructive) {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                    isEditing = false
-                }
-            } label: {
-                Text("Discard").font(.caption.bold()).frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .tint(.red)
-
-            Button {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                            draftOrder = draftOrder.sorted { a, b in
-                                let countA = visibleAppCounts[a] ?? 0
-                                let countB = visibleAppCounts[b] ?? 0
-                                return countA == countB ? a < b : countA > countB
-                            }
-                }
-            } label: {
-                Text("Default").font(.caption.bold()).frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .tint(.orange)
-
-            Button {
-                appOrder = draftOrder
-                updateWidget()
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                    isEditing = false
-                }
-            } label: {
-                Text("Save").font(.caption.bold()).frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.lockedTeal)
-        }
-    }
-
-    private func reorderHandle(for name: String) -> some View {
-        Image(systemName: "line.3.horizontal")
-            .font(.title3)
-            .foregroundStyle(.secondary)
-            .frame(width: 40, height: 40)
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 3, coordinateSpace: .named("ListArea"))
-                    .onChanged { value in
-                        if draggedItem == nil { draggedItem = name }
-                        let rowHeight: CGFloat = 63
-                        let clampedIndex = max(0, min(draftOrder.count - 1, Int(value.location.y / rowHeight)))
-                        if let currentIdx = draftOrder.firstIndex(of: name), currentIdx != clampedIndex {
-                            withAnimation(.spring(response: 0.3)) {
-                                draftOrder.move(
-                                    fromOffsets: IndexSet(integer: currentIdx),
-                                    toOffset: clampedIndex > currentIdx ? clampedIndex + 1 : clampedIndex
-                                )
-                            }
-                        }
-                    }
-                    .onEnded { _ in draggedItem = nil }
-            )
     }
 }
 

@@ -59,8 +59,7 @@ struct UsageReport: DeviceActivityReportScene {
         UsageStore.saveUsage(
             appCounts: snapshot.appCounts,
             tokens: snapshot.tokens,
-            bundleIDs: bundleIDsByApp,
-            totalSeconds: snapshot.totalSeconds
+            bundleIDs: bundleIDsByApp
         )
         return snapshot
     }
