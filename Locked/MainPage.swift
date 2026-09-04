@@ -1,3 +1,5 @@
+import FamilyControls
+import ManagedSettings
 import SwiftUI
 import UIKit
 import WidgetKit
@@ -172,11 +174,11 @@ struct MainPage: View {
 
     private func applyUsageSnapshot() {
         if UsageStore.hasSnapshot {
-            appCounts = UsageStore.loadAppCounts().filter { UsageStore.isStillInstalled(name: $0.key) }
-            lockedApps = UsageStore.loadLockedApps().filter { UsageStore.isStillInstalled(name: $0) }
+            appCounts = UsageStore.loadAppCounts()
+            lockedApps = UsageStore.loadLockedApps()
         } else {
-            appCounts = ExcludedApps.strippingExcluded(appCounts).filter { UsageStore.isStillInstalled(name: $0.key) }
-            lockedApps = ExcludedApps.strippingExcluded(lockedApps).filter { UsageStore.isStillInstalled(name: $0) }
+            appCounts = ExcludedApps.strippingExcluded(appCounts)
+            lockedApps = ExcludedApps.strippingExcluded(lockedApps)
         }
         screentime = appCounts.values.reduce(0, +)
     }
@@ -379,6 +381,7 @@ struct LockedAppsSection: View {
 
     @State private var showUnlockAlert = false
     @State private var appToUnlock: String?
+    @State private var tokenToUnlock: ApplicationToken?
     @State private var unlockCost: Int = 0
 
     var body: some View {
@@ -388,7 +391,7 @@ struct LockedAppsSection: View {
                 icon: overrideActive ? "lock.open.fill" : "lock.fill"
             )
 
-            if visibleLockedApps.isEmpty {
+            if visibleLockedApps.isEmpty && unnamedLockedTokens.isEmpty {
                 LockedCard {
                     HStack(spacing: 12) {
                         Image(systemName: "checkmark.seal.fill")
@@ -405,6 +408,41 @@ struct LockedAppsSection: View {
                 }
             } else {
                 VStack(spacing: 10) {
+                    ForEach(unnamedLockedTokens, id: \.self) { token in
+                        HStack(spacing: 12) {
+                            Label(token)
+                                .labelStyle(.titleAndIcon)
+                                .font(.body.weight(.semibold))
+                            Spacer()
+                            if overrideActive {
+                                Text("Open")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(Color.hazardYellow)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(Color.hazardYellow.opacity(0.15))
+                                    .clipShape(Capsule())
+                            } else {
+                                Button {
+                                    appToUnlock = "this app"
+                                    unlockCost = calculateUnlockCost(for: "App")
+                                    tokenToUnlock = token
+                                    showUnlockAlert = true
+                                } label: {
+                                    Text("Unlock")
+                                        .font(.subheadline.weight(.semibold))
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 8)
+                                        .background(LockedTheme.keysGradient)
+                                        .foregroundStyle(.white)
+                                        .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(14)
+                        .background(LockedCardBackground(cornerRadius: 18))
+                    }
                     ForEach(visibleLockedApps, id: \.self) { name in
                         HStack(spacing: 12) {
                             ManagedAppIcon(name: name, size: 40)
@@ -434,6 +472,7 @@ struct LockedAppsSection: View {
                                 Button {
                                     appToUnlock = name
                                     unlockCost = calculateUnlockCost(for: name)
+                                    tokenToUnlock = nil
                                     showUnlockAlert = true
                                 } label: {
                                     Text("Unlock")
@@ -457,7 +496,13 @@ struct LockedAppsSection: View {
             if keys >= Double(unlockCost) {
                 Button("Unlock (\(unlockCost) Keys)") {
                     keys -= Double(unlockCost)
-                    lockedApps.removeAll { $0 == app }
+                    if let token = tokenToUnlock {
+                        LockedTokenStore.remove(token)
+                        tokenToUnlock = nil
+                    } else {
+                        lockedApps.removeAll { $0 == app }
+                        UsageStore.unlock(name: app)
+                    }
                     ScreenTimeShields.sync()
                     updateWidget()
                 }
@@ -472,6 +517,13 @@ struct LockedAppsSection: View {
                 Text("Unlocking \(app) needs \(unlockCost) keys, but you only have \(Int(keys)). Finish assignments to earn more.")
             }
         }
+    }
+
+    private var unnamedLockedTokens: [ApplicationToken] {
+        let named = Set(visibleLockedApps.compactMap { UsageStore.token(for: $0) })
+        return LockedTokenStore.load()
+            .subtracting(named)
+            .sorted { TokenCoding.id(for: $0) < TokenCoding.id(for: $1) }
     }
 
     private var visibleLockedApps: [String] {
