@@ -6,6 +6,13 @@ def resolve(locked_names, token_by_name):
     return {token_by_name[name] for name in locked_names if name in token_by_name}
 
 
+def number_of_apps_to_lock(karma, app_count):
+    if app_count <= 0:
+        return 0
+    lock_percent = max(0.0, min(100.0, 100.0 - karma))
+    return int((lock_percent / 100.0 * float(app_count)).__ceil__())
+
+
 def weekly_action(last_week, current_week):
     if not last_week:
         return "arm"
@@ -60,6 +67,12 @@ def main():
         "a lock without a token does not invent substitutes",
     )
     _ = unnamed
+
+    expect(number_of_apps_to_lock(98, 100), 2, "98 karma locks 2 of 100 apps")
+    expect(number_of_apps_to_lock(98, 51), 2, "98 karma locks 2 of 51 apps")
+    expect(number_of_apps_to_lock(98, 50), 1, "98 karma locks 1 of 50 apps")
+    expect(number_of_apps_to_lock(100, 80), 0, "100 karma locks nothing")
+    expect(number_of_apps_to_lock(0, 10), 10, "0 karma locks every app")
 
     expect(weekly_action(None, "2026-W36"), "arm", "first launch arms the week without locking")
     expect(weekly_action("", "2026-W36"), "arm", "empty stamp arms the week without locking")

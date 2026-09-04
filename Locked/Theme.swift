@@ -270,10 +270,7 @@ func formatAppDuration(_ seconds: Int) -> String {
 }
 
 func karmaStatusCopy(karma: Double, appCount: Int) -> (headline: String, detail: String) {
-    let lockPercent = max(0.0, min(100.0, 100.0 - karma))
-    let numToLock = appCount == 0
-        ? 0
-        : Int((lockPercent / 100.0 * Double(appCount)).rounded(.up))
+    let numToLock = numberOfAppsToLock(karma: karma, appCount: appCount)
 
     let headline: String
     switch karma {

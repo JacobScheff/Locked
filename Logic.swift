@@ -152,27 +152,28 @@ func lockAppByKarma(from snapshot: [String: Int]) -> String {
 @discardableResult
 func performSundayLocking() -> [String] {
     let store = LogicStore.shared
-    let karma = AppGroupStore.defaults.double(forKey: "karma")
+    let karma = store.karma
     let selection = ActivitySelectionStore.load()
     
-    // Only apps with real usage names and tokens can be locked. Picker /
-    // category tokens are an allowlist for tracking, not extra lock targets —
-    // adding them made new unnamed apps appear locked on every launch.
+    // Lock from the same named usage list the Home screen uses. Missing
+    // Screen Time tokens must not empty the pool — that made the developer
+    // reset and Sunday lock do nothing. Tokens are attached when present
+    // so the home-screen shield can target those specific apps.
     var snapshot = ExcludedApps.strippingExcluded(UsageStore.loadAppCounts())
+    if snapshot.isEmpty {
+        snapshot = ExcludedApps.strippingExcluded(store.appCounts)
+    }
     var tokenByName: [String: ApplicationToken] = [:]
     for name in snapshot.keys {
         if let token = UsageStore.token(for: name) {
             tokenByName[name] = token
         }
     }
-    snapshot = snapshot.filter { tokenByName[$0.key] != nil }
 
     let totalApps = snapshot.count
     guard totalApps > 0 else { return [] }
 
-    // 100 Karma = 0% locked. 77 Karma = 23% locked. 0 Karma = 100% locked.
-    let lockPercent = max(0.0, min(100.0, 100.0 - karma))
-    let numToLock = Int((lockPercent / 100.0 * Double(totalApps)).rounded(.up))
+    let numToLock = numberOfAppsToLock(karma: karma, appCount: totalApps)
 
     var locked: [String] = []
     
@@ -196,10 +197,13 @@ func performSundayLocking() -> [String] {
 
 /// Runs the weekly lock immediately (debug / developer reset) and marks
 /// this Sunday-week as already handled so opening the app does not lock again.
-func applyManualWeeklyLock() {
+@discardableResult
+func applyManualWeeklyLock() -> [String] {
     let locked = performSundayLocking()
     AppGroupStore.defaults.set(WeeklyLockSchedule.weekId(), forKey: WeeklyLockSchedule.lastWeekKey)
+    UsageStore.pingMainApp()
     print("Manual weekly lock: locked \(locked.count) app(s): \(locked)")
+    return locked
 }
 
 enum WeeklyLockSchedule {
@@ -350,6 +354,12 @@ enum InnerVault {
         let overrideUntil = defaults.double(forKey: EmergencyOverride.untilKey)
         return unlockedUntil > 0 && abs(unlockedUntil - overrideUntil) < 0.5
     }
+}
+
+func numberOfAppsToLock(karma: Double, appCount: Int) -> Int {
+    guard appCount > 0 else { return 0 }
+    let lockPercent = max(0.0, min(100.0, 100.0 - karma))
+    return Int((lockPercent / 100.0 * Double(appCount)).rounded(.up))
 }
 
 func clampKeys(_ value: Double) -> Double {

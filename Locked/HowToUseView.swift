@@ -113,11 +113,16 @@ struct HowToUseView: View {
     }
 
     #if DEBUG
+    @State private var lastManualLockSummary: String?
+
     private var debugTools: some View {
         VStack(alignment: .leading, spacing: 12) {
             LockedSectionLabel(title: "Developer", icon: "hammer.fill")
             Button {
-                applyManualWeeklyLock()
+                let locked = applyManualWeeklyLock()
+                lastManualLockSummary = locked.isEmpty
+                    ? "No apps were locked. Open Home so usage can load, then try again."
+                    : "Locked \(locked.count) app\(locked.count == 1 ? "" : "s"): \(locked.joined(separator: ", "))"
                 WidgetCenter.shared.reloadTimelines(ofKind: "Locked_Widget")
             } label: {
                 Label("Simulate weekly lock", systemImage: "lock.rotation")
@@ -127,6 +132,13 @@ struct HowToUseView: View {
             }
             .buttonStyle(.bordered)
             .tint(.lockedRose)
+
+            if let lastManualLockSummary {
+                Text(lastManualLockSummary)
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
     #endif
