@@ -17,26 +17,25 @@ final class LogicStore {
     // Using @AppStorage inside the logic class directly uses your custom extension!
     // This perfectly prevents UserDefaults decoding failures and data wiping.
     
-    @AppStorage("karma", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    @AppStorage("karma", store: AppGroupStore.defaults)
     var karma: Double = 0.0
     
-    @AppStorage("keys", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    @AppStorage("keys", store: AppGroupStore.defaults)
     var keys: Double = 0.0
     
-    @AppStorage("appCounts", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    @AppStorage("appCounts", store: AppGroupStore.defaults)
     var appCounts: [String: Int] = [:]
     
-    @AppStorage("lockedApps", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    @AppStorage("lockedApps", store: AppGroupStore.defaults)
     var lockedApps: [String] = []
     
-    @AppStorage("emergencyOverrideUntil", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    @AppStorage("emergencyOverrideUntil", store: AppGroupStore.defaults)
     var emergencyOverrideUntil: Double = 0
     
-    @AppStorage("innerVaultUnlockedUntil", store: UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked"))
+    @AppStorage("innerVaultUnlockedUntil", store: AppGroupStore.defaults)
     var innerVaultUnlockedUntil: Double = 0
     
-    // Dates still rely on the standard defaults.object fallback
-    private let defaults = UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked")!
+    private let defaults = AppGroupStore.defaults
     
     var isEmergencyOverrideActive: Bool {
         Date(timeIntervalSince1970: defaults.double(forKey: EmergencyOverride.untilKey)) > Date()
@@ -199,7 +198,13 @@ func performSundayLocking() -> [String] {
     }
     UsageStore.saveLockedApps(displayNames)
     store.lockedApps = displayNames
-    ScreenTimeShields.lock(tokens: lockedTokens)
+    if lockedTokens.isEmpty {
+        // Names are saved. The usage report applies the real tokens in-process
+        // once Screen Time hands them over — do not wipe live shields here.
+        ScreenTimeShields.sync(using: selection)
+    } else {
+        ScreenTimeShields.lock(tokens: lockedTokens)
+    }
     return displayNames
 }
 
@@ -212,12 +217,13 @@ func checkAndPerformWeeklyLockIfNeeded() {
     let currentWeekString = ISO8601DateFormatter().string(from: startOfWeek)
     let lastLockKey = "lastWeeklyLockDate"
     let poolReady = !UsageStore.loadAppCounts().isEmpty || ActivitySelectionStore.hasSelection
-    let alreadyRan = defaults.string(forKey: lastLockKey) == currentWeekString
+    let alreadyRan = AppGroupStore.sharedString(forKey: lastLockKey) == currentWeekString
+        || defaults.string(forKey: lastLockKey) == currentWeekString
     let hasLocks = !UsageStore.loadLockedApps().isEmpty || !LockedTokenStore.load().isEmpty
 
     if !alreadyRan {
         guard poolReady else { return }
-        defaults.set(currentWeekString, forKey: lastLockKey)
+        AppGroupStore.setSharedString(currentWeekString, forKey: lastLockKey)
         let locked = performSundayLocking()
         print("Weekly lock: locked \(locked.count) app(s): \(locked)")
     } else if !hasLocks && poolReady {
