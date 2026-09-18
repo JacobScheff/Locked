@@ -257,14 +257,19 @@ enum Economy {
     static let defaultKarma: Double = 100
 
     /// First launch / first download. Existing stored values, including an
-    /// explicit 0, are left alone.
+    /// explicit 0, are left alone. Only the main app should call this — a
+    /// shield extension that cannot see the suite would otherwise write
+    /// defaults on top of a real balance.
     static func seedNewInstallIfNeeded() {
         AppGroupStore.prepareContainer()
-        if !AppGroupStore.hasSharedValue(forKey: karmaKey) {
+        let defaults = AppGroupStore.defaults
+        if defaults.object(forKey: karmaKey) == nil && AppGroupStore.sharedDouble(forKey: karmaKey) == nil {
             setKarma(defaultKarma)
+        } else {
+            setKarma(karma())
         }
-        if !AppGroupStore.hasSharedValue(forKey: keysKey) {
-            setKeys(defaultKeys)
+        if defaults.object(forKey: keysKey) != nil || AppGroupStore.sharedDouble(forKey: keysKey) != nil {
+            setKeys(keys())
         }
     }
 

@@ -21,7 +21,6 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
     }
 
     private func lockedConfiguration(for token: ApplicationToken?) -> ManagedSettingsUI.ShieldConfiguration {
-        Economy.seedNewInstallIfNeeded()
         let keys = Int(Economy.keys().rounded(.towardZero))
         let cost = token.map { KeyUnlock.cost(for: $0) } ?? KeyUnlock.cost(usageSeconds: 0, lockedCount: LockedTokenStore.load().count)
         let canAfford = keys >= cost
