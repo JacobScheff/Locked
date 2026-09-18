@@ -39,11 +39,8 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
             backgroundBlurStyle: .dark,
             backgroundColor: ShieldLook.indigo,
             icon: ShieldArtwork.ledger(for: state),
-            // System chrome always draws the icon above these labels. The
-            // heading lives in the image so the ledger sits under the text;
-            // keep the real copy here (invisible) for VoiceOver.
-            title: .init(text: state.title, color: .clear),
-            subtitle: .init(text: state.subtitle, color: .clear),
+            title: .init(text: state.title, color: .white),
+            subtitle: .init(text: state.subtitle, color: UIColor.white.withAlphaComponent(0.78)),
             primaryButtonLabel: .init(text: state.primaryTitle, color: .white),
             primaryButtonBackgroundColor: state.primaryBackground,
             secondaryButtonLabel: .init(text: state.secondaryTitle, color: UIColor.white.withAlphaComponent(0.88))
@@ -89,7 +86,7 @@ private enum ShieldLook {
         var primaryTitle: String {
             if confirming { return "Unlock" }
             if canAfford { return "Use Keys" }
-            return shortfall == 1 ? "Need 1 more key" : "Need \(shortfall) more keys"
+            return shortfall == 1 ? "Need 1 more key" : "Need \(ShieldLook.format(shortfall)) more keys"
         }
 
         var secondaryTitle: String {
@@ -100,70 +97,70 @@ private enum ShieldLook {
             canAfford || confirming ? ShieldLook.keyButton : ShieldLook.mutedButton
         }
     }
+
+    static func format(_ value: Int) -> String {
+        formatter.string(from: NSNumber(value: value)) ?? "\(value)"
+    }
+
+    private static let formatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        return formatter
+    }()
 }
 
 private enum ShieldArtwork {
     static func ledger(for state: ShieldLook.State) -> UIImage {
-        // ShieldConfiguration scales every icon into a fixed system slot.
-        // Keep the canvas tight so the ledger's type remains legible there.
-        let size = CGSize(width: 240, height: 240)
-        let renderer = UIGraphicsImageRenderer(size: size)
+        // The system icon slot is small and fixed. Fill it with the equation
+        // only — title and subtitle now use the real (much larger) labels.
+        let size = CGSize(width: 200, height: 200)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 3
+        format.opaque = false
+        let renderer = UIGraphicsImageRenderer(size: size, format: format)
         return renderer.image { _ in
-            let content = CGRect(origin: .zero, size: size).insetBy(dx: 4, dy: 4)
+            let content = CGRect(origin: .zero, size: size).insetBy(dx: 2, dy: 2)
             var y = content.minY
 
-            y += drawWrapped(
-                state.title,
-                font: roundedFont(size: 21, weight: .bold),
-                color: .white,
-                in: CGRect(x: content.minX, y: y, width: 166, height: 30)
-            )
-            drawKarma(state.karma, in: CGRect(x: content.maxX - 58, y: content.minY, width: 58, height: 38))
-            y += 3
-            y += drawWrapped(
-                state.subtitle,
-                font: roundedFont(size: 11, weight: .medium),
-                color: UIColor.white.withAlphaComponent(0.72),
-                in: CGRect(x: content.minX, y: y, width: 168, height: 30)
-            )
-            y += 7
+            drawKarma(state.karma, in: CGRect(x: content.minX, y: y, width: content.width, height: 28))
+            y += 30
 
-            let rowHeight: CGFloat = 43
+            let rowHeight: CGFloat = 50
             drawAlignedRow(
-                label: "Current keys",
-                value: "\(state.keys)",
+                label: "KEYS",
+                value: ShieldLook.format(state.keys),
                 color: ShieldLook.amber,
                 in: CGRect(x: content.minX, y: y, width: content.width, height: rowHeight)
             )
             y += rowHeight
             drawAlignedRow(
-                label: "Unlock cost",
-                value: "−\(state.cost)",
+                label: "COST",
+                value: "−\(ShieldLook.format(state.cost))",
                 color: ShieldLook.rose,
                 in: CGRect(x: content.minX, y: y, width: content.width, height: rowHeight)
             )
-            y += rowHeight + 2
+            y += rowHeight + 1
 
             UIColor.white.withAlphaComponent(0.34).setStroke()
             let rule = UIBezierPath()
             rule.move(to: CGPoint(x: content.minX, y: y))
             rule.addLine(to: CGPoint(x: content.maxX, y: y))
-            rule.lineWidth = 1
+            rule.lineWidth = 2
             rule.lineCapStyle = .round
             rule.stroke()
             y += 3
 
             if state.canAfford {
                 drawAlignedRow(
-                    label: "Keys left",
-                    value: "\(state.remaining)",
+                    label: "LEFT",
+                    value: ShieldLook.format(state.remaining),
                     color: ShieldLook.teal,
                     in: CGRect(x: content.minX, y: y, width: content.width, height: rowHeight)
                 )
             } else {
                 drawAlignedRow(
-                    label: "Keys needed",
-                    value: "\(state.shortfall)",
+                    label: "NEED",
+                    value: ShieldLook.format(state.shortfall),
                     color: ShieldLook.rose,
                     in: CGRect(x: content.minX, y: y, width: content.width, height: rowHeight)
                 )
@@ -172,52 +169,30 @@ private enum ShieldArtwork {
     }
 
     private static func drawKarma(_ karma: Int, in rect: CGRect) {
-        let valueStyle = NSMutableParagraphStyle()
-        valueStyle.alignment = .right
+        let style = NSMutableParagraphStyle()
+        style.alignment = .right
         ("\(karma)" as NSString).draw(
-            in: CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: 25),
+            in: CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: 18),
             withAttributes: [
-                .font: roundedFont(size: 20, weight: .heavy),
+                .font: roundedFont(size: 16, weight: .heavy),
                 .foregroundColor: ShieldLook.violet,
-                .paragraphStyle: valueStyle
+                .paragraphStyle: style
             ]
         )
         ("KARMA" as NSString).draw(
-            in: CGRect(x: rect.minX, y: rect.minY + 23, width: rect.width, height: 12),
+            in: CGRect(x: rect.minX, y: rect.minY + 16, width: rect.width, height: 10),
             withAttributes: [
-                .font: roundedFont(size: 7, weight: .bold),
+                .font: roundedFont(size: 8, weight: .bold),
                 .foregroundColor: UIColor.white.withAlphaComponent(0.58),
-                .paragraphStyle: valueStyle,
+                .paragraphStyle: style,
                 .kern: 0.8
             ]
         )
     }
 
-    @discardableResult
-    private static func drawWrapped(_ text: String, font: UIFont, color: UIColor, in rect: CGRect) -> CGFloat {
-        let style = NSMutableParagraphStyle()
-        style.alignment = .left
-        style.lineBreakMode = .byWordWrapping
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: color,
-            .paragraphStyle: style
-        ]
-        let bounds = (text as NSString).boundingRect(
-            with: CGSize(width: rect.width, height: rect.height),
-            options: [.usesLineFragmentOrigin, .usesFontLeading],
-            attributes: attrs,
-            context: nil
-        )
-        let drawn = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: ceil(bounds.height))
-        (text as NSString).draw(with: drawn, options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: attrs, context: nil)
-        return ceil(bounds.height)
-    }
-
     private static func drawAlignedRow(label: String, value: String, color: UIColor, in rect: CGRect) {
-        let labelFont = roundedFont(size: 12, weight: .semibold)
-        let valueFont = roundedFont(size: 29, weight: .heavy)
-        let labelColor = UIColor.white.withAlphaComponent(0.82)
+        let labelFont = roundedFont(size: 13, weight: .bold)
+        let labelColor = UIColor.white.withAlphaComponent(0.72)
         let style = NSMutableParagraphStyle()
         style.alignment = .left
         (label as NSString).draw(
@@ -225,18 +200,42 @@ private enum ShieldArtwork {
             withAttributes: [
                 .font: labelFont,
                 .foregroundColor: labelColor,
-                .paragraphStyle: style
+                .paragraphStyle: style,
+                .kern: 0.8
             ]
         )
 
-        let valueStyle = NSMutableParagraphStyle()
-        valueStyle.alignment = .right
-        (value as NSString).draw(
-            in: rect.offsetBy(dx: 0, dy: (rect.height - valueFont.lineHeight) / 2),
+        let valueWidth = rect.width * 0.68
+        let valueRect = CGRect(
+            x: rect.maxX - valueWidth,
+            y: rect.minY,
+            width: valueWidth,
+            height: rect.height
+        )
+        drawFittedValue(value, color: color, in: valueRect, maxSize: 44)
+    }
+
+    private static func drawFittedValue(_ value: String, color: UIColor, in rect: CGRect, maxSize: CGFloat) {
+        let style = NSMutableParagraphStyle()
+        style.alignment = .right
+        style.lineBreakMode = .byClipping
+
+        var size = maxSize
+        var font = roundedFont(size: size, weight: .heavy)
+        let text = value as NSString
+        while size > 18 {
+            let width = text.size(withAttributes: [.font: font]).width
+            if width <= rect.width { break }
+            size -= 2
+            font = roundedFont(size: size, weight: .heavy)
+        }
+
+        text.draw(
+            in: rect.offsetBy(dx: 0, dy: (rect.height - font.lineHeight) / 2),
             withAttributes: [
-                .font: valueFont,
+                .font: font,
                 .foregroundColor: color,
-                .paragraphStyle: valueStyle
+                .paragraphStyle: style
             ]
         )
     }
