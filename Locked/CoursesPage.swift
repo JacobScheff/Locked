@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct CoursesPage: View {
     @AppStorage("courses", store: .lockedGroup)
@@ -269,8 +270,14 @@ struct CourseCardView: View {
                     Label("Rename", systemImage: "pencil")
                 }
                 Button(role: .destructive, action: onDelete) {
-                    Label("Delete", systemImage: "trash")
+                    Label {
+                        Text("Delete")
+                    } icon: {
+                        Image(uiImage: UIImage(systemName: "trash")!
+                            .withTintColor(.systemRed, renderingMode: .alwaysOriginal))
+                    }
                 }
+                .tint(.red)
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.body.weight(.semibold))
