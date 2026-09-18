@@ -128,7 +128,10 @@ enum BrightspaceParser {
     }
 
     static func earliestSubmissionDate(in entities: [BrightspaceEntityDropbox]) -> Date? {
-        let dates = entities.flatMap(\.submissionDates).compactMap(LMSDateParser.parse).sorted()
+        let dates = entities
+            .flatMap(\.submissionDates)
+            .compactMap { LMSDateParser.parse($0) }
+            .sorted()
         return dates.first
     }
 
