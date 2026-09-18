@@ -16,7 +16,7 @@ enum GradescopeError: LocalizedError {
         case .notConnected:
             return "Connect Gradescope to refresh assignments."
         case .emptyAccount:
-            return "No student courses were found on this Gradescope account."
+            return "No student courses were found in the current Gradescope term."
         case .requestFailed(let message):
             return message
         }
@@ -60,25 +60,16 @@ enum GradescopeParser {
     static func catalog(fromAccountHTML html: String) -> (termNames: [String], courses: [ExternalCourseSnapshot]) {
         let terms = HTMLSnippet.elements(tag: "div", havingClass: "courseList--term", in: html)
         let buckets = HTMLSnippet.elements(tag: "div", havingClass: "courseList--coursesForTerm", in: html)
-        var termNames: [String] = []
-        var courses: [ExternalCourseSnapshot] = []
 
-        if !terms.isEmpty, terms.count == buckets.count {
-            for (term, bucket) in zip(terms, buckets) {
-                let termName = HTMLSnippet.stripTags(term.inner)
-                let parsed = courseBoxes(in: bucket.inner, termName: termName)
-                if !parsed.isEmpty {
-                    termNames.append(termName)
-                    courses.append(contentsOf: parsed)
-                }
-            }
-        } else {
-            let parsed = courseBoxes(in: html, termName: nil)
-            courses = parsed
-            termNames = Array(Set(parsed.compactMap(\.termName))).sorted()
+        // Gradescope lists the current term first. Ignore older terms.
+        if let term = terms.first, let bucket = buckets.first {
+            let termName = HTMLSnippet.stripTags(term.inner)
+            return ([termName], courseBoxes(in: bucket.inner, termName: termName))
         }
-
-        return (termNames, courses)
+        if let bucket = buckets.first {
+            return ([], courseBoxes(in: bucket.inner, termName: nil))
+        }
+        return ([], [])
     }
 
     static func courseBoxes(in html: String, termName: String?) -> [ExternalCourseSnapshot] {

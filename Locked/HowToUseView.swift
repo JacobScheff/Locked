@@ -72,7 +72,7 @@ struct HowToUseView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Import from school sites")
                                 .font(.headline)
-                            Text("On Courses, tap the link icon to connect Gradescope. Brightspace is listed as a placeholder for later. Refresh anytime — overdue work stays overdue until it’s actually submitted, and Keys and Karma are calculated from that submitted date.")
+                            Text("On Courses, tap the link icon to connect Gradescope. Locked loads this term’s courses only. Hide anything you don’t want counted — it leaves upcoming lists and Keys/Karma until you unhide it. Brightspace is listed as a placeholder for later.")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)

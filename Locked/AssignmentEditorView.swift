@@ -83,7 +83,9 @@ struct AssignmentEditorView: View {
             completionDate: isCompleted ? completionDate : nil,
             pointsPossible: Double(pointsText.trimmingCharacters(in: .whitespacesAndNewlines)),
             sourceProvider: assignment.sourceProvider,
-            sourceRemoteID: assignment.sourceRemoteID
+            sourceRemoteID: assignment.sourceRemoteID,
+            isHidden: assignment.isHidden,
+            rewardsApplied: assignment.rewardsApplied
         )
     }
 

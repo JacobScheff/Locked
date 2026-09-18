@@ -82,7 +82,7 @@ struct SourcesPage: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Imported courses stay in Locked. They just won’t update until you connect again.")
+            Text("Imported courses stay in Locked. Hide anything you don’t want counted; they just won’t update until you connect again.")
         }
     }
 
@@ -90,7 +90,7 @@ struct SourcesPage: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Bring your classes in")
                 .font(.lockedTitle(26))
-            Text("Connect a school site and Locked will load assignments, then score Keys and Karma from the real submitted time — not whenever you refresh.")
+            Text("Connect a school site and Locked will load this term’s courses. Keys and Karma use the real submitted time — not whenever you refresh.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -106,14 +106,11 @@ struct SourcesPage: View {
                     Circle()
                         .fill(Color.white.opacity(0.16))
                         .frame(width: 44, height: 44)
-                    if sources.isRefreshing {
-                        ProgressView()
-                            .tint(.white)
-                    } else {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.title3.weight(.bold))
-                            .foregroundStyle(.white)
-                    }
+                    SpinningSyncIcon(
+                        spinning: sources.isRefreshing,
+                        color: .white,
+                        font: .title3.weight(.bold)
+                    )
                 }
 
                 VStack(alignment: .leading, spacing: 3) {
@@ -141,7 +138,7 @@ struct SourcesPage: View {
             }
         }
         .buttonStyle(.plain)
-        .disabled(sources.isRefreshing)
+        .allowsHitTesting(!sources.isRefreshing)
     }
 
     private var refreshSubtitle: String {
@@ -216,14 +213,21 @@ private struct SourceProviderCard: View {
                 connectedFacts
                 HStack(spacing: 10) {
                     Button(action: onRefresh) {
-                        Label(isRefreshing ? "Refreshing" : "Refresh", systemImage: "arrow.triangle.2.circlepath")
-                            .font(.subheadline.weight(.semibold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
+                        HStack {
+                            SpinningSyncIcon(
+                                spinning: isRefreshing,
+                                color: .white,
+                                font: .subheadline.weight(.bold)
+                            )
+                            Text(isRefreshing ? "Refreshing" : "Refresh")
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.lockedIndigo)
-                    .disabled(isRefreshing)
+                    .allowsHitTesting(!isRefreshing)
 
                     Button(role: .destructive, action: onDisconnect) {
                         Text("Disconnect")

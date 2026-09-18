@@ -69,6 +69,7 @@ final class ExternalSourceController: ObservableObject {
         gradescope.lastError = nil
         persistGradescope()
         defer { isRefreshing = false }
+        await Task.yield()
 
         do {
             var nextCourses = courses

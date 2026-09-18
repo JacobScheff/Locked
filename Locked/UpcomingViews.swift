@@ -52,7 +52,7 @@ struct UpcomingAssignmentsView: View {
                 .padding(.top, 40)
             Text("Nothing due")
                 .font(.lockedTitle(24))
-            Text("Finished work earns Keys and Karma. Add an assignment to start the loop.")
+            Text("Finished work earns Keys and Karma. Refresh a source to load assignments.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

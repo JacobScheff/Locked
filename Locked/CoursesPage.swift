@@ -10,9 +10,16 @@ struct CoursesPage: View {
 
     @EnvironmentObject private var sources: ExternalSourceController
     @State private var editingCourse: Course?
-    @State private var courseToDelete: Course?
-    @State private var composer: AssignmentComposer?
+    @State private var courseToHide: Course?
     @State private var sourceError: String?
+
+    private var visibleCourses: [Course] {
+        CourseStore.visibleCourses(from: courses)
+    }
+
+    private var hiddenCount: Int {
+        CourseStore.hiddenCourseCount(in: courses) + CourseStore.hiddenAssignmentCount(in: courses)
+    }
 
     private var totals: (open: Int, overdue: Int, completed: Int) {
         CourseStore.totals(from: courses)
@@ -21,8 +28,14 @@ struct CoursesPage: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
-                if courses.isEmpty {
+                if visibleCourses.isEmpty {
                     emptyState
+                    if sources.canRefreshGradescope {
+                        sourceStrip
+                    }
+                    if hiddenCount > 0 {
+                        hiddenSection
+                    }
                 } else {
                     workloadHero
                     if sources.canRefreshGradescope {
@@ -30,6 +43,9 @@ struct CoursesPage: View {
                     }
                     UpcomingPreviewSection(courses: $courses, limit: 4)
                     coursesSection
+                    if hiddenCount > 0 {
+                        hiddenSection
+                    }
                 }
             }
             .padding(.horizontal, 20)
@@ -49,42 +65,20 @@ struct CoursesPage: View {
                 .accessibilityLabel("Sources")
             }
             ToolbarItem(placement: .primaryAction) {
-                Menu {
+                if sources.canRefreshGradescope {
                     Button {
-                        editingCourse = Course(name: "", accentIndex: CourseAccent.leastUsedIndex(in: courses))
+                        Task { await refreshSources() }
                     } label: {
-                        Label("New course", systemImage: "book.fill")
-                    }
-                    if !courses.isEmpty {
-                        Button {
-                            composer = AssignmentComposer(
-                                courseID: courses[0].id,
-                                assignment: .blank(),
-                                allowsCourseSwitch: courses.count > 1,
-                                isNew: true
-                            )
-                        } label: {
-                            Label("New assignment", systemImage: "checkmark.circle")
-                        }
-                    }
-                    Divider()
-                    if sources.canRefreshGradescope {
-                        Button {
-                            Task { await refreshSources() }
-                        } label: {
-                            Label("Refresh sources", systemImage: "arrow.triangle.2.circlepath")
-                        }
-                        .disabled(sources.isRefreshing)
-                    }
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.body.weight(.bold))
-                        .foregroundStyle(.white)
+                        SpinningSyncIcon(
+                            spinning: sources.isRefreshing,
+                            color: .lockedIndigo,
+                            font: .body.weight(.bold)
+                        )
                         .frame(width: 32, height: 32)
-                        .background(LockedTheme.karmaGradient)
-                        .clipShape(Circle())
+                    }
+                    .accessibilityLabel(sources.isRefreshing ? "Refreshing sources" : "Refresh sources")
+                    .allowsHitTesting(!sources.isRefreshing)
                 }
-                .accessibilityLabel("Add")
             }
         }
         .refreshable {
@@ -96,50 +90,35 @@ struct CoursesPage: View {
                 withAnimation {
                     if let index = courses.firstIndex(where: { $0.id == savedCourse.id }) {
                         courses[index] = savedCourse
-                    } else {
-                        courses.append(savedCourse)
                     }
                 }
             }
         }
-        .sheet(item: $composer) { draft in
-            AssignmentEditorView(
-                assignment: draft.assignment,
-                courseID: draft.courseID,
-                courseOptions: draft.allowsCourseSwitch ? courses : [],
-                onSave: { courseID, saved in
-                    _ = CourseStore.saveAssignment(
-                        saved,
-                        to: courseID,
-                        movingFrom: draft.isNew ? nil : draft.courseID,
+        .confirmationDialog(
+            "Hide \"\(courseToHide?.name ?? "Course")\"?",
+            isPresented: Binding(
+                get: { courseToHide != nil },
+                set: { if !$0 { courseToHide = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Hide") {
+                if let course = courseToHide {
+                    CourseStore.setCourseHidden(
+                        course.id,
+                        hidden: true,
                         courses: &courses,
                         keys: &keys,
                         karma: &karma
                     )
                 }
-            )
-        }
-        .confirmationDialog(
-            "Delete \"\(courseToDelete?.name ?? "Course")\"?",
-            isPresented: Binding(
-                get: { courseToDelete != nil },
-                set: { if !$0 { courseToDelete = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("Delete", role: .destructive) {
-                if let course = courseToDelete {
-                    withAnimation {
-                        courses.removeAll { $0.id == course.id }
-                    }
-                }
-                courseToDelete = nil
+                courseToHide = nil
             }
             Button("Cancel", role: .cancel) {
-                courseToDelete = nil
+                courseToHide = nil
             }
         } message: {
-            Text("All assignments in this course will also be deleted.")
+            Text("It won’t show in Locked or count toward Keys and Karma until you unhide it.")
         }
         .alert("Couldn’t refresh", isPresented: Binding(
             get: { sourceError != nil },
@@ -158,19 +137,19 @@ struct CoursesPage: View {
                 .foregroundStyle(LockedTheme.karmaGradient)
                 .padding(.top, 48)
 
-            Text("Build your semester")
+            Text("Connect your semester")
                 .font(.lockedTitle(24))
 
-            Text("Add a class, then log assignments — or connect Gradescope and Locked will keep them updated. Finishing early earns Keys and Karma.")
+            Text("Load classes from Gradescope. Finishing early earns Keys and Karma — that’s what keeps your apps unlocked.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 12)
 
-            Button {
-                editingCourse = Course(name: "", accentIndex: CourseAccent.leastUsedIndex(in: courses))
+            NavigationLink {
+                SourcesPage(courses: $courses, keys: $keys, karma: $karma)
             } label: {
-                Label("Add a course", systemImage: "plus")
+                Label(sources.canRefreshGradescope ? "Open sources" : "Connect a source", systemImage: "link")
                     .font(.headline)
                     .foregroundStyle(.white)
                     .padding(.horizontal, 22)
@@ -179,18 +158,6 @@ struct CoursesPage: View {
                     .clipShape(Capsule())
             }
             .padding(.top, 4)
-
-            NavigationLink {
-                SourcesPage(courses: $courses, keys: $keys, karma: $karma)
-            } label: {
-                Label("Connect a source", systemImage: "link")
-                    .font(.headline)
-                    .foregroundStyle(Color.lockedIndigo)
-                    .padding(.horizontal, 22)
-                    .padding(.vertical, 12)
-                    .background(Color.lockedIndigo.opacity(0.12))
-                    .clipShape(Capsule())
-            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 24)
@@ -237,7 +204,7 @@ struct CoursesPage: View {
 
     private var workloadDetail: String {
         if totals.open == 0 {
-            return "No open assignments. Add work to keep earning Keys and Karma."
+            return "No open assignments. Refresh a source to load more work."
         }
         if totals.overdue > 0 {
             return "\(totals.overdue) overdue · \(totals.open) still open"
@@ -250,20 +217,12 @@ struct CoursesPage: View {
             LockedSectionLabel(title: "Your courses", icon: "book.fill")
 
             VStack(spacing: 12) {
-                ForEach(courses) { course in
+                ForEach(visibleCourses) { course in
                     CourseCardView(
                         courses: $courses,
                         course: course,
                         onRename: { editingCourse = course },
-                        onDelete: { courseToDelete = course },
-                        onAddAssignment: {
-                            composer = AssignmentComposer(
-                                courseID: course.id,
-                                assignment: .blank(),
-                                allowsCourseSwitch: false,
-                                isNew: true
-                            )
-                        }
+                        onHide: { courseToHide = course }
                     )
                 }
             }
@@ -275,9 +234,11 @@ struct CoursesPage: View {
             Task { await refreshSources() }
         } label: {
             HStack(spacing: 12) {
-                Image(systemName: sources.isRefreshing ? "arrow.triangle.2.circlepath" : "checkmark.rectangle.fill")
-                    .font(.body.weight(.bold))
-                    .foregroundStyle(Color.lockedIndigo)
+                SpinningSyncIcon(
+                    spinning: sources.isRefreshing,
+                    color: .lockedIndigo,
+                    font: .body.weight(.bold)
+                )
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Gradescope")
                         .font(.subheadline.weight(.semibold))
@@ -288,7 +249,9 @@ struct CoursesPage: View {
                 }
                 Spacer()
                 if sources.isRefreshing {
-                    ProgressView()
+                    Text("Refreshing")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Color.lockedIndigo)
                 } else {
                     Text("Refresh")
                         .font(.caption.weight(.bold))
@@ -299,7 +262,34 @@ struct CoursesPage: View {
             .background(LockedCardBackground(cornerRadius: 18))
         }
         .buttonStyle(.plain)
-        .disabled(sources.isRefreshing)
+        .allowsHitTesting(!sources.isRefreshing)
+    }
+
+    private var hiddenSection: some View {
+        NavigationLink {
+            HiddenWorkView(courses: $courses, keys: $keys, karma: $karma)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "eye.slash.fill")
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Hidden")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text("\(hiddenCount) hidden")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(14)
+            .background(LockedCardBackground(cornerRadius: 18))
+        }
+        .buttonStyle(.plain)
     }
 
     private var sourceStripDetail: String {
@@ -353,8 +343,7 @@ struct CourseCardView: View {
     @Binding var courses: [Course]
     let course: Course
     var onRename: () -> Void = {}
-    var onDelete: () -> Void = {}
-    var onAddAssignment: () -> Void = {}
+    var onHide: () -> Void = {}
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -366,21 +355,12 @@ struct CourseCardView: View {
             .buttonStyle(.plain)
 
             Menu {
-                Button(action: onAddAssignment) {
-                    Label("Add assignment", systemImage: "plus.circle")
-                }
                 Button(action: onRename) {
                     Label("Rename", systemImage: "pencil")
                 }
-                Button(role: .destructive, action: onDelete) {
-                    Label {
-                        Text("Delete")
-                    } icon: {
-                        Image(uiImage: UIImage(systemName: "trash")!
-                            .withTintColor(.systemRed, renderingMode: .alwaysOriginal))
-                    }
+                Button(action: onHide) {
+                    Label("Hide", systemImage: "eye.slash")
                 }
-                .tint(.red)
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.body.weight(.semibold))
@@ -459,7 +439,7 @@ struct CourseCardView: View {
     }
 
     private var subtitle: String {
-        let count = course.assignments.count
+        let count = course.visibleAssignments.count
         if count == 0 { return "No assignments yet" }
         var parts = ["\(course.completedCount)/\(count) done"]
         if course.overdueCount > 0 {
@@ -577,7 +557,8 @@ struct CourseEditorView: View {
                             assignments: course.assignments,
                             accentIndex: accentIndex,
                             sourceProvider: course.sourceProvider,
-                            sourceRemoteID: course.sourceRemoteID
+                            sourceRemoteID: course.sourceRemoteID,
+                            isHidden: course.isHidden
                         )
                         onSave(saved)
                         dismiss()

@@ -276,9 +276,15 @@ extension CourseStore {
 
                 if let submittedAt = remote.submittedAt, !wasCompleted {
                     assignment.completionDate = submittedAt
-                    karma = clampKarma(karma + assignment.karmaReward(ifCompletedAt: submittedAt))
-                    keys = clampKeys(keys + assignment.keysReward)
-                    report.completionsAwarded += 1
+                    let suppressed = courses[courseIndex].isHiddenFromApp || assignment.isHiddenFromApp
+                    if suppressed {
+                        assignment.rewardsApplied = false
+                    } else {
+                        karma = clampKarma(karma + assignment.karmaReward(ifCompletedAt: submittedAt))
+                        keys = clampKeys(keys + assignment.keysReward)
+                        assignment.rewardsApplied = true
+                        report.completionsAwarded += 1
+                    }
                 }
 
                 if let assignmentIndex {
