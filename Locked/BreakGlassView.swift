@@ -181,7 +181,7 @@ struct BreakGlassView: View {
     @State private var impactPoint = CGPoint(x: 0.5, y: 0.45)
     @State private var letteringBreak: CGFloat = 0
     @State private var keyTurn: Double = 0
-    @State private var keyScale: CGFloat = 1
+    @State private var keyScale: CGFloat = 0.86
     @State private var keyGlow: Double = 0.4
     @State private var keyUnlocked = false
     @State private var shackleOpen = false
@@ -430,7 +430,7 @@ struct BreakGlassView: View {
                 .animation(.spring(response: 0.42, dampingFraction: 0.62), value: shackleOpen)
 
             SculptedKey()
-                .scaleEffect((shattered ? keyScale : 0.86) * (instructionPulse && !shattered ? 1.02 : 1))
+                .scaleEffect(keyScale * (instructionPulse && !shattered ? 1.02 : 1))
                 .rotationEffect(Angle.degrees(-40 + keyTurn + keySpin))
                 .rotation3DEffect(
                     Angle.degrees(shattered ? 9 : 14),
@@ -442,6 +442,7 @@ struct BreakGlassView: View {
                 .saturation(shattered ? 1 : 0.55)
                 .opacity(shattered ? 1 : 0.38)
                 .shadow(color: Color.hazardYellow.opacity(shattered ? keyGlow * 0.55 : 0.12), radius: shattered ? 14 : 4, y: 4)
+                .animation(.easeOut(duration: 0.18), value: shattered)
         }
         .allowsHitTesting(false)
     }
@@ -640,11 +641,18 @@ struct BreakGlassView: View {
 
         withAnimation(.easeOut(duration: 0.35)) {
             letteringBreak = min(CGFloat(strikes) / CGFloat(needed), 1)
-            keyGlow = 0.4 + Double(min(strikes, needed)) * 0.18
+            if !isFinal {
+                keyGlow = 0.4 + Double(min(strikes, needed)) * 0.18
+            }
         }
 
         if isFinal {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
+            withAnimation(.spring(response: 0.48, dampingFraction: 0.62)) {
+                keyTurn = 95
+                keyScale = 1.12
+                keyGlow = 1.0
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
                 shatter()
             }
         }
@@ -731,14 +739,9 @@ struct BreakGlassView: View {
         glow = 0.55
         instructionPulse = false
 
-        DispatchQueue.main.async {
-            LogicStore.shared.activateEmergencyOverride()
-            onReleased()
-        }
-
-        burstFlash = 0.92
+        burstFlash = 0.55
         paneScale = 1.04
-        withAnimation(.easeOut(duration: 0.45)) {
+        withAnimation(.easeOut(duration: 0.22)) {
             burstFlash = 0
             paneScale = 1
         }
@@ -774,15 +777,7 @@ struct BreakGlassView: View {
             UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 1)
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
-            withAnimation(.spring(response: 0.48, dampingFraction: 0.62)) {
-                keyTurn = 95
-                keyScale = 1.12
-                keyGlow = 1.0
-            }
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.72) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
             withAnimation(.spring(response: 0.4, dampingFraction: 0.58)) {
                 shackleOpen = true
                 keyUnlocked = true
@@ -794,7 +789,12 @@ struct BreakGlassView: View {
             }
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.45) {
+        DispatchQueue.main.async {
+            LogicStore.shared.activateEmergencyOverride()
+            onReleased()
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.95) {
             withAnimation(.spring(response: 0.55, dampingFraction: 0.78)) {
                 released = true
             }
