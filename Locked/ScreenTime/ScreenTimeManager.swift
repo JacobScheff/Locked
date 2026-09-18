@@ -109,22 +109,23 @@ final class ScreenTimeManager: ObservableObject {
     }
 
     private func beginLaunch() async {
+        // Let the launch overlay commit before Screen Time / shield work.
+        await Task.yield()
         refreshStatus()
-        try? await Task.sleep(for: .milliseconds(160))
-        refreshStatus()
-
         markReady()
     }
 
     private func markReady() {
         guard !isReady, !isFinishingLaunch else { return }
         isFinishingLaunch = true
-        let remaining = max(0, 0.45 - Date().timeIntervalSince(launchedAt))
+        // Keep the cover up just long enough to avoid a one-frame flash.
+        let remaining = max(0, 0.12 - Date().timeIntervalSince(launchedAt))
         Task {
             if remaining > 0 {
                 try? await Task.sleep(for: .seconds(remaining))
             }
-            withAnimation(.easeOut(duration: 0.32)) {
+            await Task.yield()
+            withAnimation(.easeOut(duration: 0.28)) {
                 isReady = true
             }
         }

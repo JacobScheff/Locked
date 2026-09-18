@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // MARK: - Palette
 
@@ -168,54 +169,137 @@ struct LockedBackground: View {
 }
 
 struct LockedLaunchOverlay: View {
-    @State private var spin = false
-    @State private var glow = false
-
     var body: some View {
         ZStack {
             LockedBackground()
 
-            VStack(spacing: 22) {
+            VStack(spacing: 26) {
                 ZStack {
-                    Circle()
-                        .fill(Color.lockedIndigo.opacity(glow ? 0.16 : 0.08))
-                        .frame(width: 108, height: 108)
-
-                    Circle()
-                        .stroke(Color.lockedIndigo.opacity(0.16), lineWidth: 4)
-                        .frame(width: 78, height: 78)
-
-                    Circle()
-                        .trim(from: 0.08, to: 0.72)
-                        .stroke(
-                            LockedTheme.karmaGradient,
-                            style: StrokeStyle(lineWidth: 4, lineCap: .round)
-                        )
-                        .frame(width: 78, height: 78)
-                        .rotationEffect(.degrees(spin ? 360 : 0))
+                    LaunchEmblem()
+                        .frame(width: 118, height: 118)
 
                     Image(systemName: "lock.fill")
                         .font(.title2.weight(.bold))
                         .foregroundStyle(Color.lockedIndigo)
+                        .shadow(color: Color.lockedIndigo.opacity(0.25), radius: 8, y: 1)
                 }
+                .accessibilityHidden(true)
 
-                VStack(spacing: 6) {
+                VStack(spacing: 7) {
                     Text("Locked")
-                        .font(.lockedTitle(28))
+                        .font(.lockedTitle(30))
                     Text("Getting things ready")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.secondary)
                 }
             }
         }
-        .onAppear {
-            withAnimation(.linear(duration: 0.95).repeatForever(autoreverses: false)) {
-                spin = true
-            }
-            withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
-                glow = true
-            }
-        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Locked")
+        .accessibilityValue("Getting things ready")
+    }
+}
+
+/// Core Animation drives the launch mark so the ring keeps moving even if
+/// the main thread is busy building the first real screen.
+private struct LaunchEmblem: UIViewRepresentable {
+    func makeUIView(context: Context) -> LaunchEmblemView {
+        LaunchEmblemView()
+    }
+
+    func updateUIView(_ uiView: LaunchEmblemView, context: Context) {}
+}
+
+private final class LaunchEmblemView: UIView {
+    private let glowLayer = CALayer()
+    private let discLayer = CALayer()
+    private let trackLayer = CAShapeLayer()
+    private let arcLayer = CAShapeLayer()
+    private let gradientLayer = CAGradientLayer()
+    private var didStartAnimations = false
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        backgroundColor = .clear
+
+        glowLayer.backgroundColor = UIColor(red: 0.37, green: 0.38, blue: 0.96, alpha: 1).cgColor
+        glowLayer.opacity = 0.10
+        layer.addSublayer(glowLayer)
+
+        discLayer.backgroundColor = UIColor(red: 0.37, green: 0.38, blue: 0.96, alpha: 0.10).cgColor
+        layer.addSublayer(discLayer)
+
+        trackLayer.fillColor = UIColor.clear.cgColor
+        trackLayer.strokeColor = UIColor(red: 0.37, green: 0.38, blue: 0.96, alpha: 0.18).cgColor
+        trackLayer.lineWidth = 4
+        layer.addSublayer(trackLayer)
+
+        arcLayer.fillColor = UIColor.clear.cgColor
+        arcLayer.strokeColor = UIColor.white.cgColor
+        arcLayer.lineWidth = 4
+        arcLayer.lineCap = .round
+        arcLayer.strokeStart = 0.06
+        arcLayer.strokeEnd = 0.78
+
+        gradientLayer.colors = [
+            UIColor(red: 0.62, green: 0.38, blue: 0.95, alpha: 1).cgColor,
+            UIColor(red: 0.37, green: 0.38, blue: 0.96, alpha: 1).cgColor,
+            UIColor(red: 0.18, green: 0.78, blue: 0.72, alpha: 1).cgColor
+        ]
+        gradientLayer.startPoint = CGPoint(x: 0, y: 0)
+        gradientLayer.endPoint = CGPoint(x: 1, y: 1)
+        gradientLayer.mask = arcLayer
+        layer.addSublayer(gradientLayer)
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+
+        glowLayer.frame = bounds.insetBy(dx: bounds.width * 0.02, dy: bounds.width * 0.02)
+        glowLayer.cornerRadius = glowLayer.bounds.width / 2
+
+        discLayer.frame = bounds.insetBy(dx: bounds.width * 0.08, dy: bounds.width * 0.08)
+        discLayer.cornerRadius = discLayer.bounds.width / 2
+
+        let ringInset = bounds.width * 0.17
+        let ringRect = bounds.insetBy(dx: ringInset, dy: ringInset)
+        let ringPath = UIBezierPath(ovalIn: CGRect(origin: .zero, size: ringRect.size)).cgPath
+        trackLayer.frame = ringRect
+        trackLayer.path = ringPath
+
+        gradientLayer.frame = ringRect
+        arcLayer.frame = gradientLayer.bounds
+        arcLayer.path = ringPath
+        startAnimationsIfNeeded()
+    }
+
+    private func startAnimationsIfNeeded() {
+        guard !didStartAnimations else { return }
+        didStartAnimations = true
+
+        let spin = CABasicAnimation(keyPath: "transform.rotation.z")
+        spin.fromValue = 0
+        spin.toValue = CGFloat.pi * 2
+        spin.duration = 0.9
+        spin.repeatCount = .infinity
+        spin.isRemovedOnCompletion = false
+        spin.timingFunction = CAMediaTimingFunction(name: .linear)
+        gradientLayer.add(spin, forKey: "spin")
+
+        let pulse = CABasicAnimation(keyPath: "opacity")
+        pulse.fromValue = 0.07
+        pulse.toValue = 0.18
+        pulse.duration = 1.15
+        pulse.autoreverses = true
+        pulse.repeatCount = .infinity
+        pulse.isRemovedOnCompletion = false
+        pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        glowLayer.add(pulse, forKey: "pulse")
     }
 }
 

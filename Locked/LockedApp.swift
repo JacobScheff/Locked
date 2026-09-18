@@ -25,8 +25,10 @@ struct LockedApp: App {
                 .environmentObject(ScreenTimeManager.shared)
                 .environmentObject(ExternalSourceController.shared)
                 .onAppear {
-                    lockScheduler.start()
-                    ScreenTimeManager.shared.refreshStatus()
+                    DispatchQueue.main.async {
+                        lockScheduler.start()
+                        ScreenTimeManager.shared.refreshStatus()
+                    }
                 }
                 .onDisappear { lockScheduler.stop() }
         }
