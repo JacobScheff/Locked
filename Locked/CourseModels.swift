@@ -38,6 +38,42 @@ struct Assignment: Identifiable, Codable, Equatable {
     func karmaReward(ifCompletedAt date: Date = .now) -> Double {
         calculateKarmaDelta(releaseDate: releaseDate, dueDate: dueDate, completionDate: date)
     }
+
+    func karmaFinishPreview(currentKarma: Double, ifCompletedAt date: Date = .now) -> KarmaFinishPreview {
+        KarmaFinishPreview(delta: karmaReward(ifCompletedAt: date), currentKarma: currentKarma)
+    }
+}
+
+enum KarmaFinishPreview: Equatable {
+    case gain(Int)
+    case loss(Int)
+    case floorsToZero
+    case unchanged
+
+    init(delta: Double, currentKarma: Double) {
+        if abs(delta) < 0.5 {
+            self = .unchanged
+        } else if delta >= 0 {
+            self = .gain(Int(delta.rounded()))
+        } else if currentKarma + delta <= 0 {
+            self = .floorsToZero
+        } else {
+            self = .loss(Int((-delta).rounded()))
+        }
+    }
+
+    var confirmationText: String {
+        switch self {
+        case .gain(let amount):
+            return "about +\(amount) Karma"
+        case .loss(let amount):
+            return "about −\(amount) Karma"
+        case .floorsToZero:
+            return "sets karma to 0"
+        case .unchanged:
+            return "Karma unchanged"
+        }
+    }
 }
 
 struct Course: Identifiable, Codable, Equatable {

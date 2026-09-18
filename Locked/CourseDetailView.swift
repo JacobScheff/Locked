@@ -218,11 +218,13 @@ struct CourseDetailView: View {
             return "You’ll earn Keys, and Karma based on how early you finished."
         }
         let keysGain = Int(assignment.keysReward)
-        let karmaGain = Int(assignment.karmaReward().rounded())
-        if karmaGain >= 0 {
-            return "You’ll earn \(keysGain) Keys and about +\(karmaGain) Karma."
+        let preview = assignment.karmaFinishPreview(currentKarma: karma)
+        switch preview {
+        case .gain, .loss, .unchanged:
+            return "You’ll earn \(keysGain) Keys and \(preview.confirmationText)."
+        case .floorsToZero:
+            return "You’ll earn \(keysGain) Keys. Sets karma to 0."
         }
-        return "You’ll earn \(keysGain) Keys. Karma drops by about \(abs(karmaGain)) because this is late."
     }
 
     private var emptyAssignments: some View {
@@ -514,11 +516,12 @@ struct AssignmentDetailView: View {
         } message: {
             if let assignment {
                 let keysGain = Int(assignment.keysReward)
-                let karmaGain = Int(assignment.karmaReward().rounded())
-                if karmaGain >= 0 {
-                    Text("You’ll earn \(keysGain) Keys and about +\(karmaGain) Karma.")
-                } else {
-                    Text("You’ll earn \(keysGain) Keys. Karma drops by about \(abs(karmaGain)) because this is late.")
+                let preview = assignment.karmaFinishPreview(currentKarma: karma)
+                switch preview {
+                case .floorsToZero:
+                    Text("You’ll earn \(keysGain) Keys. Sets karma to 0.")
+                default:
+                    Text("You’ll earn \(keysGain) Keys and \(preview.confirmationText).")
                 }
             }
         }
@@ -621,16 +624,27 @@ struct AssignmentDetailView: View {
     }
 
     private func rewardCard(assignment: Assignment) -> some View {
-        let karmaGain = Int(assignment.karmaReward().rounded())
+        let karmaPreview = assignment.karmaFinishPreview(
+            currentKarma: karma,
+            ifCompletedAt: assignment.completionDate ?? .now
+        )
         return VStack(alignment: .leading, spacing: 8) {
             LockedSectionLabel(title: assignment.isCompleted ? "Earned" : "If you finish now", icon: "sparkles")
             HStack(spacing: 10) {
                 rewardChip(icon: "key.fill", text: "\(Int(assignment.keysReward)) Keys", color: .lockedAmber)
-                rewardChip(
-                    icon: "star.fill",
-                    text: karmaGain >= 0 ? "+\(karmaGain) Karma" : "\(karmaGain) Karma",
-                    color: karmaGain >= 0 ? .lockedViolet : .lockedRose
-                )
+                switch karmaPreview {
+                case .gain(let amount):
+                    rewardChip(icon: "star.fill", text: "+\(amount) Karma", color: .lockedViolet)
+                case .loss(let amount):
+                    rewardChip(icon: "star.fill", text: "−\(amount) Karma", color: .lockedRose)
+                case .floorsToZero, .unchanged:
+                    EmptyView()
+                }
+            }
+            if karmaPreview == .floorsToZero {
+                Text("Sets karma to 0")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
             }
             Text("Karma is based on how early you finish relative to the assigned and due dates. Keys are a base of 10 plus the point value.")
                 .font(.caption)

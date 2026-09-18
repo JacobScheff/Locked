@@ -15,6 +15,8 @@ struct AssignmentEditorView: View {
     @State private var pointsText: String
     @State private var selectedCourseID: UUID
 
+    @AppStorage("karma", store: .lockedGroup) private var karma: Double = 0.0
+
     var courseOptions: [Course]
 
     enum Field { case name, points }
@@ -102,7 +104,7 @@ struct AssignmentEditorView: View {
                     fieldCard(title: "Due") {
                         VStack(alignment: .leading, spacing: 14) {
                             ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 8) {
+                                HStack(spacing: 4) {
                                     ForEach(DuePreset.allCases) { preset in
                                         let selected = Calendar.current.isDate(dueDate, inSameDayAs: preset.date())
                                         Button {
@@ -110,7 +112,7 @@ struct AssignmentEditorView: View {
                                         } label: {
                                             Text(preset.label)
                                                 .font(.caption.weight(.semibold))
-                                                .padding(.horizontal, 12)
+                                                .padding(.horizontal, 10)
                                                 .padding(.vertical, 8)
                                                 .background(selected ? Color.lockedIndigo : Color.primary.opacity(0.08))
                                                 .foregroundStyle(selected ? Color.white : Color.primary)
@@ -212,7 +214,7 @@ struct AssignmentEditorView: View {
 
     private var rewardPreview: some View {
         let preview = draft
-        let karmaGain = Int(preview.karmaReward().rounded())
+        let karmaPreview = preview.karmaFinishPreview(currentKarma: karma)
         let keysGain = Int(preview.keysReward)
         return VStack(alignment: .leading, spacing: 8) {
             Text("If you finish now")
@@ -224,13 +226,23 @@ struct AssignmentEditorView: View {
                 Label("\(keysGain) Keys", systemImage: "key.fill")
                     .foregroundStyle(Color.lockedAmber)
                 Spacer()
-                Label(
-                    karmaGain >= 0 ? "+\(karmaGain) Karma" : "\(karmaGain) Karma",
-                    systemImage: "star.fill"
-                )
-                .foregroundStyle(karmaGain >= 0 ? Color.lockedViolet : Color.lockedRose)
+                switch karmaPreview {
+                case .gain(let amount):
+                    Label("+\(amount) Karma", systemImage: "star.fill")
+                        .foregroundStyle(Color.lockedViolet)
+                case .loss(let amount):
+                    Label("−\(amount) Karma", systemImage: "star.fill")
+                        .foregroundStyle(Color.lockedRose)
+                case .floorsToZero, .unchanged:
+                    EmptyView()
+                }
             }
             .font(.subheadline.weight(.semibold))
+            if karmaPreview == .floorsToZero {
+                Text("Sets karma to 0")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
             Text("Finishing early grants more Karma. Keys are 10 plus the point value.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
