@@ -14,6 +14,7 @@ struct LockedApp: App {
 
     init() {
         AppGroupStore.prepareContainer()
+        Economy.seedNewInstallIfNeeded()
     }
     
     var body: some Scene {

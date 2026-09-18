@@ -20,7 +20,7 @@ struct MainPage: View {
     var keys: Double = 0.0
 
     @AppStorage("karma", store: .lockedGroup)
-    var karma: Double = 0.0
+    var karma: Double = 100.0
 
     @AppStorage("lockedApps", store: .lockedGroup)
     var lockedApps: [String] = []
@@ -423,7 +423,7 @@ struct LockedAppsSection: View {
                             } else {
                                 Button {
                                     appToUnlock = "this app"
-                                    unlockCost = calculateUnlockCost(for: "App")
+                                    unlockCost = KeyUnlock.cost(for: item.token)
                                     unnamedAppToUnlock = item
                                     showUnlockAlert = true
                                 } label: {
@@ -451,7 +451,7 @@ struct LockedAppsSection: View {
                                 Text(formatAppDuration(appCounts[name] ?? 0))
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(.secondary)
-                                Text(overrideActive ? "Accessible until the seal repairs" : "\(calculateUnlockCost(for: name)) keys to unlock")
+                                Text(overrideActive ? "Accessible until the seal repairs" : "\(KeyUnlock.cost(forName: name)) keys to unlock")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -469,7 +469,7 @@ struct LockedAppsSection: View {
                             } else {
                                 Button {
                                     appToUnlock = name
-                                    unlockCost = calculateUnlockCost(for: name)
+                                    unlockCost = KeyUnlock.cost(forName: name)
                                     unnamedAppToUnlock = nil
                                     showUnlockAlert = true
                                 } label: {
@@ -493,14 +493,16 @@ struct LockedAppsSection: View {
         .alert("Unlock App", isPresented: $showUnlockAlert, presenting: appToUnlock) { app in
             if keys >= Double(unlockCost) {
                 Button("Unlock (\(unlockCost) Keys)") {
-                    keys -= Double(unlockCost)
                     if let unnamed = unnamedAppToUnlock {
-                        LockedTokenStore.remove(unnamed)
+                        _ = KeyUnlock.unlock(token: unnamed.token)
                         unnamedAppToUnlock = nil
-                        ScreenTimeShields.sync()
+                    } else if let token = UsageStore.token(for: app) {
+                        _ = KeyUnlock.unlock(token: token)
                     } else {
+                        Economy.spendKeys(Double(unlockCost))
                         UsageStore.unlock(name: app)
                     }
+                    keys = Economy.keys()
                     lockedApps = UsageStore.syncLockedNames()
                     updateWidget()
                 }
@@ -527,18 +529,6 @@ struct LockedAppsSection: View {
             let right = appCounts[rhs] ?? 0
             return left == right ? lhs < rhs : left > right
         }
-    }
-
-    private var visibleAppCounts: [String: Int] {
-        ExcludedApps.strippingExcluded(appCounts)
-    }
-
-    private func calculateUnlockCost(for app: String) -> Int {
-        let totalUsage = Double(visibleAppCounts.values.reduce(0, +))
-        let appUsage = Double(visibleAppCounts[app] ?? 0)
-        let usagePercentage = totalUsage > 0 ? (appUsage / totalUsage) * 100.0 : 0.0
-        let cost = pow(Double(lockedApps.count), 1.5) + 0.5 * pow(usagePercentage, 1.25) + 10.0
-        return Int(cost.rounded())
     }
 }
 

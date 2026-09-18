@@ -129,6 +129,35 @@ enum AppGroupStore {
         guard let raw, let data = raw.data(using: .utf8) else { return nil }
         return TokenCoding.decode(type, from: data)
     }
+
+    static func setSharedDouble(_ value: Double, forKey key: String) {
+        defaults.set(value, forKey: key)
+        if let url = fileURL(for: key),
+           let data = String(value).data(using: .utf8) {
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
+    static func sharedDouble(forKey key: String) -> Double? {
+        if let url = fileURL(for: key),
+           let data = try? Data(contentsOf: url),
+           let raw = String(data: data, encoding: .utf8),
+           let value = Double(raw.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            return value
+        }
+        if defaults.object(forKey: key) != nil {
+            return defaults.double(forKey: key)
+        }
+        return nil
+    }
+
+    static func hasSharedValue(forKey key: String) -> Bool {
+        if let url = fileURL(for: key),
+           FileManager.default.fileExists(atPath: url.path) {
+            return true
+        }
+        return defaults.object(forKey: key) != nil
+    }
 }
 
 extension UserDefaults {
@@ -160,6 +189,7 @@ enum ExcludedApps {
         "com.Jacob-Scheff.Locked.DeviceActivityMonitor",
         "com.Jacob-Scheff.Locked.DeviceActivityReport",
         "com.Jacob-Scheff.Locked.ShieldConfiguration",
+        "com.Jacob-Scheff.Locked.ShieldAction",
         "com.apple.Preferences",
         "com.apple.PreferencesUI",
         "com.apple.mobilephone",
@@ -215,6 +245,107 @@ enum ExcludedApps {
 
     static func strippingExcluded(_ names: [String]) -> [String] {
         names.filter { !isExcludedName($0) && !isBlankName($0) }
+    }
+}
+
+/// Keys and Karma. Mirrored into the app-group container so shield
+/// extensions can read them even when cfprefsd refuses the suite.
+enum Economy {
+    static let keysKey = "keys"
+    static let karmaKey = "karma"
+    static let defaultKeys: Double = 0
+    static let defaultKarma: Double = 100
+
+    /// First launch / first download. Existing stored values, including an
+    /// explicit 0, are left alone.
+    static func seedNewInstallIfNeeded() {
+        AppGroupStore.prepareContainer()
+        if !AppGroupStore.hasSharedValue(forKey: karmaKey) {
+            setKarma(defaultKarma)
+        }
+        if !AppGroupStore.hasSharedValue(forKey: keysKey) {
+            setKeys(defaultKeys)
+        }
+    }
+
+    static func keys() -> Double {
+        clampKeys(AppGroupStore.sharedDouble(forKey: keysKey) ?? defaultKeys)
+    }
+
+    static func karma() -> Double {
+        clampKarma(AppGroupStore.sharedDouble(forKey: karmaKey) ?? defaultKarma)
+    }
+
+    static func setKeys(_ value: Double) {
+        AppGroupStore.setSharedDouble(clampKeys(value), forKey: keysKey)
+    }
+
+    static func setKarma(_ value: Double) {
+        AppGroupStore.setSharedDouble(clampKarma(value), forKey: karmaKey)
+    }
+
+    @discardableResult
+    static func spendKeys(_ amount: Double) -> Bool {
+        let current = keys()
+        guard amount > 0, current + 0.000_1 >= amount else { return false }
+        setKeys(current - amount)
+        return true
+    }
+}
+
+func clampKeys(_ value: Double) -> Double {
+    max(0, value)
+}
+
+func clampKarma(_ value: Double) -> Double {
+    min(100, max(0, value))
+}
+
+/// Spend Keys to lift one shielded app. Used by Home and by the system shield.
+enum KeyUnlock {
+    enum Outcome: Equatable {
+        case unlocked
+        case notEnoughKeys(have: Int, need: Int)
+        case notLocked
+    }
+
+    static func cost(forName name: String) -> Int {
+        cost(usageSeconds: UsageStore.loadAppCounts()[name] ?? 0, lockedCount: LockedTokenStore.load().count)
+    }
+
+    static func cost(for token: ApplicationToken) -> Int {
+        let name = UsageStore.loadTokenMap().first { $0.value == token }?.key
+        return cost(
+            usageSeconds: name.flatMap { UsageStore.loadAppCounts()[$0] } ?? 0,
+            lockedCount: LockedTokenStore.load().count
+        )
+    }
+
+    static func cost(usageSeconds: Int, lockedCount: Int) -> Int {
+        let counts = UsageStore.loadAppCounts()
+        let total = Double(counts.values.reduce(0, +))
+        let usagePercentage = total > 0 ? (Double(usageSeconds) / total) * 100.0 : 0.0
+        let raw = pow(Double(lockedCount), 1.5) + 0.5 * pow(usagePercentage, 1.25) + 10.0
+        return max(1, Int(raw.rounded()))
+    }
+
+    static func canAfford(_ token: ApplicationToken) -> Bool {
+        Int(Economy.keys().rounded(.towardZero)) >= cost(for: token)
+    }
+
+    @discardableResult
+    static func unlock(token: ApplicationToken) -> Outcome {
+        guard LockedTokenStore.load().contains(token) else { return .notLocked }
+        let need = cost(for: token)
+        let have = Int(Economy.keys().rounded(.towardZero))
+        guard Economy.spendKeys(Double(need)) else {
+            return .notEnoughKeys(have: have, need: need)
+        }
+        LockedTokenStore.remove(token)
+        UsageStore.syncLockedNames()
+        ScreenTimeShields.sync()
+        UsageStore.pingMainApp()
+        return .unlocked
     }
 }
 

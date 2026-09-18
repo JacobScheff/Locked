@@ -3,6 +3,7 @@ import DeviceActivity
 import FamilyControls
 import SwiftUI
 import UIKit
+import WidgetKit
 
 @MainActor
 final class ScreenTimeManager: ObservableObject {
@@ -55,6 +56,7 @@ final class ScreenTimeManager: ObservableObject {
     }
 
     func refreshStatus() {
+        Economy.seedNewInstallIfNeeded()
         let status = AuthorizationCenter.shared.authorizationStatus
         if authorizationStatus != status {
             authorizationStatus = status
@@ -102,6 +104,7 @@ final class ScreenTimeManager: ObservableObject {
         usageRevision += 1
         UsageStore.syncLockedNames()
         ScreenTimeShields.sync()
+        WidgetCenter.shared.reloadTimelines(ofKind: "Locked_Widget")
         markReady()
     }
 

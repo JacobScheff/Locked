@@ -350,7 +350,7 @@ struct CourseDetailView: View {
     let courseID: UUID
 
     @AppStorage("keys", store: .lockedGroup) var keys: Double = 0.0
-    @AppStorage("karma", store: .lockedGroup) var karma: Double = 0.0
+    @AppStorage("karma", store: .lockedGroup) var karma: Double = 100.0
 
     @State private var editingAssignment: Assignment?
     @State private var assignmentToDelete: Assignment?
@@ -584,6 +584,8 @@ struct CourseDetailView: View {
             let baseKeys = 10.0
             let pointBonus = savedAssignment.pointsPossible ?? 0.0
             keys += (baseKeys + pointBonus)
+            Economy.setKarma(karma)
+            Economy.setKeys(keys)
             WidgetCenter.shared.reloadTimelines(ofKind: "Locked_Widget")
         }
 

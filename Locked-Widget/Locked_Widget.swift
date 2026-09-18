@@ -26,8 +26,12 @@ struct Provider: TimelineProvider {
     }
 
     private func currentEntry(at date: Date) -> SimpleEntry {
-        let keys = Int(sharedDefaults?.double(forKey: "keys") ?? 0)
-        let karma = Int(sharedDefaults?.double(forKey: "karma") ?? 0)
+        let keys = sharedDefaults?.object(forKey: "keys") == nil
+            ? 0
+            : Int(sharedDefaults?.double(forKey: "keys") ?? 0)
+        let karma = sharedDefaults?.object(forKey: "karma") == nil
+            ? 100
+            : Int(sharedDefaults?.double(forKey: "karma") ?? 100)
         let until = Date(timeIntervalSince1970: sharedDefaults?.double(forKey: "emergencyOverrideUntil") ?? 0)
         return SimpleEntry(date: date, keys: keys, karma: karma, overrideActive: until > date)
     }

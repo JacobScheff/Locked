@@ -65,7 +65,7 @@ struct InnerVaultView: View {
     var keys: Double = 0.0
 
     @AppStorage("karma", store: .lockedGroup)
-    var karma: Double = 0.0
+    var karma: Double = 100.0
 
     @AppStorage("emergencyOverrideUntil", store: .lockedGroup)
     var emergencyOverrideUntil: Double = 0
@@ -446,6 +446,8 @@ struct InnerVaultView: View {
     private func prepare() {
         keys = clampKeys(keys)
         karma = clampKarma(karma)
+        Economy.setKeys(keys)
+        Economy.setKarma(karma)
         lastTick = currentNumber
         tickFeedback.prepare()
         notchFeedback.prepare()
@@ -573,6 +575,7 @@ struct InnerVaultView: View {
     private func stepKeys(_ delta: Int) {
         let next = adjustedKeys(from: keys, by: delta)
         guard next != keys else { return }
+        Economy.setKeys(next)
         withAnimation(ReserveNumberWheel.spinAnimation) {
             keys = next
         }
@@ -583,6 +586,7 @@ struct InnerVaultView: View {
     private func stepKarma(_ delta: Int) {
         let next = adjustedKarma(from: karma, by: delta)
         guard next != karma else { return }
+        Economy.setKarma(next)
         withAnimation(ReserveNumberWheel.spinAnimation) {
             karma = next
         }
