@@ -74,13 +74,15 @@ private enum ShieldLook {
         }
 
         var subtitle: String {
+            let current = ShieldLook.format(keys)
+            let unlock = ShieldLook.format(cost)
             if confirming {
-                return "It stays open until the next weekly lock."
+                return "\(current) − \(unlock) = \(ShieldLook.format(remaining)) left until Sunday"
             }
             if canAfford {
-                return "Spend keys to open it until next Sunday."
+                return "\(current) − \(unlock) = \(ShieldLook.format(remaining)) left"
             }
-            return "Finish assignments in Locked to earn more."
+            return "\(current) − \(unlock) · need \(ShieldLook.format(shortfall)) more"
         }
 
         var primaryTitle: String {
@@ -113,17 +115,17 @@ private enum ShieldArtwork {
     static func ledger(for state: ShieldLook.State) -> UIImage {
         // The system icon slot is small and fixed. Fill it with the equation
         // only — title and subtitle now use the real (much larger) labels.
-        let size = CGSize(width: 200, height: 200)
+        let size = CGSize(width: 180, height: 180)
         let format = UIGraphicsImageRendererFormat()
         format.scale = 3
         format.opaque = false
         let renderer = UIGraphicsImageRenderer(size: size, format: format)
         return renderer.image { _ in
-            let content = CGRect(origin: .zero, size: size).insetBy(dx: 2, dy: 2)
+            let content = CGRect(origin: .zero, size: size)
             var y = content.minY
 
-            drawKarma(state.karma, in: CGRect(x: content.minX, y: y, width: content.width, height: 28))
-            y += 30
+            drawKarma(state.karma, in: CGRect(x: content.minX, y: y, width: content.width, height: 20))
+            y += 20
 
             let rowHeight: CGFloat = 50
             drawAlignedRow(
@@ -171,21 +173,14 @@ private enum ShieldArtwork {
     private static func drawKarma(_ karma: Int, in rect: CGRect) {
         let style = NSMutableParagraphStyle()
         style.alignment = .right
-        ("\(karma)" as NSString).draw(
-            in: CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: 18),
+        let font = roundedFont(size: 13, weight: .heavy)
+        ("\(karma)  KARMA" as NSString).draw(
+            in: rect.offsetBy(dx: 0, dy: (rect.height - font.lineHeight) / 2),
             withAttributes: [
-                .font: roundedFont(size: 16, weight: .heavy),
+                .font: font,
                 .foregroundColor: ShieldLook.violet,
-                .paragraphStyle: style
-            ]
-        )
-        ("KARMA" as NSString).draw(
-            in: CGRect(x: rect.minX, y: rect.minY + 16, width: rect.width, height: 10),
-            withAttributes: [
-                .font: roundedFont(size: 8, weight: .bold),
-                .foregroundColor: UIColor.white.withAlphaComponent(0.58),
                 .paragraphStyle: style,
-                .kern: 0.8
+                .kern: 0.6
             ]
         )
     }
@@ -212,7 +207,7 @@ private enum ShieldArtwork {
             width: valueWidth,
             height: rect.height
         )
-        drawFittedValue(value, color: color, in: valueRect, maxSize: 44)
+        drawFittedValue(value, color: color, in: valueRect, maxSize: 48)
     }
 
     private static func drawFittedValue(_ value: String, color: UIColor, in rect: CGRect, maxSize: CGFloat) {
