@@ -352,7 +352,10 @@ enum KeyUnlock {
 enum ShieldUnlockPrompt {
     static let tokenKey = "shieldUnlockPromptToken"
     static let untilKey = "shieldUnlockPromptUntil"
+    static let armedAtKey = "shieldUnlockPromptArmedAt"
     static let duration: TimeInterval = 45
+    /// Long enough that a double-tap on Use keys cannot hit Confirm.
+    static let confirmDelay: TimeInterval = 0.9
 
     static func isConfirming(_ token: ApplicationToken) -> Bool {
         let until = AppGroupStore.sharedDouble(forKey: untilKey) ?? 0
@@ -369,6 +372,12 @@ enum ShieldUnlockPrompt {
         return saved == token
     }
 
+    static func canConfirm(_ token: ApplicationToken) -> Bool {
+        guard isConfirming(token) else { return false }
+        let armedAt = AppGroupStore.sharedDouble(forKey: armedAtKey) ?? 0
+        return Date().timeIntervalSince1970 - armedAt >= confirmDelay
+    }
+
     static func begin(_ token: ApplicationToken) {
         guard let data = TokenCoding.encode(token) else { return }
         AppGroupStore.setSharedData(data, forKey: tokenKey)
@@ -376,6 +385,7 @@ enum ShieldUnlockPrompt {
             Date().addingTimeInterval(duration).timeIntervalSince1970,
             forKey: untilKey
         )
+        AppGroupStore.setSharedDouble(Date().timeIntervalSince1970, forKey: armedAtKey)
     }
 
     static func clear() {
@@ -384,6 +394,7 @@ enum ShieldUnlockPrompt {
         }
         AppGroupStore.defaults.removeObject(forKey: tokenKey)
         AppGroupStore.setSharedDouble(0, forKey: untilKey)
+        AppGroupStore.setSharedDouble(0, forKey: armedAtKey)
     }
 }
 

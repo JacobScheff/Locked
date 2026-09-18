@@ -34,14 +34,14 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
         )
 
         return ManagedSettingsUI.ShieldConfiguration(
-            backgroundBlurStyle: state.confirming ? .light : .dark,
-            backgroundColor: state.background,
+            backgroundBlurStyle: .dark,
+            backgroundColor: ShieldLook.indigo,
             icon: ShieldArtwork.seal(for: state),
-            title: .init(text: state.title, color: state.titleColor),
-            subtitle: .init(text: state.subtitle, color: state.subtitleColor),
-            primaryButtonLabel: .init(text: state.primaryTitle, color: state.primaryForeground),
+            title: .init(text: state.title, color: .white),
+            subtitle: .init(text: state.subtitle, color: UIColor.white.withAlphaComponent(0.82)),
+            primaryButtonLabel: .init(text: state.primaryTitle, color: .white),
             primaryButtonBackgroundColor: state.primaryBackground,
-            secondaryButtonLabel: .init(text: state.secondaryTitle, color: state.secondaryForeground)
+            secondaryButtonLabel: .init(text: state.secondaryTitle, color: UIColor.white.withAlphaComponent(0.88))
         )
     }
 }
@@ -50,28 +50,12 @@ private enum ShieldLook {
     static let indigo = UIColor(red: 0.22, green: 0.18, blue: 0.58, alpha: 1)
     static let indigoButton = UIColor(red: 0.37, green: 0.38, blue: 0.96, alpha: 1)
     static let indigoMuted = UIColor(red: 0.30, green: 0.28, blue: 0.52, alpha: 1)
-    static let cream = UIColor(red: 0.96, green: 0.96, blue: 0.99, alpha: 1)
-    static let ink = UIColor(red: 0.16, green: 0.14, blue: 0.32, alpha: 1)
 
     struct State {
         var confirming: Bool
         var canAfford: Bool
         var cost: Int
         var keys: Int
-
-        var background: UIColor {
-            confirming ? ShieldLook.cream : ShieldLook.indigo
-        }
-
-        var titleColor: UIColor {
-            confirming ? ShieldLook.ink : .white
-        }
-
-        var subtitleColor: UIColor {
-            confirming
-                ? UIColor(red: 0.32, green: 0.30, blue: 0.42, alpha: 1)
-                : UIColor.white.withAlphaComponent(0.82)
-        }
 
         var title: String {
             if confirming { return "Spend \(cost) keys?" }
@@ -81,7 +65,7 @@ private enum ShieldLook {
         var subtitle: String {
             if confirming {
                 let remaining = max(0, keys - cost)
-                return "You’ll have \(remaining) left. This app stays open until next Sunday."
+                return "You’ll have \(remaining) left. It stays open until next Sunday."
             }
             if canAfford {
                 return "\(cost) keys until Sunday · you have \(keys)"
@@ -89,32 +73,18 @@ private enum ShieldLook {
             return "Needs \(cost) keys · you have \(keys). Finish assignments in Locked to earn more."
         }
 
-        /// Confirm puts Cancel on the primary control so a double-tap
-        /// on Use keys cannot spend. Spend is the secondary action.
         var primaryTitle: String {
-            if confirming { return "Cancel" }
+            if confirming { return "Confirm" }
             if canAfford { return "Use keys" }
             return "Need \(cost) keys"
         }
 
         var secondaryTitle: String {
-            if confirming { return "Spend \(cost) keys" }
-            return "Keep locked"
+            confirming ? "Cancel" : "Keep locked"
         }
 
         var primaryBackground: UIColor {
-            if confirming {
-                return UIColor(red: 0.86, green: 0.85, blue: 0.92, alpha: 1)
-            }
-            return canAfford ? ShieldLook.indigoButton : ShieldLook.indigoMuted
-        }
-
-        var primaryForeground: UIColor {
-            confirming ? ShieldLook.ink : .white
-        }
-
-        var secondaryForeground: UIColor {
-            confirming ? ShieldLook.indigoButton : UIColor.white.withAlphaComponent(0.88)
+            canAfford || confirming ? ShieldLook.indigoButton : ShieldLook.indigoMuted
         }
     }
 }
@@ -130,23 +100,13 @@ private enum ShieldArtwork {
             cg.setShadow(
                 offset: CGSize(width: 0, height: 8),
                 blur: 18,
-                color: UIColor.black.withAlphaComponent(state.confirming ? 0.16 : 0.35).cgColor
+                color: UIColor.black.withAlphaComponent(0.35).cgColor
             )
             UIBezierPath(ovalIn: disc).fill()
             cg.setShadow(offset: .zero, blur: 0, color: nil)
 
-            let top: UIColor
-            let bottom: UIColor
-            let symbolColor: UIColor
-            if state.confirming {
-                top = UIColor(red: 0.91, green: 0.90, blue: 0.99, alpha: 1)
-                bottom = UIColor(red: 0.78, green: 0.76, blue: 0.96, alpha: 1)
-                symbolColor = ShieldLook.indigo
-            } else {
-                top = UIColor(red: 0.46, green: 0.40, blue: 0.96, alpha: 1)
-                bottom = UIColor(red: 0.28, green: 0.22, blue: 0.72, alpha: 1)
-                symbolColor = .white
-            }
+            let top = UIColor(red: 0.46, green: 0.40, blue: 0.96, alpha: 1)
+            let bottom = UIColor(red: 0.28, green: 0.22, blue: 0.72, alpha: 1)
 
             cg.saveGState()
             UIBezierPath(ovalIn: disc).addClip()
@@ -164,15 +124,15 @@ private enum ShieldArtwork {
             }
             cg.restoreGState()
 
-            (state.confirming ? ShieldLook.indigo.withAlphaComponent(0.28) : UIColor.white.withAlphaComponent(0.28)).setStroke()
+            UIColor.white.withAlphaComponent(0.28).setStroke()
             let ring = UIBezierPath(ovalIn: disc.insetBy(dx: 6, dy: 6))
             ring.lineWidth = 3
             ring.stroke()
 
-            let symbolName = state.confirming ? "key.fill" : "lock.fill"
-            let config = UIImage.SymbolConfiguration(pointSize: state.confirming ? 80 : 86, weight: .bold)
+            let symbolName = state.confirming ? "lock.open.fill" : "lock.fill"
+            let config = UIImage.SymbolConfiguration(pointSize: 86, weight: .bold)
             if let symbol = UIImage(systemName: symbolName, withConfiguration: config)?
-                .withTintColor(symbolColor, renderingMode: .alwaysOriginal) {
+                .withTintColor(.white, renderingMode: .alwaysOriginal) {
                 let symbolRect = CGRect(
                     x: (size.width - symbol.size.width) / 2,
                     y: (size.height - symbol.size.height) / 2,
