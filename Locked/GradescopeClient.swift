@@ -3,8 +3,18 @@ import WebKit
 
 enum GradescopeConfig {
     static let host = "www.gradescope.com"
+    static let loginURL = URL(string: "https://www.gradescope.com/login")!
     static let accountURL = URL(string: "https://www.gradescope.com/account")!
     static let safariUserAgent = BrightspaceConfig.safariUserAgent
+    static let signedInProbe = """
+    (function() {
+      var html = document.documentElement ? document.documentElement.innerHTML : '';
+      if (/session\\[(email|password)\\]/.test(html)) return false;
+      if (document.querySelector('a[href="/logout"], a[href*="logout"], form[action*="logout"], .courseList, .courseList--term, a.courseBox, .courseBox')) return true;
+      var text = (document.body && document.body.innerText || '').toLowerCase();
+      return text.indexOf('log out') !== -1;
+    })();
+    """
 }
 
 enum GradescopeError: LocalizedError {
@@ -82,40 +92,33 @@ enum GradescopeParser {
 
     static func isLoginURL(_ url: URL?) -> Bool {
         guard let url else { return true }
-        let host = url.host?.lowercased() ?? ""
         let path = url.path.lowercased()
-        let combined = "\(host)\(path)\(url.absoluteString.lowercased())"
         return path.contains("/login")
             || path.contains("logon")
-            || path.contains("signin")
-            || combined.contains("/sso")
-            || combined.contains("saml")
-            || combined.contains("shibboleth")
-            || combined.contains("login.microsoftonline")
-            || combined.contains("accounts.google")
-            || combined.contains("idp.")
+            || path.hasSuffix("/signin")
+            || path.contains("/signin/")
     }
 
-    static func isSignedInURL(_ url: URL?) -> Bool {
-        guard isGradescopeHost(url?.host), !isLoginURL(url) else { return false }
-        let path = url?.path.lowercased() ?? ""
-        return path.hasPrefix("/account") || path.hasPrefix("/courses")
-    }
-
-    static func hasSessionCookie(_ cookies: [HTTPCookie]) -> Bool {
+    static func hasAuthCookie(_ cookies: [HTTPCookie]) -> Bool {
         cookies.contains { cookie in
             guard cookieBelongs(cookie), !cookie.value.isEmpty else { return false }
             let name = cookie.name.lowercased()
-            return name == "_gradescope_session"
-                || name == "signed_token"
+            return name == "signed_token"
                 || name.contains("remember")
-                || name.contains("session")
+                || name.contains("signed")
         }
     }
 
-    static func session(from cookies: [HTTPCookie], currentURL: URL?) -> GradescopeStoredAuth? {
+    static func session(
+        from cookies: [HTTPCookie],
+        currentURL: URL?,
+        pageLooksSignedIn: Bool,
+        force: Bool = false
+    ) -> GradescopeStoredAuth? {
+        guard isGradescopeHost(currentURL?.host), !isLoginURL(currentURL) else { return nil }
         let matching = cookies.filter(cookieBelongs)
-        guard hasSessionCookie(matching), isSignedInURL(currentURL) else { return nil }
+        guard !matching.isEmpty else { return nil }
+        guard pageLooksSignedIn || hasAuthCookie(matching) || force else { return nil }
         return GradescopeStoredAuth(
             host: GradescopeConfig.host,
             cookies: matching.map(GradescopeStoredCookie.init),

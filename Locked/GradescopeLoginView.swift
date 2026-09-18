@@ -5,18 +5,17 @@ struct GradescopeSignInView: View {
     let onConnect: (GradescopeStoredAuth) async throws -> Void
     let onCancel: () -> Void
 
+    @StateObject private var bridge = GradescopeWebBridge()
     @State private var isWorking = false
     @State private var errorMessage: String?
+    @State private var captureID = 0
 
     var body: some View {
         NavigationStack {
             ZStack {
-                GradescopeWebView(
-                    onSignedIn: { auth in
-                        guard !isWorking else { return }
-                        Task { await finish(auth) }
-                    }
-                )
+                GradescopeWebView(bridge: bridge, captureID: captureID) { auth in
+                    Task { await finish(auth) }
+                }
                 .ignoresSafeArea(edges: .bottom)
                 .allowsHitTesting(!isWorking)
 
@@ -59,28 +58,79 @@ struct GradescopeSignInView: View {
                 .padding(.vertical, 10)
                 .background(.bar)
             }
+            .safeAreaInset(edge: .bottom) {
+                Button {
+                    Task { await importNow() }
+                } label: {
+                    Text("I’m signed in — import classes")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(isWorking ? LinearGradient(colors: [.gray, .gray], startPoint: .leading, endPoint: .trailing) : LockedTheme.karmaGradient)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+                .disabled(isWorking)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(.bar)
+            }
         }
         .tint(.lockedIndigo)
         .interactiveDismissDisabled(isWorking)
     }
 
+    private func importNow() async {
+        guard !isWorking else { return }
+        do {
+            guard let auth = try await bridge.captureAuth(force: true) else {
+                errorMessage = "Sign in first. When you can see your Gradescope classes, tap import."
+                return
+            }
+            await finish(auth)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     private func finish(_ auth: GradescopeStoredAuth) async {
+        guard !isWorking else { return }
         errorMessage = nil
         isWorking = true
         defer { isWorking = false }
         do {
             try await onConnect(auth)
         } catch {
+            captureID += 1
             errorMessage = error.localizedDescription
         }
     }
 }
 
+@MainActor
+final class GradescopeWebBridge: ObservableObject {
+    weak var webView: WKWebView?
+
+    func captureAuth(force: Bool) async throws -> GradescopeStoredAuth? {
+        guard let webView else { return nil }
+        let pageLooksSignedIn = await webView.gradescopePageLooksSignedIn()
+        let cookies = await webView.gradescopeCookies()
+        return GradescopeParser.session(
+            from: cookies,
+            currentURL: webView.url,
+            pageLooksSignedIn: pageLooksSignedIn,
+            force: force
+        )
+    }
+}
+
 private struct GradescopeWebView: UIViewRepresentable {
+    let bridge: GradescopeWebBridge
+    let captureID: Int
     let onSignedIn: (GradescopeStoredAuth) -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onSignedIn: onSignedIn)
+        Coordinator(bridge: bridge, onSignedIn: onSignedIn)
     }
 
     func makeUIView(context: Context) -> WKWebView {
@@ -94,36 +144,47 @@ private struct GradescopeWebView: UIViewRepresentable {
         webView.uiDelegate = context.coordinator
         webView.allowsBackForwardNavigationGestures = true
         context.coordinator.webView = webView
-        configuration.websiteDataStore.httpCookieStore.add(context.coordinator)
+        bridge.webView = webView
 
-        webView.load(URLRequest(url: GradescopeConfig.accountURL))
+        webView.load(URLRequest(url: GradescopeConfig.loginURL))
         return webView
     }
 
     func updateUIView(_ uiView: WKWebView, context: Context) {
         context.coordinator.onSignedIn = onSignedIn
+        context.coordinator.bridge = bridge
+        bridge.webView = uiView
+        context.coordinator.resetIfNeeded(captureID)
     }
 
     static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
-        uiView.configuration.websiteDataStore.httpCookieStore.remove(coordinator)
         coordinator.webView = nil
+        if coordinator.bridge.webView === uiView {
+            coordinator.bridge.webView = nil
+        }
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCookieStoreObserver {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+        var bridge: GradescopeWebBridge
         var onSignedIn: (GradescopeStoredAuth) -> Void
         weak var webView: WKWebView?
         private var finished = false
+        private var lastCaptureID = 0
+        private var inspectTask: Task<Void, Never>?
 
-        init(onSignedIn: @escaping (GradescopeStoredAuth) -> Void) {
+        init(bridge: GradescopeWebBridge, onSignedIn: @escaping (GradescopeStoredAuth) -> Void) {
+            self.bridge = bridge
             self.onSignedIn = onSignedIn
         }
 
-        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            inspectCookies(currentURL: webView.url)
+        func resetIfNeeded(_ captureID: Int) {
+            guard captureID != lastCaptureID else { return }
+            lastCaptureID = captureID
+            finished = false
         }
 
-        func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
-            inspectCookies(currentURL: webView.url)
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            scheduleInspect()
         }
 
         func webView(
@@ -138,24 +199,36 @@ private struct GradescopeWebView: UIViewRepresentable {
             return nil
         }
 
-        nonisolated func cookiesDidChange(in cookieStore: WKHTTPCookieStore) {
-            Task { @MainActor in
-                self.inspectCookies(currentURL: self.webView?.url)
-            }
-        }
-
-        private func inspectCookies(currentURL: URL?) {
-            guard !finished else { return }
-            let store = webView?.configuration.websiteDataStore.httpCookieStore ?? WKWebsiteDataStore.default().httpCookieStore
-            store.getAllCookies { [weak self] cookies in
-                guard let self, !self.finished else { return }
-                guard let auth = GradescopeParser.session(from: cookies, currentURL: currentURL) else {
+        private func scheduleInspect() {
+            inspectTask?.cancel()
+            inspectTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(250))
+                guard !Task.isCancelled, !finished, let webView else { return }
+                do {
+                    guard let auth = try await bridge.captureAuth(force: false) else { return }
+                    finished = true
+                    onSignedIn(auth)
+                } catch {
                     return
                 }
-                self.finished = true
-                DispatchQueue.main.async {
-                    self.onSignedIn(auth)
-                }
+            }
+        }
+    }
+}
+
+private extension WKWebView {
+    func gradescopePageLooksSignedIn() async -> Bool {
+        await withCheckedContinuation { continuation in
+            evaluateJavaScript(GradescopeConfig.signedInProbe) { result, _ in
+                continuation.resume(returning: (result as? Bool) == true)
+            }
+        }
+    }
+
+    func gradescopeCookies() async -> [HTTPCookie] {
+        await withCheckedContinuation { continuation in
+            configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies in
+                continuation.resume(returning: cookies)
             }
         }
     }
