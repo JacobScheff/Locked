@@ -142,7 +142,7 @@ struct SimpleEntry: TimelineEntry {
     }
 
     var lockCountCopy: String {
-        "\(appsLockingThisWeek)/\(appCount) will lock this week"
+        "\(appsLockingThisWeek)/\(appCount) apps will lock this week"
     }
 
     var remaining: TimeInterval {
