@@ -310,6 +310,7 @@ extension CourseStore {
         let existing = current.trimmingCharacters(in: .whitespacesAndNewlines)
         guard existing.caseInsensitiveCompare(next) != .orderedSame else { return false }
         return BrightspaceParser.looksLikeOrgUnitCode(existing)
+            || BrightspaceParser.hasStrippableSISPrefix(existing)
     }
 
     private static func indexOfCourse(

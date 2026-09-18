@@ -119,7 +119,7 @@ enum BrightspaceParser {
     /// Prefer the course offering title students see in Brightspace, not the SIS/org-unit code.
     static func displayName(code: String?, name: String) -> String {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedName.isEmpty { return trimmedName }
+        if !trimmedName.isEmpty { return strippedSISPrefix(trimmedName) }
         if let code {
             let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty { return trimmed }
@@ -127,10 +127,63 @@ enum BrightspaceParser {
         return name
     }
 
+    /// Drop a leading term/section id such as `20263-66804` when a real title follows.
+    static func strippedSISPrefix(_ name: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return trimmed }
+
+        var index = trimmed.startIndex
+        if trimmed[index] == "(" || trimmed[index] == "[" {
+            index = trimmed.index(after: index)
+        }
+
+        let termStart = index
+        while index < trimmed.endIndex, trimmed[index].isNumber {
+            index = trimmed.index(after: index)
+        }
+        guard (4...6).contains(trimmed.distance(from: termStart, to: index)) else { return trimmed }
+
+        guard index < trimmed.endIndex, isSISSeparator(trimmed[index]) else { return trimmed }
+        while index < trimmed.endIndex, isSISSeparator(trimmed[index]) {
+            index = trimmed.index(after: index)
+        }
+
+        let sectionStart = index
+        while index < trimmed.endIndex, trimmed[index].isNumber {
+            index = trimmed.index(after: index)
+        }
+        guard (4...6).contains(trimmed.distance(from: sectionStart, to: index)) else { return trimmed }
+
+        if index < trimmed.endIndex, trimmed[index] == ")" || trimmed[index] == "]" {
+            index = trimmed.index(after: index)
+        }
+        guard index < trimmed.endIndex, isSISTitleBoundary(trimmed[index]) else { return trimmed }
+        while index < trimmed.endIndex, isSISTitleBoundary(trimmed[index]) {
+            index = trimmed.index(after: index)
+        }
+
+        let title = String(trimmed[index...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return title.isEmpty ? trimmed : title
+    }
+
+    private static func isSISSeparator(_ character: Character) -> Bool {
+        character == "-" || character == "_" || character == "/" || character.isWhitespace
+    }
+
+    private static func isSISTitleBoundary(_ character: Character) -> Bool {
+        isSISSeparator(character) || character == ":" || character == "–" || character == "—"
+    }
+
+    static func hasStrippableSISPrefix(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return strippedSISPrefix(trimmed).caseInsensitiveCompare(trimmed) != .orderedSame
+    }
+
     /// SIS identifiers look like `20253_csci_201_32414` or `2025FA-CSCI-201-32414`.
     static func looksLikeOrgUnitCode(_ value: String) -> Bool {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return true }
+        if hasStrippableSISPrefix(trimmed) { return true }
         if trimmed.contains("_") { return true }
         let hasWhitespace = trimmed.contains(where: \.isWhitespace)
         let hasDigit = trimmed.contains(where: \.isNumber)
