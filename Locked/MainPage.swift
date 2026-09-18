@@ -163,14 +163,13 @@ struct MainPage: View {
 
     private func applyUsageSnapshot() {
         let newCounts: [String: Int]
-        let newLocked: [String]
         if UsageStore.hasSnapshot {
             newCounts = UsageStore.loadAppCounts()
-            newLocked = UsageStore.loadLockedApps()
         } else {
             newCounts = ExcludedApps.strippingExcluded(appCounts)
-            newLocked = ExcludedApps.strippingExcluded(lockedApps)
         }
+        // Locked names always come from the shielded token set.
+        let newLocked = UsageStore.syncLockedNames()
         if appCounts != newCounts {
             appCounts = newCounts
         }
@@ -498,11 +497,11 @@ struct LockedAppsSection: View {
                     if let unnamed = unnamedAppToUnlock {
                         LockedTokenStore.remove(unnamed)
                         unnamedAppToUnlock = nil
+                        ScreenTimeShields.sync()
                     } else {
-                        lockedApps.removeAll { $0 == app }
                         UsageStore.unlock(name: app)
                     }
-                    ScreenTimeShields.sync()
+                    lockedApps = UsageStore.syncLockedNames()
                     updateWidget()
                 }
                 Button("Cancel", role: .cancel) { }
