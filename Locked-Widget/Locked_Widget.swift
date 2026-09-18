@@ -142,14 +142,17 @@ struct SimpleEntry: TimelineEntry {
     }
 
     var lockCountCopy: String {
-        switch appsLockingThisWeek {
-        case 0:
+        "\(appsLockingThisWeek)/\(appCount)"
+    }
+
+    var lockCountAccessibilityLabel: String {
+        if appCount == 0 {
             return "No apps will lock this week"
-        case 1:
-            return "1 app will lock this week"
-        default:
-            return "\(appsLockingThisWeek) apps will lock this week"
         }
+        if appsLockingThisWeek == 1 {
+            return "1 of \(appCount) apps will lock this week"
+        }
+        return "\(appsLockingThisWeek) of \(appCount) apps will lock this week"
     }
 
     var remaining: TimeInterval {
@@ -198,11 +201,15 @@ struct Locked_WidgetEntryView: View {
     private var mediumView: some View {
         HStack(alignment: .center, spacing: 16) {
             KarmaRing(karma: entry.karma, size: 88, lineWidth: 9, numberSize: 30)
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text(entry.lockCountCopy)
-                    .font(.system(.subheadline, design: .rounded, weight: .bold))
+                    .font(.system(.title3, design: .rounded, weight: .bold))
                     .foregroundStyle(.white)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .monospacedDigit()
+                    .accessibilityLabel(entry.lockCountAccessibilityLabel)
+                Text(weeklyLockSubtitle)
+                    .font(.system(.caption, design: .rounded, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.72))
                 Spacer(minLength: 0)
                 KeysChip(keys: entry.keys)
             }
@@ -269,6 +276,16 @@ struct Locked_WidgetEntryView: View {
             .frame(width: 32, height: 32)
             .background(Color.white.opacity(0.12))
             .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+    }
+
+    private var weeklyLockSubtitle: String {
+        let weekday = Calendar.current.component(.weekday, from: entry.date)
+        let days = weekday == 1 ? 0 : 8 - weekday
+        switch days {
+        case 0: return "Weekly lock is today"
+        case 1: return "Weekly lock is tomorrow"
+        default: return "Weekly lock in \(days) days"
+        }
     }
 
     private var remainingText: String {
