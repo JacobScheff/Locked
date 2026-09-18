@@ -31,7 +31,7 @@ struct HowToUseView: View {
                             icon: "key.fill",
                             color: .lockedAmber,
                             title: "Keys buy your time back",
-                            detail: "If something important gets locked, spend Keys on Home or on the system lock screen over the app itself. Earn more by staying on top of coursework."
+                            detail: "If something important gets locked, spend Keys on Home or on the system lock screen over the app itself. Both ask you to confirm before Keys are spent. Earn more by staying on top of coursework."
                         )
                     }
                 }

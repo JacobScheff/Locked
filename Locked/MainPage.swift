@@ -406,93 +406,45 @@ struct LockedAppsSection: View {
                     }
                 }
             } else {
-                VStack(spacing: 10) {
+                VStack(spacing: 12) {
                     ForEach(unnamedLockedTokens) { item in
-                        HStack(spacing: 12) {
-                            UnnamedLockedAppLabel(app: item)
-                                .font(.body.weight(.semibold))
-                            Spacer()
-                            if overrideActive {
-                                Text("Open")
-                                    .font(.caption.weight(.bold))
-                                    .foregroundStyle(Color.hazardYellow)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(Color.hazardYellow.opacity(0.15))
-                                    .clipShape(Capsule())
-                            } else {
-                                Button {
-                                    appToUnlock = "this app"
-                                    unlockCost = KeyUnlock.cost(for: item.token)
-                                    unnamedAppToUnlock = item
-                                    showUnlockAlert = true
-                                } label: {
-                                    Text("Unlock")
-                                        .font(.subheadline.weight(.semibold))
-                                        .padding(.horizontal, 14)
-                                        .padding(.vertical, 8)
-                                        .background(LockedTheme.keysGradient)
-                                        .foregroundStyle(.white)
-                                        .clipShape(Capsule())
-                                }
-                                .buttonStyle(.plain)
-                            }
+                        LockedAppRow(
+                            title: "Locked app",
+                            duration: nil,
+                            cost: KeyUnlock.cost(for: item.token),
+                            overrideActive: overrideActive,
+                            icon: { UnnamedLockedAppLabel(app: item).labelStyle(.iconOnly) }
+                        ) {
+                            appToUnlock = "this app"
+                            unlockCost = KeyUnlock.cost(for: item.token)
+                            unnamedAppToUnlock = item
+                            showUnlockAlert = true
                         }
-                        .padding(14)
-                        .background(LockedCardBackground(cornerRadius: 18))
                     }
                     ForEach(visibleLockedApps, id: \.self) { name in
-                        HStack(spacing: 12) {
-                            ManagedAppIcon(name: name, size: 40)
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(name)
-                                    .font(.body.weight(.semibold))
-                                Text(formatAppDuration(appCounts[name] ?? 0))
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                Text(overrideActive ? "Accessible until the seal repairs" : "\(KeyUnlock.cost(forName: name)) keys to unlock")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            Spacer()
-
-                            if overrideActive {
-                                Text("Open")
-                                    .font(.caption.weight(.bold))
-                                    .foregroundStyle(Color.hazardYellow)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(Color.hazardYellow.opacity(0.15))
-                                    .clipShape(Capsule())
-                            } else {
-                                Button {
-                                    appToUnlock = name
-                                    unlockCost = KeyUnlock.cost(forName: name)
-                                    unnamedAppToUnlock = nil
-                                    showUnlockAlert = true
-                                } label: {
-                                    Text("Unlock")
-                                        .font(.subheadline.weight(.semibold))
-                                        .padding(.horizontal, 14)
-                                        .padding(.vertical, 8)
-                                        .background(LockedTheme.keysGradient)
-                                        .foregroundStyle(.white)
-                                        .clipShape(Capsule())
-                                }
-                                .buttonStyle(.plain)
-                            }
+                        LockedAppRow(
+                            title: name,
+                            duration: formatAppDuration(appCounts[name] ?? 0),
+                            cost: KeyUnlock.cost(forName: name),
+                            overrideActive: overrideActive,
+                            icon: { ManagedAppIcon(name: name, size: 44) }
+                        ) {
+                            appToUnlock = name
+                            unlockCost = KeyUnlock.cost(forName: name)
+                            unnamedAppToUnlock = nil
+                            showUnlockAlert = true
                         }
-                        .padding(14)
-                        .background(LockedCardBackground(cornerRadius: 18))
                     }
                 }
             }
         }
-        .alert("Unlock App", isPresented: $showUnlockAlert, presenting: appToUnlock) { app in
+        .alert(
+            keys >= Double(unlockCost) ? "Spend \(unlockCost) keys?" : "Not enough keys",
+            isPresented: $showUnlockAlert,
+            presenting: appToUnlock
+        ) { app in
             if keys >= Double(unlockCost) {
-                Button("Unlock (\(unlockCost) Keys)") {
+                Button("Confirm unlock") {
                     if let unnamed = unnamedAppToUnlock {
                         _ = KeyUnlock.unlock(token: unnamed.token)
                         unnamedAppToUnlock = nil
@@ -512,9 +464,9 @@ struct LockedAppsSection: View {
             }
         } message: { app in
             if keys >= Double(unlockCost) {
-                Text("Unlocking \(app) will cost \(unlockCost) keys.")
+                Text("Unlock \(app) until next Sunday. You’ll have \(max(0, Int(keys) - unlockCost)) keys left.")
             } else {
-                Text("Unlocking \(app) needs \(unlockCost) keys, but you only have \(Int(keys)). Finish assignments to earn more.")
+                Text("\(app) needs \(unlockCost) keys, but you only have \(Int(keys)). Finish assignments to earn more.")
             }
         }
     }
@@ -529,6 +481,102 @@ struct LockedAppsSection: View {
             let right = appCounts[rhs] ?? 0
             return left == right ? lhs < rhs : left > right
         }
+    }
+}
+
+private struct LockedAppRow<Icon: View>: View {
+    let title: String
+    var duration: String?
+    let cost: Int
+    var overrideActive: Bool
+    let icon: Icon
+    var onUnlock: () -> Void
+
+    init(
+        title: String,
+        duration: String? = nil,
+        cost: Int,
+        overrideActive: Bool,
+        @ViewBuilder icon: () -> Icon,
+        onUnlock: @escaping () -> Void
+    ) {
+        self.title = title
+        self.duration = duration
+        self.cost = cost
+        self.overrideActive = overrideActive
+        self.icon = icon()
+        self.onUnlock = onUnlock
+    }
+
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack(alignment: .bottomTrailing) {
+                icon
+                    .frame(width: 44, height: 44)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                if !overrideActive {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 18, height: 18)
+                        .background(Color.lockedIndigo)
+                        .clipShape(Circle())
+                        .overlay(Circle().strokeBorder(Color(uiColor: .secondarySystemGroupedBackground), lineWidth: 2))
+                        .offset(x: 4, y: 4)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.body.weight(.semibold))
+                    .lineLimit(1)
+                if let duration {
+                    Text(duration)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                if overrideActive {
+                    Text("Open until the seal repairs")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(Color.hazardYellow)
+                } else {
+                    Label("\(cost) keys", systemImage: "key.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.lockedAmber)
+                        .labelStyle(.titleAndIcon)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            if overrideActive {
+                Text("Open")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.hazardYellow)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.hazardYellow.opacity(0.15))
+                    .clipShape(Capsule())
+            } else {
+                Button(action: onUnlock) {
+                    Text("Use keys")
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(LockedTheme.keysGradient)
+                        .foregroundStyle(Color(red: 0.22, green: 0.12, blue: 0.04))
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(16)
+        .background(LockedCardBackground(cornerRadius: 20))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(Color.lockedIndigo.opacity(overrideActive ? 0.08 : 0.16), lineWidth: 1)
+        )
     }
 }
 

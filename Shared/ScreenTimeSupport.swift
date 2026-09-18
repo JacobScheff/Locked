@@ -346,6 +346,52 @@ enum KeyUnlock {
     }
 }
 
+/// Two-step unlock on the system shield. The configuration extension
+/// cannot show an alert, so the first tap only arms a short-lived prompt
+/// and `.defer` redraws the shield as a confirm screen.
+enum ShieldUnlockPrompt {
+    static let tokenKey = "shieldUnlockPromptToken"
+    static let untilKey = "shieldUnlockPromptUntil"
+    static let duration: TimeInterval = 45
+
+    static func isConfirming(_ token: ApplicationToken) -> Bool {
+        let until = AppGroupStore.sharedDouble(forKey: untilKey) ?? 0
+        guard until > 0 else { return false }
+        if Date().timeIntervalSince1970 >= until {
+            clear()
+            return false
+        }
+        guard let data = AppGroupStore.sharedData(forKey: tokenKey),
+              let saved = TokenCoding.decode(ApplicationToken.self, from: data)
+        else {
+            return false
+        }
+        return saved == token
+    }
+
+    static var remaining: TimeInterval {
+        let until = AppGroupStore.sharedDouble(forKey: untilKey) ?? 0
+        return max(0, Date(timeIntervalSince1970: until).timeIntervalSinceNow)
+    }
+
+    static func begin(_ token: ApplicationToken) {
+        guard let data = TokenCoding.encode(token) else { return }
+        AppGroupStore.setSharedData(data, forKey: tokenKey)
+        AppGroupStore.setSharedDouble(
+            Date().addingTimeInterval(duration).timeIntervalSince1970,
+            forKey: untilKey
+        )
+    }
+
+    static func clear() {
+        if let url = AppGroupStore.fileURL(for: tokenKey) {
+            try? FileManager.default.removeItem(at: url)
+        }
+        AppGroupStore.defaults.removeObject(forKey: tokenKey)
+        AppGroupStore.setSharedDouble(0, forKey: untilKey)
+    }
+}
+
 enum InstalledApps {
     /// Screen Time still reports deleted apps historically. A current
     /// display name, and a live token when we have a bundle ID, mean the app is still on the device.
