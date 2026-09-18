@@ -369,11 +369,6 @@ enum ShieldUnlockPrompt {
         return saved == token
     }
 
-    static var remaining: TimeInterval {
-        let until = AppGroupStore.sharedDouble(forKey: untilKey) ?? 0
-        return max(0, Date(timeIntervalSince1970: until).timeIntervalSinceNow)
-    }
-
     static func begin(_ token: ApplicationToken) {
         guard let data = TokenCoding.encode(token) else { return }
         AppGroupStore.setSharedData(data, forKey: tokenKey)
