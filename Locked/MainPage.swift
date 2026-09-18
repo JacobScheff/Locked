@@ -45,15 +45,6 @@ struct MainPage: View {
         overrideActive && innerVaultUnlockedUntil > 0 && abs(innerVaultUnlockedUntil - emergencyOverrideUntil) < 0.5
     }
 
-    private var upcomingItems: [(course: Course, assignment: Assignment)] {
-        courses.flatMap { course in
-            course.assignments
-                .filter { !$0.isCompleted }
-                .map { (course, $0) }
-        }
-        .sorted { $0.assignment.dueDate < $1.assignment.dueDate }
-    }
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
@@ -94,9 +85,7 @@ struct MainPage: View {
                     updateWidget: updateWidget
                 )
 
-                if !upcomingItems.isEmpty {
-                    UpcomingSection(items: Array(upcomingItems.prefix(3)), courses: $courses)
-                }
+                UpcomingPreviewSection(courses: $courses, limit: 3)
 
                 AppCountsCard(
                     appCounts: $appCounts,
@@ -529,61 +518,6 @@ struct LockedAppsSection: View {
             let right = appCounts[rhs] ?? 0
             return left == right ? lhs < rhs : left > right
         }
-    }
-}
-
-// MARK: - Upcoming
-
-private struct UpcomingSection: View {
-    let items: [(course: Course, assignment: Assignment)]
-    @Binding var courses: [Course]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            LockedSectionLabel(title: "Up next", icon: "calendar")
-
-            VStack(spacing: 8) {
-                ForEach(items, id: \.assignment.id) { item in
-                    NavigationLink {
-                        CourseDetailView(courses: $courses, courseID: item.course.id)
-                    } label: {
-                        UpcomingRow(course: item.course, assignment: item.assignment)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-}
-
-private struct UpcomingRow: View {
-    let course: Course
-    let assignment: Assignment
-
-    var body: some View {
-        HStack(spacing: 12) {
-            RoundedRectangle(cornerRadius: 3, style: .continuous)
-                .fill(courseAccent(course.name))
-                .frame(width: 4, height: 36)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(assignment.name)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                Text(course.name)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            Text(assignment.dueDate.formatted(.relative(presentation: .named)))
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(assignment.isOverdue ? Color.lockedRose : .secondary)
-        }
-        .padding(14)
-        .background(LockedCardBackground(cornerRadius: 16))
     }
 }
 

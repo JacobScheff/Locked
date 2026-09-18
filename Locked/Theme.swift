@@ -133,6 +133,22 @@ extension LockedSectionLabel where Accessory == EmptyView {
     }
 }
 
+struct LockedStatusPill: View {
+    let text: String
+    var color: Color = .lockedIndigo
+    var filled = false
+
+    var body: some View {
+        Text(text)
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(filled ? Color.white : color)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(filled ? color : color.opacity(0.14))
+            .clipShape(Capsule())
+    }
+}
+
 struct LockedBackground: View {
     var body: some View {
         ZStack {

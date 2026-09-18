@@ -130,21 +130,18 @@ struct Locked_WidgetEntryView: View {
         .padding(.top, entry.overrideActive ? 6 : 0)
     }
 
-    // MARK: Small — ring + keys, wordmark overlaid so it still fits
+    // MARK: Small — ring + keys, no wordmark so the 2x2 stays uncluttered
 
     private var smallView: some View {
-        ZStack(alignment: .topLeading) {
-            VStack(spacing: 0) {
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            HStack {
                 Spacer(minLength: 0)
-                HStack {
-                    Spacer(minLength: 0)
-                    KarmaRing(karma: entry.karma, size: 78, lineWidth: 8, numberSize: 26)
-                    Spacer(minLength: 0)
-                }
-                Spacer(minLength: 8)
-                KeysChip(keys: entry.keys)
+                KarmaRing(karma: entry.karma, size: 82, lineWidth: 8, numberSize: 28)
+                Spacer(minLength: 0)
             }
-            wordmark
+            Spacer(minLength: 8)
+            KeysChip(keys: entry.keys)
         }
     }
 
