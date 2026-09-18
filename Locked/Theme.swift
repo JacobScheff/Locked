@@ -330,10 +330,28 @@ enum CourseAccent {
     ]
 
     static func color(for name: String, index: Int? = nil) -> Color {
+        palette[resolvedIndex(name: name, index: index)]
+    }
+
+    static func resolvedIndex(name: String, index: Int?) -> Int {
         if let index, palette.indices.contains(index) {
-            return palette[index]
+            return index
         }
-        return palette[hashIndex(for: name)]
+        return hashIndex(for: name)
+    }
+
+    static func resolvedIndex(for course: Course) -> Int {
+        resolvedIndex(name: course.name, index: course.accentIndex)
+    }
+
+    static func leastUsedIndex(in courses: [Course]) -> Int {
+        var counts = Array(repeating: 0, count: palette.count)
+        for course in courses {
+            counts[resolvedIndex(for: course)] += 1
+        }
+        let fewest = counts.min() ?? 0
+        let tied = counts.indices.filter { counts[$0] == fewest }
+        return tied.randomElement() ?? 0
     }
 
     static func hashIndex(for name: String) -> Int {

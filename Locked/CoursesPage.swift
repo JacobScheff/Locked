@@ -36,7 +36,7 @@ struct CoursesPage: View {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Button {
-                        editingCourse = Course(name: "")
+                        editingCourse = Course(name: "", accentIndex: CourseAccent.leastUsedIndex(in: courses))
                     } label: {
                         Label("New course", systemImage: "book.fill")
                     }
@@ -132,7 +132,7 @@ struct CoursesPage: View {
                 .padding(.horizontal, 12)
 
             Button {
-                editingCourse = Course(name: "")
+                editingCourse = Course(name: "", accentIndex: CourseAccent.leastUsedIndex(in: courses))
             } label: {
                 Label("Add a course", systemImage: "plus")
                     .font(.headline)
@@ -369,17 +369,19 @@ struct CourseEditorView: View {
     let onSave: (Course) -> Void
 
     @State private var name: String
-    @State private var accentIndex: Int?
+    @State private var accentIndex: Int
 
     init(course: Course, onSave: @escaping (Course) -> Void) {
         self.course = course
         self.onSave = onSave
         _name = State(initialValue: course.name)
-        _accentIndex = State(initialValue: course.accentIndex)
-    }
-
-    private var previewIndex: Int {
-        accentIndex ?? CourseAccent.hashIndex(for: name)
+        if let index = course.accentIndex, CourseAccent.palette.indices.contains(index) {
+            _accentIndex = State(initialValue: index)
+        } else if course.name.isEmpty {
+            _accentIndex = State(initialValue: CourseAccent.leastUsedIndex(in: []))
+        } else {
+            _accentIndex = State(initialValue: CourseAccent.hashIndex(for: course.name))
+        }
     }
 
     var body: some View {
@@ -415,12 +417,12 @@ struct CourseEditorView: View {
                                         .overlay {
                                             Circle()
                                                 .strokeBorder(
-                                                    Color.primary.opacity(previewIndex == index ? 0.9 : 0),
+                                                    Color.primary.opacity(accentIndex == index ? 0.9 : 0),
                                                     lineWidth: 2
                                                 )
                                         }
                                         .overlay {
-                                            if previewIndex == index {
+                                            if accentIndex == index {
                                                 Image(systemName: "checkmark")
                                                     .font(.system(size: 10, weight: .bold))
                                                     .foregroundStyle(.white)
@@ -429,10 +431,10 @@ struct CourseEditorView: View {
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel("Course color \(index + 1)")
-                                .accessibilityAddTraits(previewIndex == index ? .isSelected : [])
+                                .accessibilityAddTraits(accentIndex == index ? .isSelected : [])
                             }
                         }
-                        Text(accentIndex == nil ? "Suggested from the course name — tap to lock in a color." : "This color stays if you rename the course.")
+                        Text("Tap a color to change it.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -460,7 +462,7 @@ struct CourseEditorView: View {
                             id: course.id,
                             name: cleaned,
                             assignments: course.assignments,
-                            accentIndex: accentIndex ?? CourseAccent.hashIndex(for: cleaned)
+                            accentIndex: accentIndex
                         )
                         onSave(saved)
                         dismiss()
