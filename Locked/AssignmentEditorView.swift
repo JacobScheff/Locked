@@ -81,7 +81,9 @@ struct AssignmentEditorView: View {
             dueDate: dueDate,
             releaseDate: releaseDate,
             completionDate: isCompleted ? completionDate : nil,
-            pointsPossible: Double(pointsText.trimmingCharacters(in: .whitespacesAndNewlines))
+            pointsPossible: Double(pointsText.trimmingCharacters(in: .whitespacesAndNewlines)),
+            sourceProvider: assignment.sourceProvider,
+            sourceRemoteID: assignment.sourceRemoteID
         )
     }
 
@@ -167,6 +169,12 @@ struct AssignmentEditorView: View {
                     }
 
                     rewardPreview
+
+                    if let provider = assignment.sourceProvider {
+                        Text("Synced from \(provider.title). Refresh that source to update due dates and the submitted time used for Keys and Karma.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .padding(20)
             }

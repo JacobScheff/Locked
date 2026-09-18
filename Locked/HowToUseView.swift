@@ -19,7 +19,7 @@ struct HowToUseView: View {
                             icon: "checkmark.circle.fill",
                             color: .lockedTeal,
                             title: "Finish work early",
-                            detail: "Assignments you complete before the due date earn Karma. Every completion also grants Keys."
+                            detail: "Assignments you complete before the due date earn Karma. Gradescope submissions use the real submitted time, not whenever you refresh. Every completion also grants Keys."
                         )
                         LoopCard(
                             icon: "star.fill",
@@ -63,6 +63,21 @@ struct HowToUseView: View {
                     )
 
                     ScreenTimeGuideActions()
+                }
+
+                VStack(alignment: .leading, spacing: 12) {
+                    LockedSectionLabel(title: "Sources", icon: "link")
+
+                    LockedCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Import from school sites")
+                                .font(.headline)
+                            Text("On Courses, tap the link icon to connect Gradescope. Brightspace is listed as a placeholder for later. Refresh anytime — overdue work stays overdue until it’s actually submitted, and Keys and Karma are calculated from that submitted date.")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: 12) {

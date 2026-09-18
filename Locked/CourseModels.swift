@@ -10,9 +10,12 @@ struct Assignment: Identifiable, Codable, Equatable {
     var releaseDate: Date
     var completionDate: Date?
     var pointsPossible: Double?
+    var sourceProvider: ExternalSourceProvider? = nil
+    var sourceRemoteID: String? = nil
 
     var isCompleted: Bool { completionDate != nil }
     var isOverdue: Bool { !isCompleted && dueDate < Date.now }
+    var isFromSource: Bool { sourceRemoteID != nil }
 
     var statusColor: Color {
         if isCompleted { return .lockedTeal }
@@ -84,6 +87,10 @@ struct Course: Identifiable, Codable, Equatable {
     var name: String
     var assignments: [Assignment] = []
     var accentIndex: Int? = nil
+    var sourceProvider: ExternalSourceProvider? = nil
+    var sourceRemoteID: String? = nil
+
+    var isFromSource: Bool { sourceRemoteID != nil }
 
     var completionPercentage: Double {
         guard !assignments.isEmpty else { return 0 }

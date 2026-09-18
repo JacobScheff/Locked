@@ -108,6 +108,8 @@ struct UpcomingWorkCard: View {
                     LockedStatusPill(text: "Overdue", color: .lockedRose, filled: true)
                 } else if item.group == .today {
                     LockedStatusPill(text: "Today", color: .lockedIndigo)
+                } else if let provider = item.assignment.sourceProvider {
+                    LockedStatusPill(text: provider.title, color: .lockedIndigo)
                 }
             }
         }

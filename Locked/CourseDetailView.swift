@@ -392,6 +392,9 @@ struct AssignmentRowView: View {
                     if assignment.isOverdue {
                         LockedStatusPill(text: "Overdue", color: .lockedRose, filled: true)
                     }
+                    if let provider = assignment.sourceProvider {
+                        LockedStatusPill(text: provider.title, color: .lockedIndigo)
+                    }
                 }
                 .font(.caption)
             }
@@ -573,6 +576,10 @@ struct AssignmentDetailView: View {
                 .font(.lockedTitle(28))
                 .fixedSize(horizontal: false, vertical: true)
 
+            if let provider = assignment.sourceProvider {
+                LockedStatusPill(text: provider.title, color: .lockedIndigo)
+            }
+
             TimelineView(.periodic(from: .now, by: 30)) { context in
                 VStack(alignment: .leading, spacing: 6) {
                     Text(assignment.isCompleted ? "Completed" : AssignmentDueCopy.countdown(for: assignment.dueDate, now: context.date))
@@ -600,7 +607,15 @@ struct AssignmentDetailView: View {
             }
             if let completed = assignment.completionDate {
                 Divider().padding(.leading, 52)
-                factRow(icon: "checkmark.circle.fill", title: "Finished", value: completed.formatted(date: .abbreviated, time: .shortened))
+                factRow(
+                    icon: "checkmark.circle.fill",
+                    title: assignment.sourceProvider == nil ? "Finished" : "Submitted",
+                    value: completed.formatted(date: .abbreviated, time: .shortened)
+                )
+            }
+            if let provider = assignment.sourceProvider {
+                Divider().padding(.leading, 52)
+                factRow(icon: "link", title: "Source", value: provider.title)
             }
         }
         .background(LockedCardBackground())
@@ -646,7 +661,11 @@ struct AssignmentDetailView: View {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
-            Text("Karma is based on how early you finish relative to the assigned and due dates. Keys are a base of 10 plus the point value.")
+            Text(assignment.isCompleted
+                 ? (assignment.sourceProvider == nil
+                    ? "Karma is based on how early you finish relative to the assigned and due dates. Keys are a base of 10 plus the point value."
+                    : "Karma used the submitted time from \(assignment.sourceProvider?.title ?? "your source"), not the time you refreshed.")
+                 : "Karma is based on how early you finish relative to the assigned and due dates. Keys are a base of 10 plus the point value.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

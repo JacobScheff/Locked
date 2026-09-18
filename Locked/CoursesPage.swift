@@ -8,9 +8,11 @@ struct CoursesPage: View {
     @AppStorage("keys", store: .lockedGroup) var keys: Double = 0.0
     @AppStorage("karma", store: .lockedGroup) var karma: Double = 0.0
 
+    @EnvironmentObject private var sources: ExternalSourceController
     @State private var editingCourse: Course?
     @State private var courseToDelete: Course?
     @State private var composer: AssignmentComposer?
+    @State private var sourceError: String?
 
     private var totals: (open: Int, overdue: Int, completed: Int) {
         CourseStore.totals(from: courses)
@@ -23,6 +25,9 @@ struct CoursesPage: View {
                     emptyState
                 } else {
                     workloadHero
+                    if sources.canRefreshGradescope {
+                        sourceStrip
+                    }
                     UpcomingPreviewSection(courses: $courses, limit: 4)
                     coursesSection
                 }
@@ -34,6 +39,15 @@ struct CoursesPage: View {
         .navigationTitle("Courses")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                NavigationLink {
+                    SourcesPage(courses: $courses, keys: $keys, karma: $karma)
+                } label: {
+                    Image(systemName: "link")
+                        .font(.body.weight(.semibold))
+                }
+                .accessibilityLabel("Sources")
+            }
             ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Button {
@@ -53,6 +67,15 @@ struct CoursesPage: View {
                             Label("New assignment", systemImage: "checkmark.circle")
                         }
                     }
+                    Divider()
+                    if sources.canRefreshGradescope {
+                        Button {
+                            Task { await refreshSources() }
+                        } label: {
+                            Label("Refresh sources", systemImage: "arrow.triangle.2.circlepath")
+                        }
+                        .disabled(sources.isRefreshing)
+                    }
                 } label: {
                     Image(systemName: "plus")
                         .font(.body.weight(.bold))
@@ -63,6 +86,10 @@ struct CoursesPage: View {
                 }
                 .accessibilityLabel("Add")
             }
+        }
+        .refreshable {
+            guard sources.canRefreshGradescope else { return }
+            await refreshSources()
         }
         .sheet(item: $editingCourse) { course in
             CourseEditorView(course: course) { savedCourse in
@@ -114,6 +141,14 @@ struct CoursesPage: View {
         } message: {
             Text("All assignments in this course will also be deleted.")
         }
+        .alert("Couldn’t refresh", isPresented: Binding(
+            get: { sourceError != nil },
+            set: { if !$0 { sourceError = nil } }
+        )) {
+            Button("OK", role: .cancel) { sourceError = nil }
+        } message: {
+            Text(sourceError ?? "")
+        }
     }
 
     private var emptyState: some View {
@@ -126,7 +161,7 @@ struct CoursesPage: View {
             Text("Build your semester")
                 .font(.lockedTitle(24))
 
-            Text("Add a class, then log assignments. Finishing them early earns Keys and Karma — that’s what keeps your apps unlocked.")
+            Text("Add a class, then log assignments — or connect Gradescope and Locked will keep them updated. Finishing early earns Keys and Karma.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -144,6 +179,18 @@ struct CoursesPage: View {
                     .clipShape(Capsule())
             }
             .padding(.top, 4)
+
+            NavigationLink {
+                SourcesPage(courses: $courses, keys: $keys, karma: $karma)
+            } label: {
+                Label("Connect a source", systemImage: "link")
+                    .font(.headline)
+                    .foregroundStyle(Color.lockedIndigo)
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 12)
+                    .background(Color.lockedIndigo.opacity(0.12))
+                    .clipShape(Capsule())
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 24)
@@ -220,6 +267,62 @@ struct CoursesPage: View {
                     )
                 }
             }
+        }
+    }
+
+    private var sourceStrip: some View {
+        Button {
+            Task { await refreshSources() }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: sources.isRefreshing ? "arrow.triangle.2.circlepath" : "checkmark.rectangle.fill")
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(Color.lockedIndigo)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Gradescope")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text(sourceStripDetail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if sources.isRefreshing {
+                    ProgressView()
+                } else {
+                    Text("Refresh")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Color.lockedIndigo)
+                }
+            }
+            .padding(14)
+            .background(LockedCardBackground(cornerRadius: 18))
+        }
+        .buttonStyle(.plain)
+        .disabled(sources.isRefreshing)
+    }
+
+    private var sourceStripDetail: String {
+        if sources.isRefreshing { return "Updating assignments…" }
+        if let summary = sources.gradescope.lastSummary {
+            return summary
+        }
+        if let date = sources.gradescope.lastSyncedAt {
+            return "Updated \(date.formatted(.relative(presentation: .named)))"
+        }
+        return "Tap to pull the latest submissions"
+    }
+
+    private func refreshSources() async {
+        do {
+            let result = try await sources.refreshGradescope(courses: courses, keys: keys, karma: karma)
+            withAnimation {
+                courses = result.courses
+                keys = result.keys
+                karma = result.karma
+            }
+        } catch {
+            sourceError = error.localizedDescription
         }
     }
 }
@@ -364,6 +467,9 @@ struct CourseCardView: View {
         } else if course.openCount > 0 {
             parts.append("\(course.openCount) open")
         }
+        if let provider = course.sourceProvider {
+            parts.append(provider.title)
+        }
         return parts.joined(separator: " · ")
     }
 }
@@ -469,7 +575,9 @@ struct CourseEditorView: View {
                             id: course.id,
                             name: cleaned,
                             assignments: course.assignments,
-                            accentIndex: accentIndex
+                            accentIndex: accentIndex,
+                            sourceProvider: course.sourceProvider,
+                            sourceRemoteID: course.sourceRemoteID
                         )
                         onSave(saved)
                         dismiss()

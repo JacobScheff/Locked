@@ -54,4 +54,5 @@ struct ContentView: View {
 #Preview {
     ContentView()
         .environmentObject(ScreenTimeManager.shared)
+        .environmentObject(ExternalSourceController.shared)
 }
