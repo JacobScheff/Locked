@@ -25,13 +25,13 @@ struct HowToUseView: View {
                             icon: "star.fill",
                             color: .lockedViolet,
                             title: "Karma protects apps",
-                            detail: "Higher Karma means fewer apps lock on Sunday — and the ones you use most are last to go."
+                            detail: "You start at 100 Karma, so Sunday leaves your apps open. Karma drops when work is late, and higher Karma means fewer apps lock — the ones you use most are last to go."
                         )
                         LoopCard(
                             icon: "key.fill",
                             color: .lockedAmber,
                             title: "Keys buy your time back",
-                            detail: "If something important gets locked, spend Keys to unlock it. Earn more by staying on top of coursework."
+                            detail: "If something important gets locked, spend Keys on Home or on the system lock screen over the app itself. Earn more by staying on top of coursework."
                         )
                     }
                 }

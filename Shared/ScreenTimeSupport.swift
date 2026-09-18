@@ -129,6 +129,27 @@ enum AppGroupStore {
         guard let raw, let data = raw.data(using: .utf8) else { return nil }
         return TokenCoding.decode(type, from: data)
     }
+
+    static func setSharedDouble(_ value: Double, forKey key: String) {
+        defaults.set(value, forKey: key)
+        if let url = fileURL(for: key),
+           let data = String(value).data(using: .utf8) {
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
+    static func sharedDouble(forKey key: String) -> Double? {
+        if let url = fileURL(for: key),
+           let data = try? Data(contentsOf: url),
+           let raw = String(data: data, encoding: .utf8),
+           let value = Double(raw.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            return value
+        }
+        if defaults.object(forKey: key) != nil {
+            return defaults.double(forKey: key)
+        }
+        return nil
+    }
 }
 
 extension UserDefaults {
@@ -160,6 +181,7 @@ enum ExcludedApps {
         "com.Jacob-Scheff.Locked.DeviceActivityMonitor",
         "com.Jacob-Scheff.Locked.DeviceActivityReport",
         "com.Jacob-Scheff.Locked.ShieldConfiguration",
+        "com.Jacob-Scheff.Locked.ShieldAction",
         "com.apple.Preferences",
         "com.apple.PreferencesUI",
         "com.apple.mobilephone",
@@ -215,6 +237,164 @@ enum ExcludedApps {
 
     static func strippingExcluded(_ names: [String]) -> [String] {
         names.filter { !isExcludedName($0) && !isBlankName($0) }
+    }
+}
+
+/// Keys and Karma. Mirrored into the app-group container so shield
+/// extensions can read them even when cfprefsd refuses the suite.
+enum Economy {
+    static let keysKey = "keys"
+    static let karmaKey = "karma"
+    static let defaultKeys: Double = 0
+    static let defaultKarma: Double = 100
+
+    /// First launch / first download. Existing stored values, including an
+    /// explicit 0, are left alone. Only the main app should call this — a
+    /// shield extension that cannot see the suite would otherwise write
+    /// defaults on top of a real balance.
+    static func seedNewInstallIfNeeded() {
+        AppGroupStore.prepareContainer()
+        let defaults = AppGroupStore.defaults
+        if defaults.object(forKey: karmaKey) == nil && AppGroupStore.sharedDouble(forKey: karmaKey) == nil {
+            setKarma(defaultKarma)
+        } else {
+            setKarma(karma())
+        }
+        if defaults.object(forKey: keysKey) != nil || AppGroupStore.sharedDouble(forKey: keysKey) != nil {
+            setKeys(keys())
+        }
+    }
+
+    static func keys() -> Double {
+        clampKeys(AppGroupStore.sharedDouble(forKey: keysKey) ?? defaultKeys)
+    }
+
+    static func karma() -> Double {
+        clampKarma(AppGroupStore.sharedDouble(forKey: karmaKey) ?? defaultKarma)
+    }
+
+    static func setKeys(_ value: Double) {
+        AppGroupStore.setSharedDouble(clampKeys(value), forKey: keysKey)
+    }
+
+    static func setKarma(_ value: Double) {
+        AppGroupStore.setSharedDouble(clampKarma(value), forKey: karmaKey)
+    }
+
+    @discardableResult
+    static func spendKeys(_ amount: Double) -> Bool {
+        let current = keys()
+        guard amount > 0, current + 0.000_1 >= amount else { return false }
+        setKeys(current - amount)
+        return true
+    }
+}
+
+func clampKeys(_ value: Double) -> Double {
+    max(0, value)
+}
+
+func clampKarma(_ value: Double) -> Double {
+    min(100, max(0, value))
+}
+
+/// Spend Keys to lift one shielded app. Used by Home and by the system shield.
+enum KeyUnlock {
+    enum Outcome: Equatable {
+        case unlocked
+        case notEnoughKeys(have: Int, need: Int)
+        case notLocked
+    }
+
+    static func cost(forName name: String) -> Int {
+        cost(usageSeconds: UsageStore.loadAppCounts()[name] ?? 0, lockedCount: LockedTokenStore.load().count)
+    }
+
+    static func cost(for token: ApplicationToken) -> Int {
+        let name = UsageStore.loadTokenMap().first { $0.value == token }?.key
+        return cost(
+            usageSeconds: name.flatMap { UsageStore.loadAppCounts()[$0] } ?? 0,
+            lockedCount: LockedTokenStore.load().count
+        )
+    }
+
+    static func cost(usageSeconds: Int, lockedCount: Int) -> Int {
+        let counts = UsageStore.loadAppCounts()
+        let total = Double(counts.values.reduce(0, +))
+        let usagePercentage = total > 0 ? (Double(usageSeconds) / total) * 100.0 : 0.0
+        let raw = pow(Double(lockedCount), 1.5) + 0.5 * pow(usagePercentage, 1.25) + 10.0
+        return max(1, Int(raw.rounded()))
+    }
+
+    static func canAfford(_ token: ApplicationToken) -> Bool {
+        Int(Economy.keys().rounded(.towardZero)) >= cost(for: token)
+    }
+
+    @discardableResult
+    static func unlock(token: ApplicationToken) -> Outcome {
+        guard LockedTokenStore.load().contains(token) else { return .notLocked }
+        let need = cost(for: token)
+        let have = Int(Economy.keys().rounded(.towardZero))
+        guard Economy.spendKeys(Double(need)) else {
+            return .notEnoughKeys(have: have, need: need)
+        }
+        LockedTokenStore.remove(token)
+        UsageStore.syncLockedNames()
+        ScreenTimeShields.sync()
+        UsageStore.pingMainApp()
+        return .unlocked
+    }
+}
+
+/// Two-step unlock on the system shield. The configuration extension
+/// cannot show an alert, so the first tap only arms a short-lived prompt
+/// and `.defer` redraws the shield as a confirm screen.
+enum ShieldUnlockPrompt {
+    static let tokenKey = "shieldUnlockPromptToken"
+    static let untilKey = "shieldUnlockPromptUntil"
+    static let armedAtKey = "shieldUnlockPromptArmedAt"
+    static let duration: TimeInterval = 45
+    /// Long enough that a double-tap on Use keys cannot hit Confirm.
+    static let confirmDelay: TimeInterval = 0.9
+
+    static func isConfirming(_ token: ApplicationToken) -> Bool {
+        let until = AppGroupStore.sharedDouble(forKey: untilKey) ?? 0
+        guard until > 0 else { return false }
+        if Date().timeIntervalSince1970 >= until {
+            clear()
+            return false
+        }
+        guard let data = AppGroupStore.sharedData(forKey: tokenKey),
+              let saved = TokenCoding.decode(ApplicationToken.self, from: data)
+        else {
+            return false
+        }
+        return saved == token
+    }
+
+    static func canConfirm(_ token: ApplicationToken) -> Bool {
+        guard isConfirming(token) else { return false }
+        let armedAt = AppGroupStore.sharedDouble(forKey: armedAtKey) ?? 0
+        return Date().timeIntervalSince1970 - armedAt >= confirmDelay
+    }
+
+    static func begin(_ token: ApplicationToken) {
+        guard let data = TokenCoding.encode(token) else { return }
+        AppGroupStore.setSharedData(data, forKey: tokenKey)
+        AppGroupStore.setSharedDouble(
+            Date().addingTimeInterval(duration).timeIntervalSince1970,
+            forKey: untilKey
+        )
+        AppGroupStore.setSharedDouble(Date().timeIntervalSince1970, forKey: armedAtKey)
+    }
+
+    static func clear() {
+        if let url = AppGroupStore.fileURL(for: tokenKey) {
+            try? FileManager.default.removeItem(at: url)
+        }
+        AppGroupStore.defaults.removeObject(forKey: tokenKey)
+        AppGroupStore.setSharedDouble(0, forKey: untilKey)
+        AppGroupStore.setSharedDouble(0, forKey: armedAtKey)
     }
 }
 

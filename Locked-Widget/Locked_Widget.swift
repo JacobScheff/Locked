@@ -1,12 +1,52 @@
 import WidgetKit
 import SwiftUI
 
+// MARK: - Palette (mirrored from Locked/Theme.swift; this target does not compile that file)
+
+private enum WidgetPalette {
+    static let teal = Color(red: 0.18, green: 0.78, blue: 0.72)
+    static let amber = Color(red: 0.97, green: 0.70, blue: 0.22)
+    static let hazardYellow = Color(red: 0.98, green: 0.78, blue: 0.12)
+
+    static var heroGradient: LinearGradient {
+        LinearGradient(
+            colors: [
+                Color(red: 0.22, green: 0.18, blue: 0.58),
+                Color(red: 0.33, green: 0.22, blue: 0.72),
+                Color(red: 0.16, green: 0.42, blue: 0.68)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    static var overrideGradient: LinearGradient {
+        LinearGradient(
+            colors: [
+                Color(red: 0.42, green: 0.07, blue: 0.10),
+                Color(red: 0.18, green: 0.05, blue: 0.08)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    static var ringGradient: LinearGradient {
+        LinearGradient(
+            colors: [.white, teal],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+}
+
 // MARK: - Provider
+
 struct Provider: TimelineProvider {
     let sharedDefaults = UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked")
 
     func placeholder(in context: Context) -> SimpleEntry {
-        SimpleEntry(date: Date(), keys: 14, karma: 82, overrideActive: false)
+        SimpleEntry(date: Date(), keys: 14, karma: 82, overrideUntil: .distantPast)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (SimpleEntry) -> ()) {
@@ -16,20 +56,43 @@ struct Provider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> ()) {
         let now = Date()
         let until = Date(timeIntervalSince1970: sharedDefaults?.double(forKey: "emergencyOverrideUntil") ?? 0)
-        var entries = [currentEntry(at: now)]
+        let sample = currentEntry(at: now)
+
         if until > now {
-            entries.append(SimpleEntry(date: until, keys: entries[0].keys, karma: entries[0].karma, overrideActive: false))
-            completion(Timeline(entries: entries, policy: .after(until)))
-        } else {
-            completion(Timeline(entries: entries, policy: .atEnd))
+            completion(Timeline(entries: overrideEntries(from: now, until: until, template: sample), policy: .after(until)))
+            return
         }
+
+        let nextMidnight = Calendar.current.nextDate(
+            after: now,
+            matching: DateComponents(hour: 0, minute: 1),
+            matchingPolicy: .nextTime
+        ) ?? now.addingTimeInterval(6 * 60 * 60)
+        completion(Timeline(entries: [sample], policy: .after(nextMidnight)))
     }
 
     private func currentEntry(at date: Date) -> SimpleEntry {
-        let keys = Int(sharedDefaults?.double(forKey: "keys") ?? 0)
-        let karma = Int(sharedDefaults?.double(forKey: "karma") ?? 0)
+        let keys = sharedDefaults?.object(forKey: "keys") == nil
+            ? 0
+            : Int(sharedDefaults?.double(forKey: "keys") ?? 0)
+        let karma = sharedDefaults?.object(forKey: "karma") == nil
+            ? 100
+            : Int(sharedDefaults?.double(forKey: "karma") ?? 100)
         let until = Date(timeIntervalSince1970: sharedDefaults?.double(forKey: "emergencyOverrideUntil") ?? 0)
-        return SimpleEntry(date: date, keys: keys, karma: karma, overrideActive: until > date)
+        return SimpleEntry(date: date, keys: keys, karma: karma, overrideUntil: until)
+    }
+
+    private func overrideEntries(from now: Date, until: Date, template: SimpleEntry) -> [SimpleEntry] {
+        var entries: [SimpleEntry] = []
+        var date = now
+        let remaining = until.timeIntervalSince(now)
+        let step: TimeInterval = remaining > 90 * 60 ? 5 * 60 : 60
+        while date < until && entries.count < 70 {
+            entries.append(SimpleEntry(date: date, keys: template.keys, karma: template.karma, overrideUntil: until))
+            date = date.addingTimeInterval(step)
+        }
+        entries.append(SimpleEntry(date: until, keys: template.keys, karma: template.karma, overrideUntil: .distantPast))
+        return entries
     }
 }
 
@@ -37,10 +100,17 @@ struct SimpleEntry: TimelineEntry {
     let date: Date
     let keys: Int
     let karma: Int
-    let overrideActive: Bool
+    let overrideUntil: Date
+
+    var overrideActive: Bool { overrideUntil > date }
+
+    var remaining: TimeInterval {
+        max(0, overrideUntil.timeIntervalSince(date))
+    }
 }
 
 // MARK: - Widget View
+
 struct Locked_WidgetEntryView: View {
     var entry: Provider.Entry
     @Environment(\.widgetFamily) var widgetFamily
@@ -48,107 +118,277 @@ struct Locked_WidgetEntryView: View {
     var body: some View {
         Group {
             if entry.overrideActive {
-                overrideBlock
+                overrideView
             } else if widgetFamily == .systemMedium {
-                HStack(spacing: 0) {
-                    karmaBlock
-                    Spacer(minLength: 12)
-                    Divider().opacity(0.25)
-                    Spacer(minLength: 12)
-                    keysBlock
-                }
+                mediumView
             } else {
-                VStack(alignment: .leading, spacing: 16) {
-                    karmaBlock
-                    keysBlock
+                smallView
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .padding(widgetFamily == .systemSmall ? 12 : 16)
+        .padding(.top, entry.overrideActive ? 6 : 0)
+    }
+
+    // MARK: Small — ring + keys, wordmark overlaid so it still fits
+
+    private var smallView: some View {
+        ZStack(alignment: .topLeading) {
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+                HStack {
+                    Spacer(minLength: 0)
+                    KarmaRing(karma: entry.karma, size: 78, lineWidth: 8, numberSize: 26)
+                    Spacer(minLength: 0)
+                }
+                Spacer(minLength: 8)
+                KeysChip(keys: entry.keys)
+            }
+            wordmark
+        }
+    }
+
+    // MARK: Medium — ring, status copy, keys
+
+    private var mediumView: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            wordmark
+            HStack(alignment: .center, spacing: 16) {
+                KarmaRing(karma: entry.karma, size: 88, lineWidth: 9, numberSize: 30)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(karmaHeadline)
+                        .font(.system(.subheadline, design: .rounded, weight: .bold))
+                        .foregroundStyle(.white)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(weeklyLockSubtitle)
+                        .font(.system(.caption, design: .rounded, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.72))
+                    Spacer(minLength: 0)
+                    KeysChip(keys: entry.keys)
                 }
             }
         }
     }
 
-    private var overrideBlock: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "lock.open.fill")
-                .font(.system(size: 22, weight: .bold))
-                .foregroundStyle(.yellow)
-                .frame(width: 44, height: 44)
-                .background(Color.red.opacity(0.18))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    // MARK: Override — hazard treatment + remaining time
 
-            VStack(alignment: .leading, spacing: 2) {
+    @ViewBuilder
+    private var overrideView: some View {
+        if widgetFamily == .systemMedium {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    overrideIcon
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("SEAL BROKEN")
+                            .font(.system(size: 11, weight: .heavy, design: .rounded))
+                            .foregroundStyle(WidgetPalette.hazardYellow)
+                            .tracking(1.1)
+                        Text("Locks are suspended")
+                            .font(.system(.subheadline, design: .rounded, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                    Spacer(minLength: 0)
+                }
+                Spacer(minLength: 0)
+                HStack(alignment: .lastTextBaseline, spacing: 8) {
+                    Text(remainingText)
+                        .font(.system(size: 36, weight: .heavy, design: .rounded))
+                        .foregroundStyle(WidgetPalette.hazardYellow)
+                        .monospacedDigit()
+                        .minimumScaleFactor(0.7)
+                        .lineLimit(1)
+                    Text("remaining")
+                        .font(.system(.caption, design: .rounded, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.62))
+                }
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                overrideIcon
                 Text("SEAL BROKEN")
-                    .font(.system(.caption2, design: .rounded, weight: .bold))
-                    .foregroundStyle(.red)
-                Text("Locks suspended")
-                    .font(.system(.headline, design: .rounded, weight: .heavy))
-                Text("They return in one hour")
-                    .font(.system(.caption, design: .rounded, weight: .medium))
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private var karmaBlock: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .stroke(Color.purple.opacity(0.18), lineWidth: 7)
-                Circle()
-                    .trim(from: 0, to: min(max(Double(entry.karma) / 100.0, 0), 1))
-                    .stroke(
-                        LinearGradient(colors: [.purple, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing),
-                        style: StrokeStyle(lineWidth: 7, lineCap: .round)
-                    )
-                    .rotationEffect(.degrees(-90))
-                Text("\(entry.karma)")
-                    .font(.system(.headline, design: .rounded, weight: .heavy))
-            }
-            .frame(width: 52, height: 52)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("KARMA")
-                    .font(.system(.caption2, design: .rounded, weight: .bold))
-                    .foregroundStyle(.secondary)
-                Text(karmaCaption)
-                    .font(.system(.caption, design: .rounded, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-        }
-    }
-
-    private var keysBlock: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.orange.opacity(0.18))
-                Image(systemName: "key.fill")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(.orange.gradient)
-            }
-            .frame(width: 44, height: 44)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("KEYS")
-                    .font(.system(.caption2, design: .rounded, weight: .bold))
-                    .foregroundStyle(.secondary)
-                Text("\(entry.keys)")
-                    .font(.system(.title2, design: .rounded, weight: .heavy))
-                    .minimumScaleFactor(0.8)
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .foregroundStyle(WidgetPalette.hazardYellow)
+                    .tracking(1.1)
+                Spacer(minLength: 4)
+                Text(remainingText)
+                    .font(.system(size: 34, weight: .heavy, design: .rounded))
+                    .foregroundStyle(WidgetPalette.hazardYellow)
+                    .monospacedDigit()
+                    .minimumScaleFactor(0.6)
                     .lineLimit(1)
+                Text("until locks return")
+                    .font(.system(.caption2, design: .rounded, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.62))
             }
         }
     }
 
-    private var karmaCaption: String {
+    private var overrideIcon: some View {
+        Image(systemName: "lock.open.fill")
+            .font(.system(size: 16, weight: .bold))
+            .foregroundStyle(WidgetPalette.hazardYellow)
+            .frame(width: 32, height: 32)
+            .background(Color.white.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+    }
+
+    private var wordmark: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 9, weight: .bold))
+            Text("LOCKED")
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .tracking(1.4)
+        }
+        .foregroundStyle(.white.opacity(0.55))
+    }
+
+    private var karmaHeadline: String {
         switch entry.karma {
-        case 90...: return "Well protected"
-        case 70..<90: return "Mostly safe"
-        case 40..<70: return "Apps at risk"
-        default: return "Lockdown likely"
+        case 90...: return "Your apps are well protected"
+        case 70..<90: return "Most of your apps stay open"
+        case 40..<70: return "Several apps are at risk"
+        default: return "Most apps will lock this week"
+        }
+    }
+
+    private var weeklyLockSubtitle: String {
+        let weekday = Calendar.current.component(.weekday, from: entry.date)
+        let days = weekday == 1 ? 0 : 8 - weekday
+        switch days {
+        case 0: return "Weekly lock is today"
+        case 1: return "Weekly lock is tomorrow"
+        default: return "Weekly lock in \(days) days"
+        }
+    }
+
+    private var remainingText: String {
+        let total = max(0, Int(entry.remaining))
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        if hours > 0 { return "\(hours)h \(minutes)m" }
+        if minutes == 0 { return "<1m" }
+        return "\(minutes)m"
+    }
+}
+
+// MARK: - Pieces
+
+private struct KarmaRing: View {
+    let karma: Int
+    var size: CGFloat
+    var lineWidth: CGFloat
+    var numberSize: CGFloat
+
+    private var progress: Double {
+        min(max(Double(karma) / 100.0, 0), 1)
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Color.white.opacity(0.22), lineWidth: lineWidth)
+            Circle()
+                .trim(from: 0, to: progress)
+                .stroke(WidgetPalette.ringGradient, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            VStack(spacing: 0) {
+                Text("\(karma)")
+                    .font(.system(size: numberSize, weight: .heavy, design: .rounded))
+                    .foregroundStyle(.white)
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
+                Text("KARMA")
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .tracking(1)
+            }
+        }
+        .frame(width: size, height: size)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Karma \(karma) of 100")
+    }
+}
+
+private struct KeysChip: View {
+    let keys: Int
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "key.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(WidgetPalette.amber)
+                .frame(width: 28, height: 28)
+                .background(Color.white.opacity(0.14))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            VStack(alignment: .leading, spacing: 0) {
+                Text("\(keys)")
+                    .font(.system(size: 18, weight: .heavy, design: .rounded))
+                    .foregroundStyle(.white)
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(1)
+                Text("Keys")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.7))
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.white.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(keys) keys")
+    }
+}
+
+private struct WidgetBackgroundView: View {
+    var overrideActive: Bool
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            if overrideActive {
+                WidgetPalette.overrideGradient
+            } else {
+                WidgetPalette.heroGradient
+            }
+
+            LinearGradient(
+                colors: [Color.white.opacity(overrideActive ? 0.08 : 0.14), .clear],
+                startPoint: .top,
+                endPoint: .center
+            )
+
+            if overrideActive {
+                WidgetHazardStripes()
+                    .frame(height: 8)
+            }
         }
     }
 }
+
+private struct WidgetHazardStripes: View {
+    var body: some View {
+        Canvas { context, size in
+            context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.black))
+            let stripe: CGFloat = 10
+            var x: CGFloat = -size.height
+            while x < size.width + size.height {
+                var path = Path()
+                path.move(to: CGPoint(x: x, y: 0))
+                path.addLine(to: CGPoint(x: x + stripe, y: 0))
+                path.addLine(to: CGPoint(x: x + stripe + size.height, y: size.height))
+                path.addLine(to: CGPoint(x: x + size.height, y: size.height))
+                path.closeSubpath()
+                context.fill(path, with: .color(WidgetPalette.hazardYellow))
+                x += stripe * 2
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+// MARK: - Widget
 
 struct Locked_Widget: Widget {
     let kind: String = "Locked_Widget"
@@ -157,15 +397,42 @@ struct Locked_Widget: Widget {
         StaticConfiguration(kind: kind, provider: Provider()) { entry in
             if #available(iOS 17.0, *) {
                 Locked_WidgetEntryView(entry: entry)
-                    .containerBackground(.background, for: .widget)
+                    .containerBackground(for: .widget) {
+                        WidgetBackgroundView(overrideActive: entry.overrideActive)
+                    }
             } else {
                 Locked_WidgetEntryView(entry: entry)
-                    .padding()
-                    .background(Color(UIColor.systemBackground))
+                    .background(WidgetBackgroundView(overrideActive: entry.overrideActive))
             }
         }
-        .configurationDisplayName("Locked Stats")
-        .description("Karma, keys, and whether your apps are safe this week.")
+        .configurationDisplayName("Karma & Keys")
+        .description("See your karma, keys, and whether the emergency seal is broken.")
         .supportedFamilies([.systemSmall, .systemMedium])
+        .contentMarginsDisabled()
     }
+}
+
+#Preview("Small", as: .systemSmall) {
+    Locked_Widget()
+} timeline: {
+    SimpleEntry(date: .now, keys: 14, karma: 82, overrideUntil: .distantPast)
+    SimpleEntry(date: .now, keys: 3, karma: 28, overrideUntil: .distantPast)
+}
+
+#Preview("Medium", as: .systemMedium) {
+    Locked_Widget()
+} timeline: {
+    SimpleEntry(date: .now, keys: 14, karma: 82, overrideUntil: .distantPast)
+}
+
+#Preview("Override small", as: .systemSmall) {
+    Locked_Widget()
+} timeline: {
+    SimpleEntry(date: .now, keys: 14, karma: 82, overrideUntil: Date().addingTimeInterval(47 * 60))
+}
+
+#Preview("Override medium", as: .systemMedium) {
+    Locked_Widget()
+} timeline: {
+    SimpleEntry(date: .now, keys: 14, karma: 82, overrideUntil: Date().addingTimeInterval(47 * 60))
 }

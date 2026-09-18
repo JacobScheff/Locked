@@ -18,7 +18,7 @@ final class LogicStore {
     // This perfectly prevents UserDefaults decoding failures and data wiping.
     
     @AppStorage("karma", store: AppGroupStore.defaults)
-    var karma: Double = 0.0
+    var karma: Double = 100.0
     
     @AppStorage("keys", store: AppGroupStore.defaults)
     var keys: Double = 0.0
@@ -96,15 +96,14 @@ func calculateKarmaDelta(releaseDate: Date, dueDate: Date, completionDate: Date)
 // MARK: - Keys / Unlock
 
 func unlockApp(numLockedApps: Int, usagePercentage: Double) {
-    let cost = pow(Double(numLockedApps), 1.5) + 0.5 * pow(usagePercentage, 1.25) + 10.0
-
-    LogicStore.shared.keys -= cost
+    let raw = pow(Double(numLockedApps), 1.5) + 0.5 * pow(usagePercentage, 1.25) + 10.0
+    _ = Economy.spendKeys(Double(max(1, Int(raw.rounded()))))
 }
 
 // MARK: - Z-Score
 
 func getZScoreFromKarma() -> Double {
-    let karma = AppGroupStore.defaults.double(forKey: "karma")
+    let karma = Economy.karma()
     // Karma 100 → z = -3, Karma 50 → z = 0, Karma 0 → z = 3
     return -0.06 * karma + 3
 }
@@ -191,7 +190,7 @@ func performSundayLocking(
     minimumLockCount: Int = 0
 ) -> [String] {
     let store = LogicStore.shared
-    let karma = AppGroupStore.defaults.double(forKey: "karma")
+    let karma = Economy.karma()
     let picker = ActivitySelectionStore.expandingCategories(selection ?? ActivitySelectionStore.load())
 
     var pool = weeklyLockCandidates(
@@ -319,14 +318,6 @@ enum InnerVault {
         let overrideUntil = EmergencyOverride.untilTimestamp(defaults: defaults)
         return unlockedUntil > 0 && abs(unlockedUntil - overrideUntil) < 0.5
     }
-}
-
-func clampKeys(_ value: Double) -> Double {
-    max(0, value)
-}
-
-func clampKarma(_ value: Double) -> Double {
-    min(100, max(0, value))
 }
 
 func adjustedKeys(from current: Double, by delta: Int) -> Double {
