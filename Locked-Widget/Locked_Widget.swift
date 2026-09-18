@@ -142,17 +142,7 @@ struct SimpleEntry: TimelineEntry {
     }
 
     var lockCountCopy: String {
-        "\(appsLockingThisWeek)/\(appCount)"
-    }
-
-    var lockCountAccessibilityLabel: String {
-        if appCount == 0 {
-            return "No apps will lock this week"
-        }
-        if appsLockingThisWeek == 1 {
-            return "1 of \(appCount) apps will lock this week"
-        }
-        return "\(appsLockingThisWeek) of \(appCount) apps will lock this week"
+        "\(appsLockingThisWeek)/\(appCount) will lock this week"
     }
 
     var remaining: TimeInterval {
@@ -199,19 +189,20 @@ struct Locked_WidgetEntryView: View {
     // MARK: Medium — ring, status copy, keys
 
     private var mediumView: some View {
-        HStack(alignment: .center, spacing: 16) {
-            KarmaRing(karma: entry.karma, size: 88, lineWidth: 9, numberSize: 30)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(entry.lockCountCopy)
-                    .font(.system(.title3, design: .rounded, weight: .bold))
-                    .foregroundStyle(.white)
-                    .monospacedDigit()
-                    .accessibilityLabel(entry.lockCountAccessibilityLabel)
-                Text(weeklyLockSubtitle)
-                    .font(.system(.caption, design: .rounded, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.72))
-                Spacer(minLength: 0)
-                KeysChip(keys: entry.keys)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 16) {
+                KarmaRing(karma: entry.karma, size: 88, lineWidth: 9, numberSize: 30)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(entry.lockCountCopy)
+                        .font(.system(.subheadline, design: .rounded, weight: .bold))
+                        .foregroundStyle(.white)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(weeklyLockSubtitle)
+                        .font(.system(.caption, design: .rounded, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.72))
+                    Spacer(minLength: 0)
+                    KeysChip(keys: entry.keys)
+                }
             }
         }
     }
