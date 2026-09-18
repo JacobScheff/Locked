@@ -104,75 +104,93 @@ private enum ShieldLook {
 
 private enum ShieldArtwork {
     static func ledger(for state: ShieldLook.State) -> UIImage {
-        let size = CGSize(width: 640, height: 640)
+        // ShieldConfiguration scales every icon into a fixed system slot.
+        // Keep the canvas tight so the ledger's type remains legible there.
+        let size = CGSize(width: 240, height: 240)
         let renderer = UIGraphicsImageRenderer(size: size)
         return renderer.image { _ in
-            let content = CGRect(origin: .zero, size: size).insetBy(dx: 24, dy: 16)
+            let content = CGRect(origin: .zero, size: size).insetBy(dx: 4, dy: 4)
             var y = content.minY
 
             y += drawWrapped(
                 state.title,
-                font: roundedFont(size: 44, weight: .bold),
+                font: roundedFont(size: 21, weight: .bold),
                 color: .white,
-                in: CGRect(x: content.minX, y: y, width: content.width, height: 120)
+                in: CGRect(x: content.minX, y: y, width: 166, height: 30)
             )
-            y += 8
+            drawKarma(state.karma, in: CGRect(x: content.maxX - 58, y: content.minY, width: 58, height: 38))
+            y += 3
             y += drawWrapped(
                 state.subtitle,
-                font: roundedFont(size: 24, weight: .medium),
-                color: UIColor.white.withAlphaComponent(0.78),
-                in: CGRect(x: content.minX, y: y, width: content.width, height: 80)
+                font: roundedFont(size: 11, weight: .medium),
+                color: UIColor.white.withAlphaComponent(0.72),
+                in: CGRect(x: content.minX, y: y, width: 168, height: 30)
             )
-            y += 28
+            y += 7
 
-            let rowHeight: CGFloat = 78
+            let rowHeight: CGFloat = 43
             drawAlignedRow(
-                label: "Keys",
+                label: "Current keys",
                 value: "\(state.keys)",
                 color: ShieldLook.amber,
                 in: CGRect(x: content.minX, y: y, width: content.width, height: rowHeight)
             )
             y += rowHeight
             drawAlignedRow(
-                label: "Karma",
-                value: "\(state.karma)",
-                color: ShieldLook.violet,
-                in: CGRect(x: content.minX, y: y, width: content.width, height: rowHeight)
-            )
-            y += rowHeight + 8
-            drawAlignedRow(
-                label: "Cost",
+                label: "Unlock cost",
                 value: "−\(state.cost)",
                 color: ShieldLook.rose,
                 in: CGRect(x: content.minX, y: y, width: content.width, height: rowHeight)
             )
-            y += rowHeight + 10
+            y += rowHeight + 2
 
-            UIColor.white.withAlphaComponent(0.28).setStroke()
+            UIColor.white.withAlphaComponent(0.34).setStroke()
             let rule = UIBezierPath()
             rule.move(to: CGPoint(x: content.minX, y: y))
             rule.addLine(to: CGPoint(x: content.maxX, y: y))
-            rule.lineWidth = 3
+            rule.lineWidth = 1
             rule.lineCapStyle = .round
             rule.stroke()
-            y += 16
+            y += 3
 
             if state.canAfford {
                 drawAlignedRow(
-                    label: "Left",
+                    label: "Keys left",
                     value: "\(state.remaining)",
                     color: ShieldLook.teal,
                     in: CGRect(x: content.minX, y: y, width: content.width, height: rowHeight)
                 )
             } else {
                 drawAlignedRow(
-                    label: "Need",
+                    label: "Keys needed",
                     value: "\(state.shortfall)",
                     color: ShieldLook.rose,
                     in: CGRect(x: content.minX, y: y, width: content.width, height: rowHeight)
                 )
             }
         }
+    }
+
+    private static func drawKarma(_ karma: Int, in rect: CGRect) {
+        let valueStyle = NSMutableParagraphStyle()
+        valueStyle.alignment = .right
+        ("\(karma)" as NSString).draw(
+            in: CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: 25),
+            withAttributes: [
+                .font: roundedFont(size: 20, weight: .heavy),
+                .foregroundColor: ShieldLook.violet,
+                .paragraphStyle: valueStyle
+            ]
+        )
+        ("KARMA" as NSString).draw(
+            in: CGRect(x: rect.minX, y: rect.minY + 23, width: rect.width, height: 12),
+            withAttributes: [
+                .font: roundedFont(size: 7, weight: .bold),
+                .foregroundColor: UIColor.white.withAlphaComponent(0.58),
+                .paragraphStyle: valueStyle,
+                .kern: 0.8
+            ]
+        )
     }
 
     @discardableResult
@@ -197,9 +215,9 @@ private enum ShieldArtwork {
     }
 
     private static func drawAlignedRow(label: String, value: String, color: UIColor, in rect: CGRect) {
-        let labelFont = roundedFont(size: 28, weight: .semibold)
-        let valueFont = roundedFont(size: 52, weight: .heavy)
-        let labelColor = UIColor.white.withAlphaComponent(0.78)
+        let labelFont = roundedFont(size: 12, weight: .semibold)
+        let valueFont = roundedFont(size: 29, weight: .heavy)
+        let labelColor = UIColor.white.withAlphaComponent(0.82)
         let style = NSMutableParagraphStyle()
         style.alignment = .left
         (label as NSString).draw(
