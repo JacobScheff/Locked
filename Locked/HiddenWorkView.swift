@@ -23,7 +23,7 @@ struct HiddenWorkView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                Text("Hidden work stays out of upcoming lists and doesn’t earn or spend Keys and Karma until you bring it back.")
+                Text("Archived work stays out of upcoming lists and doesn’t earn Keys and Karma until you unhide it. Permanently delete archived classes in Settings. Refreshing a linked source will import a deleted class again if it’s still there.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
 
@@ -76,7 +76,7 @@ struct HiddenWorkView: View {
             .padding(.bottom, 36)
         }
         .background(LockedBackground())
-        .navigationTitle("Hidden")
+        .navigationTitle("Archived")
         .navigationBarTitleDisplayMode(.large)
     }
 
@@ -87,7 +87,7 @@ struct HiddenWorkView: View {
                 .foregroundStyle(Color.lockedIndigo)
             Text("Nothing hidden")
                 .font(.headline)
-            Text("Hide a course or assignment from its menu when you don’t want it counted.")
+            Text("Hide a course or assignment from its menu when you don’t want it counted. Delete archived classes forever in Settings.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

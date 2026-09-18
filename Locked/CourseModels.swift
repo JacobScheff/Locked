@@ -336,6 +336,18 @@ enum CourseStore {
         Economy.setKeys(keys)
         WidgetCenter.shared.reloadTimelines(ofKind: "Locked_Widget")
     }
+
+    static func deleteCourse(_ courseID: UUID, courses: inout [Course]) {
+        withAnimation {
+            courses.removeAll { $0.id == courseID }
+        }
+    }
+
+    static func deleteAllHiddenCourses(from courses: inout [Course]) {
+        withAnimation {
+            courses.removeAll { $0.isHiddenFromApp }
+        }
+    }
 }
 
 enum AssignmentDueCopy {

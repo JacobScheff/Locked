@@ -35,6 +35,13 @@ struct ContentView: View {
                 .tabItem {
                     Label("Guide", systemImage: "questionmark.circle.fill")
                 }
+
+                NavigationStack {
+                    SettingsPage()
+                }
+                .tabItem {
+                    Label("Settings", systemImage: "gearshape.fill")
+                }
             }
             .opacity(screenTime.isReady ? 1 : 0)
             .allowsHitTesting(screenTime.isReady)

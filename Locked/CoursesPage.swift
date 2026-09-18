@@ -274,10 +274,10 @@ struct CoursesPage: View {
                     .font(.body.weight(.bold))
                     .foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Hidden")
+                    Text("Archived")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
-                    Text("\(hiddenCount) hidden")
+                    Text("\(hiddenCount) archived")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
