@@ -43,12 +43,14 @@ struct CourseDetailView: View {
                     VStack(alignment: .leading, spacing: 22) {
                         CourseProgressHeader(course: course)
 
-                        Picker("Filter", selection: $filter) {
-                            ForEach(Filter.allCases) { option in
-                                Text(option.rawValue).tag(option)
+                        if !course.assignments.isEmpty {
+                            Picker("Filter", selection: $filter) {
+                                ForEach(Filter.allCases) { option in
+                                    Text(option.rawValue).tag(option)
+                                }
                             }
+                            .pickerStyle(.segmented)
                         }
-                        .pickerStyle(.segmented)
 
                         if course.assignments.isEmpty {
                             emptyAssignments

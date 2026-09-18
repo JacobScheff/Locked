@@ -206,10 +206,10 @@ enum AssignmentDueCopy {
     static func countdown(for date: Date, now: Date = .now) -> String {
         let seconds = Int(date.timeIntervalSince(now))
         let overdue = seconds < 0
-        let abs = abs(seconds)
-        let days = abs / 86_400
-        let hours = (abs % 86_400) / 3_600
-        let minutes = (abs % 3_600) / 60
+        let elapsed = abs(seconds)
+        let days = elapsed / 86_400
+        let hours = (elapsed % 86_400) / 3_600
+        let minutes = (elapsed % 3_600) / 60
 
         let core: String
         if days > 0 {
