@@ -30,7 +30,7 @@ struct CoursesPage: View {
             VStack(alignment: .leading, spacing: 28) {
                 if visibleCourses.isEmpty {
                     emptyState
-                    if sources.canRefreshGradescope {
+                    if sources.canRefresh {
                         sourceStrip
                     }
                     if hiddenCount > 0 {
@@ -38,7 +38,7 @@ struct CoursesPage: View {
                     }
                 } else {
                     workloadHero
-                    if sources.canRefreshGradescope {
+                    if sources.canRefresh {
                         sourceStrip
                     }
                     UpcomingPreviewSection(courses: $courses, limit: 4)
@@ -65,7 +65,7 @@ struct CoursesPage: View {
                 .accessibilityLabel("Sources")
             }
             ToolbarItem(placement: .primaryAction) {
-                if sources.canRefreshGradescope {
+                if sources.canRefresh {
                     Button {
                         Task { await refreshSources() }
                     } label: {
@@ -82,7 +82,7 @@ struct CoursesPage: View {
             }
         }
         .refreshable {
-            guard sources.canRefreshGradescope else { return }
+            guard sources.canRefresh else { return }
             await refreshSources()
         }
         .sheet(item: $editingCourse) { course in
@@ -140,7 +140,7 @@ struct CoursesPage: View {
             Text("Connect your semester")
                 .font(.lockedTitle(24))
 
-            Text("Load classes from Gradescope. Finishing early earns Keys and Karma — that’s what keeps your apps unlocked.")
+            Text("Load classes from Gradescope or Brightspace. Finishing early earns Keys and Karma — that’s what keeps your apps unlocked.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -149,7 +149,7 @@ struct CoursesPage: View {
             NavigationLink {
                 SourcesPage(courses: $courses, keys: $keys, karma: $karma)
             } label: {
-                Label(sources.canRefreshGradescope ? "Open sources" : "Connect a source", systemImage: "link")
+                Label(sources.canRefresh ? "Open sources" : "Connect a source", systemImage: "link")
                     .font(.headline)
                     .foregroundStyle(.white)
                     .padding(.horizontal, 22)
@@ -240,7 +240,7 @@ struct CoursesPage: View {
                     font: .body.weight(.bold)
                 )
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Gradescope")
+                    Text(sourceStripTitle)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                     Text(sourceStripDetail)
@@ -292,20 +292,30 @@ struct CoursesPage: View {
         .buttonStyle(.plain)
     }
 
+    private var sourceStripTitle: String {
+        let names = [
+            sources.canRefreshGradescope ? "Gradescope" : nil,
+            sources.canRefreshBrightspace ? "Brightspace" : nil,
+        ].compactMap { $0 }
+        if names.count == 2 { return "Sources" }
+        return names.first ?? "Sources"
+    }
+
     private var sourceStripDetail: String {
         if sources.isRefreshing { return "Updating assignments…" }
-        if let summary = sources.gradescope.lastSummary {
-            return summary
-        }
-        if let date = sources.gradescope.lastSyncedAt {
-            return "Updated \(date.formatted(.relative(presentation: .named)))"
+        let states = [sources.gradescope, sources.brightspace].filter(\.isConnected)
+        if let latest = states.max(by: { ($0.lastSyncedAt ?? .distantPast) < ($1.lastSyncedAt ?? .distantPast) }) {
+            if let summary = latest.lastSummary { return summary }
+            if let date = latest.lastSyncedAt {
+                return "Updated \(date.formatted(.relative(presentation: .named)))"
+            }
         }
         return "Tap to pull the latest submissions"
     }
 
     private func refreshSources() async {
         do {
-            let result = try await sources.refreshGradescope(courses: courses, keys: keys, karma: karma)
+            let result = try await sources.refreshConnectedSources(courses: courses, keys: keys, karma: karma)
             withAnimation {
                 courses = result.courses
                 keys = result.keys

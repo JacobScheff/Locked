@@ -20,7 +20,7 @@ enum ExternalSourceProvider: String, Codable, CaseIterable, Identifiable {
         case .gradescope:
             return "Import your courses and keep due dates and submissions in sync."
         case .brightspace:
-            return "D2L Brightspace is coming soon. You’ll connect it here the same way."
+            return "Import this term’s courses, due dates, and submissions from D2L Brightspace."
         }
     }
 
@@ -31,12 +31,7 @@ enum ExternalSourceProvider: String, Codable, CaseIterable, Identifiable {
         }
     }
 
-    var isAvailable: Bool {
-        switch self {
-        case .gradescope: return true
-        case .brightspace: return false
-        }
-    }
+    var isAvailable: Bool { true }
 }
 
 struct ExternalAssignmentSnapshot: Equatable {
@@ -89,6 +84,7 @@ struct ExternalSyncReport: Equatable {
 
 struct SourceConnectionState: Codable, Equatable {
     var email: String = ""
+    var host: String? = nil
     var isConnected: Bool = false
     var lastSyncedAt: Date? = nil
     var lastTermName: String? = nil
@@ -152,7 +148,7 @@ enum SourceKeychainError: LocalizedError {
     case saveFailed
 
     var errorDescription: String? {
-        "Couldn’t save your password on this iPhone."
+        "Couldn’t save this source on this iPhone."
     }
 }
 

@@ -7,14 +7,15 @@ struct SourcesPage: View {
 
     @EnvironmentObject private var sources: ExternalSourceController
     @State private var gradescopeLogin: GradescopeLoginDraft?
+    @State private var brightspaceLogin: BrightspaceLoginDraft?
     @State private var errorMessage: String?
-    @State private var confirmDisconnect = false
+    @State private var disconnectProvider: ExternalSourceProvider?
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 intro
-                if sources.canRefreshGradescope {
+                if sources.canRefresh {
                     refreshCard
                 }
                 VStack(alignment: .leading, spacing: 12) {
@@ -24,16 +25,16 @@ struct SourcesPage: View {
                         state: sources.gradescope,
                         isRefreshing: sources.isRefreshing,
                         onConnect: { gradescopeLogin = GradescopeLoginDraft() },
-                        onRefresh: { Task { await refreshGradescope() } },
-                        onDisconnect: { confirmDisconnect = true }
+                        onRefresh: { Task { await refresh(.gradescope) } },
+                        onDisconnect: { disconnectProvider = .gradescope }
                     )
                     SourceProviderCard(
                         provider: .brightspace,
-                        state: SourceConnectionState(),
-                        isRefreshing: false,
-                        onConnect: {},
-                        onRefresh: {},
-                        onDisconnect: {}
+                        state: sources.brightspace,
+                        isRefreshing: sources.isRefreshing,
+                        onConnect: { brightspaceLogin = BrightspaceLoginDraft() },
+                        onRefresh: { Task { await refresh(.brightspace) } },
+                        onDisconnect: { disconnectProvider = .brightspace }
                     )
                 }
                 footnote
@@ -45,14 +46,31 @@ struct SourcesPage: View {
         .navigationTitle("Sources")
         .navigationBarTitleDisplayMode(.large)
         .refreshable {
-            guard sources.canRefreshGradescope else { return }
-            await refreshGradescope()
+            guard sources.canRefresh else { return }
+            await refreshAll()
         }
         .sheet(item: $gradescopeLogin) { _ in
             GradescopeLoginSheet { email, password in
                 let result = try await sources.connectGradescope(
                     email: email,
                     password: password,
+                    courses: courses,
+                    keys: keys,
+                    karma: karma
+                )
+                withAnimation {
+                    courses = result.courses
+                    keys = result.keys
+                    karma = result.karma
+                }
+            }
+        }
+        .sheet(item: $brightspaceLogin) { _ in
+            BrightspaceConnectSheet { host, clientID, clientSecret in
+                let result = try await sources.connectBrightspace(
+                    host: host,
+                    clientID: clientID,
+                    clientSecret: clientSecret,
                     courses: courses,
                     keys: keys,
                     karma: karma
@@ -73,14 +91,24 @@ struct SourcesPage: View {
             Text(errorMessage ?? "")
         }
         .confirmationDialog(
-            "Disconnect Gradescope?",
-            isPresented: $confirmDisconnect,
+            "Disconnect \(disconnectProvider?.title ?? "source")?",
+            isPresented: Binding(
+                get: { disconnectProvider != nil },
+                set: { if !$0 { disconnectProvider = nil } }
+            ),
             titleVisibility: .visible
         ) {
             Button("Disconnect", role: .destructive) {
-                sources.disconnectGradescope()
+                if disconnectProvider == .gradescope {
+                    sources.disconnectGradescope()
+                } else if disconnectProvider == .brightspace {
+                    sources.disconnectBrightspace()
+                }
+                disconnectProvider = nil
             }
-            Button("Cancel", role: .cancel) {}
+            Button("Cancel", role: .cancel) {
+                disconnectProvider = nil
+            }
         } message: {
             Text("Imported courses stay in Locked. Hide anything you don’t want counted; they just won’t update until you connect again.")
         }
@@ -99,7 +127,7 @@ struct SourcesPage: View {
 
     private var refreshCard: some View {
         Button {
-            Task { await refreshGradescope() }
+            Task { await refreshAll() }
         } label: {
             HStack(spacing: 14) {
                 ZStack {
@@ -142,37 +170,62 @@ struct SourcesPage: View {
     }
 
     private var refreshSubtitle: String {
-        if let summary = sources.gradescope.lastSummary, sources.isRefreshing == false {
-            return summary
-        }
-        if let date = sources.gradescope.lastSyncedAt {
-            return "Last updated \(date.formatted(.relative(presentation: .named)))"
+        if sources.isRefreshing { return "Updating assignments…" }
+        let states = [sources.gradescope, sources.brightspace].filter(\.isConnected)
+        if let latest = states.max(by: { ($0.lastSyncedAt ?? .distantPast) < ($1.lastSyncedAt ?? .distantPast) }) {
+            if let summary = latest.lastSummary { return summary }
+            if let date = latest.lastSyncedAt {
+                return "Last updated \(date.formatted(.relative(presentation: .named)))"
+            }
         }
         return "Pull the latest due dates and submissions"
     }
 
     private var footnote: some View {
-        Text("Gradescope email and password stay on this iPhone. They’re only sent to gradescope.com when you connect or refresh.")
+        Text("Passwords and Brightspace tokens stay on this iPhone. They’re only sent to Gradescope or your school’s Brightspace when you connect or refresh.")
             .font(.caption)
             .foregroundStyle(.tertiary)
     }
 
-    private func refreshGradescope() async {
+    private func refreshAll() async {
         do {
-            let result = try await sources.refreshGradescope(courses: courses, keys: keys, karma: karma)
-            withAnimation {
-                courses = result.courses
-                keys = result.keys
-                karma = result.karma
-            }
+            let result = try await sources.refreshConnectedSources(courses: courses, keys: keys, karma: karma)
+            apply(result)
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func refresh(_ provider: ExternalSourceProvider) async {
+        do {
+            let result: (courses: [Course], keys: Double, karma: Double)
+            switch provider {
+            case .gradescope:
+                result = try await sources.refreshGradescope(courses: courses, keys: keys, karma: karma)
+            case .brightspace:
+                result = try await sources.refreshBrightspace(courses: courses, keys: keys, karma: karma)
+            }
+            apply(result)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func apply(_ result: (courses: [Course], keys: Double, karma: Double)) {
+        withAnimation {
+            courses = result.courses
+            keys = result.keys
+            karma = result.karma
         }
     }
 }
 
 private struct GradescopeLoginDraft: Identifiable {
     var id: String { "gradescope-login" }
+}
+
+private struct BrightspaceLoginDraft: Identifiable {
+    var id: String { "brightspace-login" }
 }
 
 private struct SourceProviderCard: View {
@@ -288,6 +341,9 @@ private struct SourceProviderCard: View {
         VStack(alignment: .leading, spacing: 8) {
             if !state.email.isEmpty {
                 labeledFact(icon: "envelope.fill", text: state.email)
+            }
+            if let host = state.host, !host.isEmpty {
+                labeledFact(icon: "globe", text: host)
             }
             if let term = state.lastTermName, !term.isEmpty {
                 labeledFact(icon: "calendar", text: term)
@@ -428,6 +484,133 @@ struct GradescopeLoginSheet: View {
         defer { isWorking = false }
         do {
             try await onConnect(email, password)
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+struct BrightspaceConnectSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @FocusState private var focused: Field?
+
+    let onConnect: (String, String, String?) async throws -> Void
+
+    @State private var host = "brightspace.usc.edu"
+    @State private var clientID = BrightspaceConfig.clientID
+    @State private var clientSecret = BrightspaceConfig.clientSecret
+    @State private var isWorking = false
+    @State private var errorMessage: String?
+
+    enum Field { case host, clientID, clientSecret }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Connect Brightspace")
+                            .font(.lockedTitle(24))
+                        Text("Sign in with your school account. Locked loads this term’s dropbox assignments and uses the real submitted time.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    field(title: "School site") {
+                        TextField("brightspace.usc.edu", text: $host)
+                            .textContentType(.URL)
+                            .keyboardType(.URL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .focused($focused, equals: .host)
+                    }
+
+                    field(title: "OAuth client ID") {
+                        TextField("Client ID", text: $clientID)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .focused($focused, equals: .clientID)
+                    }
+
+                    field(title: "Client secret") {
+                        SecureField("From Manage Extensibility", text: $clientSecret)
+                            .textContentType(.password)
+                            .focused($focused, equals: .clientSecret)
+                    }
+
+                    Text("Your school registers Locked in Brightspace Manage Extensibility. Redirect URI must be locked://oauth2callback.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(Color.lockedRose)
+                    }
+
+                    Button {
+                        Task { await connect() }
+                    } label: {
+                        HStack {
+                            if isWorking {
+                                ProgressView().tint(.white)
+                            }
+                            Text(isWorking ? "Connecting…" : "Continue with Brightspace")
+                                .font(.headline)
+                        }
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(canSubmit ? LockedTheme.karmaGradient : LinearGradient(colors: [.gray, .gray], startPoint: .leading, endPoint: .trailing))
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                    .disabled(!canSubmit || isWorking)
+
+                    Text("Locked stores Brightspace tokens in the iPhone keychain and uses them only to refresh assignments.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(20)
+            }
+            .background(LockedBackground())
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .disabled(isWorking)
+                }
+            }
+            .onAppear { focused = .host }
+        }
+        .presentationDetents([.large])
+        .tint(.lockedIndigo)
+        .interactiveDismissDisabled(isWorking)
+    }
+
+    private var canSubmit: Bool {
+        !host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !clientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func field<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            content()
+                .padding(16)
+                .background(LockedCardBackground(cornerRadius: 16))
+        }
+    }
+
+    private func connect() async {
+        errorMessage = nil
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            let secret = clientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+            try await onConnect(host, clientID, secret.isEmpty ? nil : secret)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription
