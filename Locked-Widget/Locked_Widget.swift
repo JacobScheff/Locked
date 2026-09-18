@@ -46,7 +46,7 @@ struct Provider: TimelineProvider {
     let sharedDefaults = UserDefaults(suiteName: "group.com.Jacob-Scheff.Locked")
 
     func placeholder(in context: Context) -> SimpleEntry {
-        SimpleEntry(date: Date(), keys: 14, karma: 82, overrideUntil: .distantPast)
+        SimpleEntry(date: Date(), keys: 14, karma: 82, appCount: 12, overrideUntil: .distantPast)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (SimpleEntry) -> ()) {
@@ -79,7 +79,21 @@ struct Provider: TimelineProvider {
             ? 100
             : Int(sharedDefaults?.double(forKey: "karma") ?? 100)
         let until = Date(timeIntervalSince1970: sharedDefaults?.double(forKey: "emergencyOverrideUntil") ?? 0)
-        return SimpleEntry(date: date, keys: keys, karma: karma, overrideUntil: until)
+        return SimpleEntry(
+            date: date,
+            keys: keys,
+            karma: karma,
+            appCount: loadAppCount(),
+            overrideUntil: until
+        )
+    }
+
+    private func loadAppCount() -> Int {
+        guard let raw = sharedDefaults?.string(forKey: "appCounts"),
+              let data = raw.data(using: .utf8),
+              let counts = try? JSONDecoder().decode([String: Int].self, from: data)
+        else { return 0 }
+        return counts.count
     }
 
     private func overrideEntries(from now: Date, until: Date, template: SimpleEntry) -> [SimpleEntry] {
@@ -88,10 +102,26 @@ struct Provider: TimelineProvider {
         let remaining = until.timeIntervalSince(now)
         let step: TimeInterval = remaining > 90 * 60 ? 5 * 60 : 60
         while date < until && entries.count < 70 {
-            entries.append(SimpleEntry(date: date, keys: template.keys, karma: template.karma, overrideUntil: until))
+            entries.append(
+                SimpleEntry(
+                    date: date,
+                    keys: template.keys,
+                    karma: template.karma,
+                    appCount: template.appCount,
+                    overrideUntil: until
+                )
+            )
             date = date.addingTimeInterval(step)
         }
-        entries.append(SimpleEntry(date: until, keys: template.keys, karma: template.karma, overrideUntil: .distantPast))
+        entries.append(
+            SimpleEntry(
+                date: until,
+                keys: template.keys,
+                karma: template.karma,
+                appCount: template.appCount,
+                overrideUntil: .distantPast
+            )
+        )
         return entries
     }
 }
@@ -100,9 +130,27 @@ struct SimpleEntry: TimelineEntry {
     let date: Date
     let keys: Int
     let karma: Int
+    let appCount: Int
     let overrideUntil: Date
 
     var overrideActive: Bool { overrideUntil > date }
+
+    var appsLockingThisWeek: Int {
+        guard appCount > 0 else { return 0 }
+        let lockPercent = max(0.0, min(100.0, 100.0 - Double(karma)))
+        return min(appCount, Int((lockPercent / 100.0 * Double(appCount)).rounded(.up)))
+    }
+
+    var lockCountCopy: String {
+        switch appsLockingThisWeek {
+        case 0:
+            return "No apps will lock this week"
+        case 1:
+            return "1 app will lock this week"
+        default:
+            return "\(appsLockingThisWeek) apps will lock this week"
+        }
+    }
 
     var remaining: TimeInterval {
         max(0, overrideUntil.timeIntervalSince(date))
@@ -130,7 +178,7 @@ struct Locked_WidgetEntryView: View {
         .padding(.top, entry.overrideActive ? 6 : 0)
     }
 
-    // MARK: Small — ring + keys, no wordmark so the 2x2 stays uncluttered
+    // MARK: Small — ring + keys, so the 2x2 stays uncluttered
 
     private var smallView: some View {
         VStack(spacing: 0) {
@@ -148,21 +196,15 @@ struct Locked_WidgetEntryView: View {
     // MARK: Medium — ring, status copy, keys
 
     private var mediumView: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            wordmark
-            HStack(alignment: .center, spacing: 16) {
-                KarmaRing(karma: entry.karma, size: 88, lineWidth: 9, numberSize: 30)
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(karmaHeadline)
-                        .font(.system(.subheadline, design: .rounded, weight: .bold))
-                        .foregroundStyle(.white)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(weeklyLockSubtitle)
-                        .font(.system(.caption, design: .rounded, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.72))
-                    Spacer(minLength: 0)
-                    KeysChip(keys: entry.keys)
-                }
+        HStack(alignment: .center, spacing: 16) {
+            KarmaRing(karma: entry.karma, size: 88, lineWidth: 9, numberSize: 30)
+            VStack(alignment: .leading, spacing: 8) {
+                Text(entry.lockCountCopy)
+                    .font(.system(.subheadline, design: .rounded, weight: .bold))
+                    .foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+                KeysChip(keys: entry.keys)
             }
         }
     }
@@ -227,36 +269,6 @@ struct Locked_WidgetEntryView: View {
             .frame(width: 32, height: 32)
             .background(Color.white.opacity(0.12))
             .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-    }
-
-    private var wordmark: some View {
-        HStack(spacing: 5) {
-            Image(systemName: "lock.fill")
-                .font(.system(size: 9, weight: .bold))
-            Text("LOCKED")
-                .font(.system(size: 10, weight: .bold, design: .rounded))
-                .tracking(1.4)
-        }
-        .foregroundStyle(.white.opacity(0.55))
-    }
-
-    private var karmaHeadline: String {
-        switch entry.karma {
-        case 90...: return "Your apps are well protected"
-        case 70..<90: return "Most of your apps stay open"
-        case 40..<70: return "Several apps are at risk"
-        default: return "Most apps will lock this week"
-        }
-    }
-
-    private var weeklyLockSubtitle: String {
-        let weekday = Calendar.current.component(.weekday, from: entry.date)
-        let days = weekday == 1 ? 0 : 8 - weekday
-        switch days {
-        case 0: return "Weekly lock is today"
-        case 1: return "Weekly lock is tomorrow"
-        default: return "Weekly lock in \(days) days"
-        }
     }
 
     private var remainingText: String {
@@ -412,24 +424,26 @@ struct Locked_Widget: Widget {
 #Preview("Small", as: .systemSmall) {
     Locked_Widget()
 } timeline: {
-    SimpleEntry(date: .now, keys: 14, karma: 82, overrideUntil: .distantPast)
-    SimpleEntry(date: .now, keys: 3, karma: 28, overrideUntil: .distantPast)
+    SimpleEntry(date: .now, keys: 14, karma: 82, appCount: 12, overrideUntil: .distantPast)
+    SimpleEntry(date: .now, keys: 3, karma: 28, appCount: 12, overrideUntil: .distantPast)
 }
 
 #Preview("Medium", as: .systemMedium) {
     Locked_Widget()
 } timeline: {
-    SimpleEntry(date: .now, keys: 14, karma: 82, overrideUntil: .distantPast)
+    SimpleEntry(date: .now, keys: 14, karma: 100, appCount: 12, overrideUntil: .distantPast)
+    SimpleEntry(date: .now, keys: 14, karma: 82, appCount: 12, overrideUntil: .distantPast)
+    SimpleEntry(date: .now, keys: 14, karma: 0, appCount: 1, overrideUntil: .distantPast)
 }
 
 #Preview("Override small", as: .systemSmall) {
     Locked_Widget()
 } timeline: {
-    SimpleEntry(date: .now, keys: 14, karma: 82, overrideUntil: Date().addingTimeInterval(47 * 60))
+    SimpleEntry(date: .now, keys: 14, karma: 82, appCount: 12, overrideUntil: Date().addingTimeInterval(47 * 60))
 }
 
 #Preview("Override medium", as: .systemMedium) {
     Locked_Widget()
 } timeline: {
-    SimpleEntry(date: .now, keys: 14, karma: 82, overrideUntil: Date().addingTimeInterval(47 * 60))
+    SimpleEntry(date: .now, keys: 14, karma: 82, appCount: 12, overrideUntil: Date().addingTimeInterval(47 * 60))
 }
