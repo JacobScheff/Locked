@@ -66,11 +66,9 @@ struct SourcesPage: View {
             }
         }
         .sheet(item: $brightspaceLogin) { _ in
-            BrightspaceConnectSheet { host, clientID, clientSecret in
+            BrightspaceConnectSheet { auth in
                 let result = try await sources.connectBrightspace(
-                    host: host,
-                    clientID: clientID,
-                    clientSecret: clientSecret,
+                    auth: auth,
                     courses: courses,
                     keys: keys,
                     karma: karma
@@ -182,7 +180,7 @@ struct SourcesPage: View {
     }
 
     private var footnote: some View {
-        Text("Passwords and Brightspace tokens stay on this iPhone. They’re only sent to Gradescope or your school’s Brightspace when you connect or refresh.")
+        Text("Passwords and Brightspace sign-in stay on this iPhone. They’re only sent to Gradescope or your school’s Brightspace when you connect or refresh.")
             .font(.caption)
             .foregroundStyle(.tertiary)
     }
@@ -493,26 +491,23 @@ struct GradescopeLoginSheet: View {
 
 struct BrightspaceConnectSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @FocusState private var focused: Field?
+    @FocusState private var focused: Bool
 
-    let onConnect: (String, String, String?) async throws -> Void
+    let onConnect: (BrightspaceStoredAuth) async throws -> Void
 
-    @State private var host = "brightspace.usc.edu"
-    @State private var clientID = BrightspaceConfig.clientID
-    @State private var clientSecret = BrightspaceConfig.clientSecret
+    @State private var host = BrightspaceConfig.defaultHost
+    @State private var showBrowser = false
     @State private var isWorking = false
     @State private var errorMessage: String?
-
-    enum Field { case host, clientID, clientSecret }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Connect Brightspace")
+                        Text("Sign in to Brightspace")
                             .font(.lockedTitle(24))
-                        Text("Sign in with your school account. Locked loads this term’s dropbox assignments and uses the real submitted time.")
+                        Text("You’ll open your school’s Brightspace site and sign in the usual way. If you’re already signed in, Locked continues automatically.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -523,25 +518,8 @@ struct BrightspaceConnectSheet: View {
                             .keyboardType(.URL)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
-                            .focused($focused, equals: .host)
+                            .focused($focused)
                     }
-
-                    field(title: "OAuth client ID") {
-                        TextField("Client ID", text: $clientID)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .focused($focused, equals: .clientID)
-                    }
-
-                    field(title: "Client secret") {
-                        SecureField("From Manage Extensibility", text: $clientSecret)
-                            .textContentType(.password)
-                            .focused($focused, equals: .clientSecret)
-                    }
-
-                    Text("Your school registers Locked in Brightspace Manage Extensibility. Redirect URI must be locked://oauth2callback.")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
 
                     if let errorMessage {
                         Text(errorMessage)
@@ -550,13 +528,19 @@ struct BrightspaceConnectSheet: View {
                     }
 
                     Button {
-                        Task { await connect() }
+                        do {
+                            host = try BrightspaceParser.normalizedHost(host)
+                            errorMessage = nil
+                            showBrowser = true
+                        } catch {
+                            errorMessage = error.localizedDescription
+                        }
                     } label: {
                         HStack {
                             if isWorking {
                                 ProgressView().tint(.white)
                             }
-                            Text(isWorking ? "Connecting…" : "Continue with Brightspace")
+                            Text(isWorking ? "Importing…" : "Open Brightspace")
                                 .font(.headline)
                         }
                         .foregroundStyle(.white)
@@ -567,7 +551,7 @@ struct BrightspaceConnectSheet: View {
                     }
                     .disabled(!canSubmit || isWorking)
 
-                    Text("Locked stores Brightspace tokens in the iPhone keychain and uses them only to refresh assignments.")
+                    Text("Locked keeps the Brightspace session on this iPhone and uses it only to refresh assignments.")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
@@ -581,16 +565,27 @@ struct BrightspaceConnectSheet: View {
                         .disabled(isWorking)
                 }
             }
-            .onAppear { focused = .host }
+            .onAppear { focused = true }
         }
         .presentationDetents([.large])
         .tint(.lockedIndigo)
         .interactiveDismissDisabled(isWorking)
+        .fullScreenCover(isPresented: $showBrowser) {
+            BrightspaceSignInView(
+                host: (try? BrightspaceParser.normalizedHost(host)) ?? host,
+                onSignedIn: { auth in
+                    showBrowser = false
+                    Task { await finish(auth) }
+                },
+                onCancel: {
+                    showBrowser = false
+                }
+            )
+        }
     }
 
     private var canSubmit: Bool {
         !host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !clientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func field<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
@@ -604,13 +599,12 @@ struct BrightspaceConnectSheet: View {
         }
     }
 
-    private func connect() async {
+    private func finish(_ auth: BrightspaceStoredAuth) async {
         errorMessage = nil
         isWorking = true
         defer { isWorking = false }
         do {
-            let secret = clientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
-            try await onConnect(host, clientID, secret.isEmpty ? nil : secret)
+            try await onConnect(auth)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription

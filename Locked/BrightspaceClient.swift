@@ -1,33 +1,16 @@
-import AuthenticationServices
-import CryptoKit
 import Foundation
-import UIKit
+import WebKit
 
 enum BrightspaceConfig {
-    /// Register Locked in Brightspace Manage Extensibility → OAuth 2.0 (authorization grant).
-    /// Redirect URI must be exactly `locked://oauth2callback`.
-    static let clientID = ""
-    static let clientSecret = ""
-
-    static let callbackScheme = "locked"
-    static let redirectURI = "locked://oauth2callback"
-    static let scope = "core:*:* enrollment:own_enrollment:read dropbox:folders:read"
-    static let authorizationURL = URL(string: "https://auth.brightspace.com/oauth2/auth")!
-    static let tokenURL = URL(string: "https://auth.brightspace.com/core/connect/token")!
     static let courseOfferingTypeID = 3
-
-    static var isConfigured: Bool {
-        !clientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
+    static let defaultHost = "brightspace.usc.edu"
+    static let safariUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
 }
 
 enum BrightspaceError: LocalizedError {
     case notConnected
     case invalidHost
-    case missingClientID
-    case authUnavailable
     case cancelled
-    case invalidCallback
     case emptyAccount
     case notFound
     case forbidden
@@ -40,20 +23,14 @@ enum BrightspaceError: LocalizedError {
             return "Connect Brightspace to refresh assignments."
         case .invalidHost:
             return "Enter a Brightspace address like brightspace.usc.edu."
-        case .missingClientID:
-            return "Brightspace needs an OAuth client ID from your school’s Manage Extensibility page."
-        case .authUnavailable:
-            return "Couldn’t open Brightspace sign-in. Try again."
         case .cancelled:
             return "Brightspace sign-in was cancelled."
-        case .invalidCallback:
-            return "Brightspace didn’t return a sign-in code."
         case .emptyAccount:
             return "No current Brightspace courses were found."
         case .notFound, .forbidden:
             return "Brightspace couldn’t find that item."
         case .unauthorized:
-            return "Brightspace sign-in expired. Connect again."
+            return "Brightspace sign-in expired. Open Brightspace and sign in again."
         case .requestFailed(let message):
             return message
         }
@@ -61,7 +38,7 @@ enum BrightspaceError: LocalizedError {
 
     var isAuthFailure: Bool {
         switch self {
-        case .unauthorized, .notConnected, .cancelled, .invalidCallback:
+        case .unauthorized, .notConnected, .cancelled:
             return true
         default:
             return false
@@ -69,18 +46,46 @@ enum BrightspaceError: LocalizedError {
     }
 }
 
-struct BrightspaceStoredAuth: Codable, Equatable {
-    var host: String
-    var clientID: String
-    var clientSecret: String?
-    var accessToken: String
-    var refreshToken: String?
+struct BrightspaceStoredCookie: Codable, Equatable {
+    var name: String
+    var value: String
+    var domain: String
+    var path: String
     var expiresAt: Date?
+    var isSecure: Bool
+
+    init(_ cookie: HTTPCookie) {
+        name = cookie.name
+        value = cookie.value
+        domain = cookie.domain
+        path = cookie.path
+        expiresAt = cookie.expiresDate
+        isSecure = cookie.isSecure
+    }
+
+    var httpCookie: HTTPCookie? {
+        var properties: [HTTPCookiePropertyKey: Any] = [
+            .name: name,
+            .value: value,
+            .domain: domain,
+            .path: path.isEmpty ? "/" : path,
+            .secure: isSecure ? "TRUE" : "FALSE",
+        ]
+        if let expiresAt {
+            properties[.expires] = expiresAt
+        }
+        return HTTPCookie(properties: properties)
+    }
 }
 
-struct BrightspaceAuthCode: Sendable {
-    let code: String
-    let verifier: String
+struct BrightspaceStoredAuth: Codable, Equatable {
+    var host: String
+    var cookies: [BrightspaceStoredCookie]
+    var csrfToken: String?
+
+    var sessionToken: String? {
+        csrfToken ?? cookies.first(where: { $0.name == "d2lSessionVal" })?.value
+    }
 }
 
 enum BrightspaceParser {
@@ -138,6 +143,62 @@ enum BrightspaceParser {
     static func isSubmitted(_ entities: [BrightspaceEntityDropbox]) -> Bool {
         entities.contains { entity in
             !entity.submissions.isEmpty || entity.completionDate != nil
+        }
+    }
+
+    static func homeURL(for host: String) -> URL {
+        URL(string: "https://\(host)/d2l/home")!
+    }
+
+    static func cookieBelongs(_ cookie: HTTPCookie, host: String) -> Bool {
+        let domain = cookie.domain.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        let campus = host.lowercased()
+        return campus == domain
+            || campus.hasSuffix(".\(domain)")
+            || domain.hasSuffix(".\(campus)")
+            || domain.contains("brightspace")
+    }
+
+    static func isLoginURL(_ url: URL?) -> Bool {
+        guard let url else { return true }
+        let host = url.host?.lowercased() ?? ""
+        let path = url.path.lowercased()
+        let combined = "\(host)\(path)\(url.absoluteString.lowercased())"
+        return path.contains("/login")
+            || path.contains("logon")
+            || path.contains("signin")
+            || combined.contains("/sso")
+            || combined.contains("saml")
+            || combined.contains("shibboleth")
+            || combined.contains("login.microsoftonline")
+            || combined.contains("idp.")
+    }
+
+    static func isCampusURL(_ url: URL?, host: String) -> Bool {
+        guard let urlHost = url?.host?.lowercased() else { return false }
+        return urlHost == host.lowercased() || urlHost.hasSuffix(".\(host.lowercased())")
+    }
+
+    static func session(from cookies: [HTTPCookie], host: String, currentURL: URL?) -> BrightspaceStoredAuth? {
+        let matching = cookies.filter { cookieBelongs($0, host: host) }
+        guard let csrf = matching.first(where: { $0.name == "d2lSessionVal" })?.value, !csrf.isEmpty else {
+            return nil
+        }
+        guard isCampusURL(currentURL, host: host), !isLoginURL(currentURL) else { return nil }
+        let path = currentURL?.path.lowercased() ?? ""
+        guard path.hasPrefix("/d2l/") else { return nil }
+        return BrightspaceStoredAuth(
+            host: host,
+            cookies: matching.map(BrightspaceStoredCookie.init),
+            csrfToken: csrf
+        )
+    }
+
+    static func clearWebCookies(for host: String) {
+        WKWebsiteDataStore.default().httpCookieStore.getAllCookies { cookies in
+            for cookie in cookies where cookieBelongs(cookie, host: host) {
+                WKWebsiteDataStore.default().httpCookieStore.delete(cookie)
+            }
         }
     }
 }
@@ -307,18 +368,6 @@ struct BrightspaceProductVersion: Decodable {
     }
 }
 
-private struct BrightspaceTokenResponse: Decodable {
-    let accessToken: String
-    let refreshToken: String?
-    let expiresIn: Double?
-
-    enum CodingKeys: String, CodingKey {
-        case accessToken = "access_token"
-        case refreshToken = "refresh_token"
-        case expiresIn = "expires_in"
-    }
-}
-
 actor BrightspaceClient {
     private let session: URLSession
     private let decoder = JSONDecoder()
@@ -330,32 +379,15 @@ actor BrightspaceClient {
             return
         }
         let configuration = URLSessionConfiguration.ephemeral
+        configuration.httpCookieAcceptPolicy = .always
+        configuration.httpShouldSetCookies = true
         configuration.timeoutIntervalForRequest = 30
         configuration.httpMaximumConnectionsPerHost = 6
         configuration.httpAdditionalHeaders = [
             "Accept": "application/json",
-            "User-Agent": "Locked/1.0",
+            "User-Agent": BrightspaceConfig.safariUserAgent,
         ]
         self.session = URLSession(configuration: configuration)
-    }
-
-    func exchangeCode(
-        _ code: String,
-        verifier: String,
-        clientID: String,
-        clientSecret: String?
-    ) async throws -> BrightspaceTokens {
-        var pairs: [(String, String)] = [
-            ("grant_type", "authorization_code"),
-            ("code", code),
-            ("redirect_uri", BrightspaceConfig.redirectURI),
-            ("client_id", clientID),
-            ("code_verifier", verifier),
-        ]
-        if let clientSecret, !clientSecret.isEmpty {
-            pairs.append(("client_secret", clientSecret))
-        }
-        return try await requestTokens(pairs: pairs)
     }
 
     func fetchCatalog(
@@ -363,6 +395,7 @@ actor BrightspaceClient {
         auth: BrightspaceStoredAuth
     ) async throws -> (catalog: ExternalCatalogSnapshot, auth: BrightspaceStoredAuth, whoami: String) {
         workingAuth = try await validAuth(auth)
+        installCookies(auth)
         defer { workingAuth = nil }
 
         let versions = try await productVersions(host: host)
@@ -370,7 +403,8 @@ actor BrightspaceClient {
         let le = versions["le"] ?? "1.74"
 
         let whoami: BrightspaceWhoami = try await getJSON(
-            from: apiURL(host: host, path: "/d2l/api/lp/\(lp)/users/whoami")
+            from: apiURL(host: host, path: "/d2l/api/lp/\(lp)/users/whoami"),
+            sessionRequired: true
         )
 
         let enrollments = try await fetchEnrollments(host: host, lp: lp)
@@ -519,7 +553,8 @@ actor BrightspaceClient {
                 itemsQuery.append(URLQueryItem(name: "bookmark", value: bookmark))
             }
             let page: BrightspacePaged<BrightspaceEnrollment> = try await getJSON(
-                from: apiURL(host: host, path: "/d2l/api/lp/\(lp)/enrollments/myenrollments/", query: itemsQuery)
+                from: apiURL(host: host, path: "/d2l/api/lp/\(lp)/enrollments/myenrollments/", query: itemsQuery),
+                sessionRequired: true
             )
             items.append(contentsOf: page.items)
             let next = page.pagingInfo?.bookmark
@@ -548,97 +583,64 @@ actor BrightspaceClient {
     }
 
     private func validAuth(_ auth: BrightspaceStoredAuth) async throws -> BrightspaceStoredAuth {
-        var auth = auth
-        if let expiry = auth.expiresAt, expiry.addingTimeInterval(-60) > .now {
-            return auth
-        }
-        if auth.refreshToken != nil {
-            do {
-                let tokens = try await refreshTokens(auth)
-                auth.accessToken = tokens.accessToken
-                auth.refreshToken = tokens.refreshToken ?? auth.refreshToken
-                auth.expiresAt = tokens.expiresAt
-                return auth
-            } catch {
-                if auth.expiresAt == nil { return auth }
-                throw BrightspaceError.unauthorized
-            }
+        guard auth.sessionToken != nil, !auth.cookies.isEmpty else {
+            throw BrightspaceError.unauthorized
         }
         return auth
     }
 
-    private func refreshTokens(_ auth: BrightspaceStoredAuth) async throws -> BrightspaceTokens {
-        guard let refreshToken = auth.refreshToken, !refreshToken.isEmpty else {
-            throw BrightspaceError.unauthorized
+    private func installCookies(_ auth: BrightspaceStoredAuth) {
+        guard let storage = session.configuration.httpCookieStorage else { return }
+        for cookie in auth.cookies.compactMap(\.httpCookie) {
+            storage.setCookie(cookie)
         }
-        var pairs: [(String, String)] = [
-            ("grant_type", "refresh_token"),
-            ("refresh_token", refreshToken),
-            ("client_id", auth.clientID),
-        ]
-        if let secret = auth.clientSecret, !secret.isEmpty {
-            pairs.append(("client_secret", secret))
-        }
-        return try await requestTokens(pairs: pairs)
-    }
-
-    private func requestTokens(pairs: [(String, String)]) async throws -> BrightspaceTokens {
-        var request = URLRequest(url: BrightspaceConfig.tokenURL)
-        request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        request.httpBody = formBody(pairs)
-
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            let code = (response as? HTTPURLResponse)?.statusCode ?? -1
-            throw BrightspaceError.requestFailed("Brightspace token exchange returned \(code).")
-        }
-        let payload = try decoder.decode(BrightspaceTokenResponse.self, from: data)
-        let expiry = payload.expiresIn.map { Date.now.addingTimeInterval($0) }
-        return BrightspaceTokens(
-            accessToken: payload.accessToken,
-            refreshToken: payload.refreshToken,
-            expiresAt: expiry
-        )
     }
 
     private func getJSON<T: Decodable>(
         from url: URL,
-        allowMissing: Bool = false
+        allowMissing: Bool = false,
+        sessionRequired: Bool = false
     ) async throws -> T {
-        guard var auth = workingAuth else { throw BrightspaceError.notConnected }
-        auth = try await validAuth(auth)
-        workingAuth = auth
-        do {
-            return try await sendJSON(T.self, url: url, token: auth.accessToken, allowMissing: allowMissing)
-        } catch BrightspaceError.unauthorized {
-            let tokens = try await refreshTokens(auth)
-            auth.accessToken = tokens.accessToken
-            auth.refreshToken = tokens.refreshToken ?? auth.refreshToken
-            auth.expiresAt = tokens.expiresAt
-            workingAuth = auth
-            return try await sendJSON(T.self, url: url, token: auth.accessToken, allowMissing: allowMissing)
-        }
+        guard let auth = workingAuth else { throw BrightspaceError.notConnected }
+        return try await sendJSON(
+            T.self,
+            url: url,
+            auth: auth,
+            allowMissing: allowMissing,
+            sessionRequired: sessionRequired
+        )
     }
 
     private func sendJSON<T: Decodable>(
         _ type: T.Type,
         url: URL,
-        token: String,
+        auth: BrightspaceStoredAuth,
         allowMissing: Bool,
+        sessionRequired: Bool,
         attempt: Int = 0
     ) async throws -> T {
         var request = URLRequest(url: url)
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let csrf = auth.sessionToken {
+            request.setValue(csrf, forHTTPHeaderField: "X-Csrf-Token")
+        }
+        request.setValue("https://\(auth.host)/d2l/home", forHTTPHeaderField: "Referer")
+        request.setValue("https://\(auth.host)", forHTTPHeaderField: "Origin")
         let (data, response) = try await session.data(for: request)
         let code = (response as? HTTPURLResponse)?.statusCode ?? -1
 
         if code == 429, attempt < 3 {
             let delay = UInt64(pow(2.0, Double(attempt))) * 400_000_000
             try await Task.sleep(nanoseconds: delay)
-            return try await sendJSON(type, url: url, token: token, allowMissing: allowMissing, attempt: attempt + 1)
+            return try await sendJSON(
+                type,
+                url: url,
+                auth: auth,
+                allowMissing: allowMissing,
+                sessionRequired: sessionRequired,
+                attempt: attempt + 1
+            )
         }
-        if code == 401 { throw BrightspaceError.unauthorized }
+        if code == 401 || (sessionRequired && code == 403) { throw BrightspaceError.unauthorized }
         if code == 403 { throw BrightspaceError.forbidden }
         if code == 404 {
             if allowMissing, let empty = emptyJSON(type) { return empty }
@@ -646,6 +648,11 @@ actor BrightspaceClient {
         }
         guard (200..<300).contains(code) else {
             throw BrightspaceError.requestFailed("Brightspace returned \(code).")
+        }
+        if let text = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           text.hasPrefix("<") {
+            throw BrightspaceError.unauthorized
         }
         return try decoder.decode(T.self, from: data)
     }
@@ -669,119 +676,5 @@ actor BrightspaceClient {
             components.queryItems = query
         }
         return components.url!
-    }
-
-    private func formBody(_ pairs: [(String, String)]) -> Data {
-        var allowed = CharacterSet.alphanumerics
-        allowed.insert(charactersIn: "-._*~")
-        let encoded = pairs.map { key, value in
-            let k = key.addingPercentEncoding(withAllowedCharacters: allowed) ?? key
-            let v = value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
-            return "\(k)=\(v)"
-        }.joined(separator: "&")
-        return Data(encoded.utf8)
-    }
-}
-
-struct BrightspaceTokens: Sendable {
-    var accessToken: String
-    var refreshToken: String?
-    var expiresAt: Date?
-}
-
-@MainActor
-final class BrightspaceAuthSession: NSObject, ASWebAuthenticationPresentationContextProviding {
-    private var session: ASWebAuthenticationSession?
-
-    func signIn(clientID: String) async throws -> BrightspaceAuthCode {
-        let trimmed = clientID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { throw BrightspaceError.missingClientID }
-
-        let verifier = BrightspaceOAuth.makeVerifier()
-        let challenge = BrightspaceOAuth.makeChallenge(for: verifier)
-        let state = BrightspaceOAuth.makeVerifier()
-
-        var components = URLComponents(url: BrightspaceConfig.authorizationURL, resolvingAgainstBaseURL: false)!
-        components.queryItems = [
-            URLQueryItem(name: "response_type", value: "code"),
-            URLQueryItem(name: "client_id", value: trimmed),
-            URLQueryItem(name: "redirect_uri", value: BrightspaceConfig.redirectURI),
-            URLQueryItem(name: "scope", value: BrightspaceConfig.scope),
-            URLQueryItem(name: "state", value: state),
-            URLQueryItem(name: "code_challenge", value: challenge),
-            URLQueryItem(name: "code_challenge_method", value: "S256"),
-        ]
-        guard let authURL = components.url else { throw BrightspaceError.authUnavailable }
-
-        return try await withCheckedThrowingContinuation { continuation in
-            var settled = false
-            let finish: (Result<BrightspaceAuthCode, Error>) -> Void = { result in
-                guard !settled else { return }
-                settled = true
-                self.session = nil
-                continuation.resume(with: result)
-            }
-
-            let session = ASWebAuthenticationSession(
-                url: authURL,
-                callbackURLScheme: BrightspaceConfig.callbackScheme
-            ) { callbackURL, error in
-                if let error {
-                    let cancelled = (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin
-                    finish(.failure(cancelled ? BrightspaceError.cancelled : error))
-                    return
-                }
-                guard let callbackURL,
-                      let parts = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false),
-                      let code = parts.queryItems?.first(where: { $0.name == "code" })?.value,
-                      !code.isEmpty
-                else {
-                    finish(.failure(BrightspaceError.invalidCallback))
-                    return
-                }
-                let returnedState = parts.queryItems?.first(where: { $0.name == "state" })?.value
-                if returnedState != nil && returnedState != state {
-                    finish(.failure(BrightspaceError.invalidCallback))
-                    return
-                }
-                finish(.success(BrightspaceAuthCode(code: code, verifier: verifier)))
-            }
-            session.presentationContextProvider = self
-            session.prefersEphemeralWebBrowserSession = false
-            self.session = session
-            if !session.start() {
-                finish(.failure(BrightspaceError.authUnavailable))
-            }
-        }
-    }
-
-    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-        if let window = scenes.flatMap(\.windows).first(where: \.isKeyWindow) {
-            return window
-        }
-        return scenes.first?.windows.first ?? ASPresentationAnchor()
-    }
-}
-
-private enum BrightspaceOAuth {
-    static func makeVerifier() -> String {
-        var bytes = [UInt8](repeating: 0, count: 32)
-        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-        return Data(bytes).base64URLEncodedString()
-    }
-
-    static func makeChallenge(for verifier: String) -> String {
-        let hash = SHA256.hash(data: Data(verifier.utf8))
-        return Data(hash).base64URLEncodedString()
-    }
-}
-
-private extension Data {
-    func base64URLEncodedString() -> String {
-        base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
     }
 }

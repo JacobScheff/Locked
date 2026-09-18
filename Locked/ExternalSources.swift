@@ -20,7 +20,7 @@ enum ExternalSourceProvider: String, Codable, CaseIterable, Identifiable {
         case .gradescope:
             return "Import your courses and keep due dates and submissions in sync."
         case .brightspace:
-            return "Import this term’s courses, due dates, and submissions from D2L Brightspace."
+            return "Sign in on your school’s Brightspace site. Locked imports this term’s courses and due dates."
         }
     }
 

@@ -13,7 +13,6 @@ final class ExternalSourceController: ObservableObject {
 
     private let gradescopeClient = GradescopeClient()
     private let brightspaceClient = BrightspaceClient()
-    private var brightspaceAuthSession: BrightspaceAuthSession?
 
     private let gradescopeKey = "source.gradescope.state"
     private let brightspaceKey = "source.brightspace.state"
@@ -70,37 +69,14 @@ final class ExternalSourceController: ObservableObject {
     }
 
     func connectBrightspace(
-        host: String,
-        clientID: String,
-        clientSecret: String?,
+        auth: BrightspaceStoredAuth,
         courses: [Course],
         keys: Double,
         karma: Double
     ) async throws -> (courses: [Course], keys: Double, karma: Double) {
-        let normalizedHost = try BrightspaceParser.normalizedHost(host)
-        let trimmedID = clientID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedID.isEmpty else { throw BrightspaceError.missingClientID }
-
-        let session = BrightspaceAuthSession()
-        brightspaceAuthSession = session
-        defer { brightspaceAuthSession = nil }
-
-        let code = try await session.signIn(clientID: trimmedID)
-        let tokens = try await brightspaceClient.exchangeCode(
-            code.code,
-            verifier: code.verifier,
-            clientID: trimmedID,
-            clientSecret: clientSecret
-        )
-        let secret = clientSecret?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let auth = BrightspaceStoredAuth(
-            host: normalizedHost,
-            clientID: trimmedID,
-            clientSecret: secret?.isEmpty == false ? secret : nil,
-            accessToken: tokens.accessToken,
-            refreshToken: tokens.refreshToken,
-            expiresAt: tokens.expiresAt
-        )
+        let normalizedHost = try BrightspaceParser.normalizedHost(auth.host)
+        var auth = auth
+        auth.host = normalizedHost
         try saveBrightspaceAuth(auth)
         brightspace.host = normalizedHost
         persistBrightspace()
@@ -195,6 +171,7 @@ final class ExternalSourceController: ObservableObject {
     func disconnectBrightspace() {
         if let host = brightspace.host {
             SourceKeychain.deletePassword(provider: .brightspace, email: host)
+            BrightspaceParser.clearWebCookies(for: host)
         }
         brightspace = SourceConnectionState()
         lastReport = nil
