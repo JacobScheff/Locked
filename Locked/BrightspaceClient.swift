@@ -3,7 +3,6 @@ import WebKit
 
 enum BrightspaceConfig {
     static let courseOfferingTypeID = 3
-    static let defaultHost = "brightspace.usc.edu"
     static let safariUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
 }
 
@@ -22,7 +21,7 @@ enum BrightspaceError: LocalizedError {
         case .notConnected:
             return "Connect Brightspace to refresh assignments."
         case .invalidHost:
-            return "Enter a Brightspace address like brightspace.usc.edu."
+            return "Enter your school’s Brightspace website, such as yourschool.brightspace.com."
         case .cancelled:
             return "Brightspace sign-in was cancelled."
         case .emptyAccount:
