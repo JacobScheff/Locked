@@ -74,16 +74,17 @@ private enum ShieldLook {
         }
 
         var ledger: String {
+            let current = ShieldLook.format(keys)
+            let unlock = ShieldLook.format(cost)
             var lines = [
                 "\(karma) karma",
                 "",
-                "Current keys  \(ShieldLook.format(keys))",
-                "Unlock cost  −\(ShieldLook.format(cost))",
+                "\(current) keys − \(unlock) cost",
             ]
             if canAfford {
-                lines.append("Keys left  \(ShieldLook.format(remaining))")
+                lines.append("= \(ShieldLook.format(remaining)) keys left")
             } else {
-                lines.append("Keys needed  \(ShieldLook.format(shortfall))")
+                lines.append("Need \(ShieldLook.format(shortfall)) more keys")
             }
             return lines.joined(separator: "\n")
         }
