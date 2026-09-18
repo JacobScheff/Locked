@@ -67,7 +67,7 @@ struct HowToUseView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Import from school sites")
                                 .font(.headline)
-                            Text("On Courses, tap the link icon to connect Gradescope or Brightspace. Locked loads this term’s courses only. Hide a class to archive it. Permanently delete archived classes in Settings — a source refresh will import them again if they’re still listed there.")
+                            Text("On Courses, tap the link icon to connect Gradescope or Brightspace. For Brightspace, search your school’s name or paste the website you already use in a browser — every campus has its own address. Locked loads this term’s courses only. Hide a class to archive it. Permanently delete archived classes in Settings — a source refresh will import them again if they’re still listed there.")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
