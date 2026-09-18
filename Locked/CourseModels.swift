@@ -21,7 +21,10 @@ struct Assignment: Identifiable, Codable, Equatable {
     }
 
     static func blank(dueInDays: Int = 7) -> Assignment {
-        let due = Calendar.current.date(byAdding: .day, value: dueInDays, to: .now) ?? .now
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: .now)
+        let day = calendar.date(byAdding: .day, value: dueInDays, to: start) ?? .now
+        let due = calendar.date(bySettingHour: 23, minute: 59, second: 0, of: day) ?? day
         return Assignment(
             name: "",
             dueDate: due,

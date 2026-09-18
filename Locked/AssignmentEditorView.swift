@@ -35,17 +35,23 @@ struct AssignmentEditorView: View {
         }
 
         func date(from now: Date = .now) -> Date {
-            let calendar = Calendar.current
-            let days: Int
             switch self {
             case .tonight:
-                let end = calendar.date(bySettingHour: 23, minute: 59, second: 0, of: now) ?? now
-                return end > now ? end : calendar.date(byAdding: .day, value: 1, to: end) ?? end
-            case .tomorrow: days = 1
-            case .threeDays: days = 3
-            case .nextWeek: days = 7
+                let end = Self.endOfDay(offsetBy: 0, from: now)
+                return end > now ? end : Self.endOfDay(offsetBy: 1, from: now)
+            case .tomorrow:
+                return Self.endOfDay(offsetBy: 1, from: now)
+            case .threeDays:
+                return Self.endOfDay(offsetBy: 3, from: now)
+            case .nextWeek:
+                return Self.endOfDay(offsetBy: 7, from: now)
             }
-            let day = calendar.date(byAdding: .day, value: days, to: now) ?? now
+        }
+
+        private static func endOfDay(offsetBy days: Int, from now: Date) -> Date {
+            let calendar = Calendar.current
+            let start = calendar.startOfDay(for: now)
+            let day = calendar.date(byAdding: .day, value: days, to: start) ?? now
             return calendar.date(bySettingHour: 23, minute: 59, second: 0, of: day) ?? day
         }
     }
