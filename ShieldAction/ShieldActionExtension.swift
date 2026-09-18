@@ -33,33 +33,37 @@ class ShieldActionExtension: ShieldActionDelegate {
         case .primaryButtonPressed:
             return handlePrimary(token: token)
         case .secondaryButtonPressed:
-            if ShieldUnlockPrompt.isConfirming(token) {
-                ShieldUnlockPrompt.clear()
-                return .defer
-            }
-            return .close
+            return handleSecondary(token: token)
         default:
             return .none
         }
     }
 
+    /// Use keys arms confirmation. After that, this same control is Cancel
+    /// so a double-tap cannot spend.
     private func handlePrimary(token: ApplicationToken) -> ShieldActionResponse {
         if ShieldUnlockPrompt.isConfirming(token) {
             ShieldUnlockPrompt.clear()
-            switch KeyUnlock.unlock(token: token) {
-            case .unlocked:
-                // Restriction is already gone. `.none` leaves the now-open
-                // app in the foreground instead of bouncing to SpringBoard.
-                return .none
-            case .notEnoughKeys, .notLocked:
-                return .defer
-            }
+            return .defer
         }
-
         guard KeyUnlock.canAfford(token), LockedTokenStore.load().contains(token) else {
             return .defer
         }
         ShieldUnlockPrompt.begin(token)
         return .defer
+    }
+
+    /// Spend is only the secondary control, and only after Use keys.
+    private func handleSecondary(token: ApplicationToken) -> ShieldActionResponse {
+        guard ShieldUnlockPrompt.isConfirming(token) else {
+            return .close
+        }
+        ShieldUnlockPrompt.clear()
+        switch KeyUnlock.unlock(token: token) {
+        case .unlocked:
+            return .none
+        case .notEnoughKeys, .notLocked:
+            return .defer
+        }
     }
 }
