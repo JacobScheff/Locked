@@ -289,10 +289,29 @@ enum UsageStore {
         return ExcludedApps.strippingExcluded(decoded)
     }
 
+    static let lockedAppsKey = "lockedApps"
+
+    /// Display names for the tokens that are actually shielded. Names are
+    /// derived from `LockedTokenStore`, never stored on their own, so the
+    /// list can't drift from what SpringBoard is enforcing.
     static func loadLockedApps() -> [String] {
-        let raw = AppGroupStore.sharedString(forKey: "lockedApps")
-        let decoded = AppGroupStore.decodeJSON([String].self, from: raw) ?? []
-        return ExcludedApps.strippingExcluded(decoded)
+        lockedNames(for: LockedTokenStore.load(), tokenMap: loadTokenMap())
+    }
+
+    static func lockedNames(for tokens: Set<ApplicationToken>, tokenMap: [String: ApplicationToken]) -> [String] {
+        let names = tokenMap.compactMap { name, token in tokens.contains(token) ? name : nil }
+        return ExcludedApps.strippingExcluded(names).sorted()
+    }
+
+    /// Rewrites the cached `lockedApps` list from the shielded token set and
+    /// returns it. Call after any change to `LockedTokenStore` or the token map.
+    @discardableResult
+    static func syncLockedNames() -> [String] {
+        let names = loadLockedApps()
+        if let raw = AppGroupStore.encodeJSON(names) {
+            AppGroupStore.setSharedString(raw, forKey: lockedAppsKey)
+        }
+        return names
     }
 
     static func loadScreenTime() -> Int {
@@ -376,16 +395,13 @@ enum UsageStore {
         for (name, data) in tokens {
             mergedTokens[name] = data
         }
+        // Keep a name→token entry while the app has usage or is shielded, so
+        // a locked app with zero time this week still shows its name.
         let lockedTokenSet = LockedTokenStore.load()
-        var keepNames = remainingNames.union(Set(loadLockedApps()))
-        for (name, data) in mergedTokens {
-            if let token = TokenCoding.decode(ApplicationToken.self, from: data),
-               lockedTokenSet.contains(token) {
-                keepNames.insert(name)
-            }
-        }
-        let filteredTokens = mergedTokens.filter {
-            keepNames.contains($0.key) || remainingNames.contains($0.key)
+        let filteredTokens = mergedTokens.filter { name, data in
+            if remainingNames.contains(name) { return true }
+            guard let token = TokenCoding.decode(ApplicationToken.self, from: data) else { return false }
+            return lockedTokenSet.contains(token)
         }
         let total = filteredCounts.values.reduce(0, +)
 
@@ -406,49 +422,19 @@ enum UsageStore {
         }
         AppGroupStore.defaults.set(total, forKey: "screentime")
         AppGroupStore.defaults.set(true, forKey: "hasUsageSnapshot")
-        var locked = loadLockedApps().filter { remainingNames.contains($0) || isStillInstalled(name: $0, bundleIDs: ids) }
-        let lockedTokens = LockedTokenStore.load()
-        for (name, data) in filteredTokens {
-            guard let token = TokenCoding.decode(ApplicationToken.self, from: data),
-                  lockedTokens.contains(token),
-                  !locked.contains(name)
-            else { continue }
-            locked.append(name)
-        }
-        saveLockedApps(locked)
-        applyShields(for: locked, encodedTokens: filteredTokens)
+        syncLockedNames()
+        // The report extension never decides what is locked; it only
+        // re-asserts the current token set now that names are known.
+        ScreenTimeShields.sync()
         pingMainApp()
     }
 
-    static func saveLockedApps(_ locked: [String]) {
-        let filtered = ExcludedApps.strippingExcluded(locked)
-        if let raw = AppGroupStore.encodeJSON(filtered) {
-            AppGroupStore.setSharedString(raw, forKey: "lockedApps")
-        }
-    }
-
-    /// Applies shields in the same process that just decoded the tokens.
-    /// Device Activity extensions cannot reliably round-trip tokens through cfprefsd.
-    static func applyShields(for lockedNames: [String], encodedTokens: [String: Data]) {
-        var tokens = LockedTokenStore.load()
-        for name in lockedNames {
-            if let data = encodedTokens[name],
-               let token = TokenCoding.decode(ApplicationToken.self, from: data) {
-                tokens.insert(token)
-            } else if let token = token(for: name) {
-                tokens.insert(token)
-            }
-        }
-        tokens.subtract(ExcludedApps.tokens)
-        guard !tokens.isEmpty else { return }
-        ScreenTimeShields.lock(tokens: tokens)
-    }
-
     static func unlock(name: String) {
-        saveLockedApps(loadLockedApps().filter { $0 != name })
-        if let token = token(for: name) {
+        if let token = loadTokenMap()[name] ?? token(for: name) {
             LockedTokenStore.remove(token)
         }
+        syncLockedNames()
+        ScreenTimeShields.sync()
     }
 
     static func pingMainApp() {
@@ -492,8 +478,26 @@ enum LockedTokenStore {
         remove(app.token)
     }
 
+    /// Drops shielded tokens the user has removed from the picker so an app
+    /// can't stay locked after it is no longer managed.
+    static func prune(to selection: FamilyActivitySelection) {
+        var allowed = selection.applicationTokens
+        if !selection.categoryTokens.isEmpty {
+            // Category picks made before includeEntireCategory only expose
+            // their apps through the usage report's token map.
+            allowed.formUnion(UsageStore.loadTokenMap().values)
+        }
+        guard !allowed.isEmpty else { return }
+        let current = load()
+        let kept = current.intersection(allowed)
+        if kept != current {
+            save(kept)
+        }
+    }
+
     static func unnamedApps(excludingNames names: [String]) -> [UnnamedLockedApp] {
-        let named = Set(names.compactMap { UsageStore.token(for: $0) })
+        let map = UsageStore.loadTokenMap()
+        let named = Set(names.compactMap { map[$0] })
         return load()
             .subtracting(named)
             .map { UnnamedLockedApp(id: TokenCoding.id(for: $0), token: $0) }
@@ -510,51 +514,43 @@ enum ScreenTimeShields {
         ManagedSettingsStore(named: .locked)
     }
 
-    /// Shields only the given application tokens. Every other app stays open.
+    /// Replaces the shielded set with exactly these application tokens and
+    /// rewrites the derived name list. An empty set unlocks everything.
     static func lock(tokens: Set<ApplicationToken>) {
         let isolated = isolatedTokens(from: tokens)
-        guard !isolated.isEmpty else { return }
         LockedTokenStore.save(isolated)
-        apply(isolated)
+        UsageStore.syncLockedNames()
+        sync()
     }
 
-    /// Applies or clears shields from the current lock list and emergency-override state.
-    static func sync(using selection: FamilyActivitySelection? = nil) {
+    /// Makes SpringBoard match `LockedTokenStore`, honouring the emergency override.
+    static func sync() {
         if EmergencyOverride.isActive() {
             clear()
             return
         }
-
-        let picker = ActivitySelectionStore.expandingCategories(selection ?? ActivitySelectionStore.load())
-        let lockedNames = UsageStore.loadLockedApps()
-        let isolated = tokensToShield(
-            lockedNames: lockedNames,
-            selection: picker
-        )
+        let isolated = isolatedTokens(from: LockedTokenStore.load())
         if isolated.isEmpty {
-            // Names without tokens are not a reason to wipe live shields.
-            // Only clear when nothing is supposed to be locked.
-            if lockedNames.isEmpty && LockedTokenStore.load().isEmpty {
-                clear()
-            }
-            return
+            clear()
+        } else {
+            apply(isolated)
         }
-        LockedTokenStore.save(isolated)
-        apply(isolated)
     }
 
-    /// Clears leftover settings, then shields only these application tokens.
-    /// Categories and web domains are never applied — that would lock every
-    /// app in a group instead of the specific apps karma picked.
+    /// Shields only these application tokens. Categories and web domains are
+    /// never applied — that would lock every app in a group instead of the
+    /// specific apps karma picked.
     private static func apply(_ tokens: Set<ApplicationToken>) {
-        let isolated = isolatedTokens(from: tokens)
-        guard !isolated.isEmpty else { return }
+        guard !tokens.isEmpty else { return }
         // Do not call clearAllSettings() here. That write is applied
         // asynchronously and can wipe the assignment that follows, which
         // leaves the UI saying "Locked" while SpringBoard has no shield.
         store.shield.applicationCategories = nil
         store.shield.webDomains = nil
-        store.shield.applications = isolated
+        if store.shield.applications != tokens {
+            store.shield.applications = tokens
+        }
+        clearLegacyDefaultStore()
     }
 
     static func isolatedTokens(from tokens: Set<ApplicationToken>) -> Set<ApplicationToken> {
@@ -567,30 +563,28 @@ enum ScreenTimeShields {
         )
     }
 
-    /// Isolates tokens for the current lock list only.
-    /// Does not pad with arbitrary picker tokens and never uses category tokens.
-    static func tokensToShield(
-        lockedNames: [String],
-        selection: FamilyActivitySelection
-    ) -> Set<ApplicationToken> {
-        _ = selection
-        var tokens = LockedTokenStore.load()
-        let named = UsageStore.loadTokenMap()
-        for name in lockedNames {
-            if let token = named[name] ?? UsageStore.token(for: name) {
-                tokens.insert(token)
-            }
-        }
-        for (name, token) in named where !lockedNames.contains(name) {
-            tokens.remove(token)
-        }
-        return isolatedTokens(from: tokens)
-    }
-
     static func clear() {
-        store.shield.applications = nil
+        if store.shield.applications != nil {
+            store.shield.applications = nil
+        }
         store.shield.applicationCategories = nil
         store.shield.webDomains = nil
+        clearLegacyDefaultStore()
+    }
+
+    /// Shields written to the unnamed store by older builds outlive app
+    /// updates and would keep apps locked with nothing in our lists.
+    private static func clearLegacyDefaultStore() {
+        let legacy = ManagedSettingsStore()
+        if legacy.shield.applications != nil {
+            legacy.shield.applications = nil
+        }
+        if legacy.shield.applicationCategories != nil {
+            legacy.shield.applicationCategories = nil
+        }
+        if legacy.shield.webDomains != nil {
+            legacy.shield.webDomains = nil
+        }
     }
 }
 
@@ -610,19 +604,30 @@ enum ScreenTimeMonitor {
         }
     }
 
-    static func startEmergencyOverrideWindow(until expiry: Date) {
+    /// Schedules `intervalDidEnd(.emergencyOverride)` so shields come back
+    /// even if the app is never reopened. Full calendar components are used
+    /// because an hour/minute-only window that crosses midnight has an end
+    /// before its start and is rejected or never fires.
+    @discardableResult
+    static func startEmergencyOverrideWindow(until expiry: Date) -> Bool {
         let calendar = Calendar.current
-        let start = calendar.dateComponents([.hour, .minute, .second], from: Date())
-        let end = calendar.dateComponents([.hour, .minute, .second], from: expiry)
+        let components: Set<Calendar.Component> = [.year, .month, .day, .hour, .minute, .second]
+        // Device Activity requires at least a 15 minute interval.
+        let minimumEnd = Date().addingTimeInterval(15 * 60 + 5)
+        let end = max(expiry, minimumEnd)
         let schedule = DeviceActivitySchedule(
-            intervalStart: start,
-            intervalEnd: end,
+            intervalStart: calendar.dateComponents(components, from: Date()),
+            intervalEnd: calendar.dateComponents(components, from: end),
             repeats: false
         )
+        let center = DeviceActivityCenter()
+        center.stopMonitoring([.emergencyOverride])
         do {
-            try DeviceActivityCenter().startMonitoring(.emergencyOverride, during: schedule)
+            try center.startMonitoring(.emergencyOverride, during: schedule)
+            return true
         } catch {
             print("Failed to start emergency override schedule: \(error)")
+            return false
         }
     }
 
@@ -642,8 +647,31 @@ enum EmergencyOverride {
     }
 
     static func remaining(at date: Date = .now, defaults: UserDefaults? = AppGroupStore.defaults) -> TimeInterval {
-        let until = defaults?.double(forKey: untilKey) ?? 0
+        let until = untilTimestamp(defaults: defaults)
         return max(0, Date(timeIntervalSince1970: until).timeIntervalSince(date))
+    }
+
+    /// The expiry as a Unix timestamp, or 0 when no override is stored.
+    /// Extensions can fail to read the app-group suite through cfprefsd, so
+    /// the value is mirrored into the group container and preferred from there.
+    static func untilTimestamp(defaults: UserDefaults? = AppGroupStore.defaults) -> Double {
+        if let url = AppGroupStore.fileURL(for: untilKey),
+           let data = try? Data(contentsOf: url),
+           let raw = String(data: data, encoding: .utf8),
+           let mirrored = Double(raw.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            return mirrored
+        }
+        return defaults?.double(forKey: untilKey) ?? 0
+    }
+
+    /// Writes the expiry to both the suite (as a Double, for @AppStorage
+    /// observers and the widget) and the group container (for extensions).
+    static func setUntil(_ timestamp: Double) {
+        AppGroupStore.defaults.set(timestamp, forKey: untilKey)
+        if let url = AppGroupStore.fileURL(for: untilKey),
+           let data = String(timestamp).data(using: .utf8) {
+            try? data.write(to: url, options: .atomic)
+        }
     }
 
     static func formatRemaining(_ interval: TimeInterval) -> String {

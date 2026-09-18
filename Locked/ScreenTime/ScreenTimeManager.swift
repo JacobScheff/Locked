@@ -13,7 +13,9 @@ final class ScreenTimeManager: ObservableObject {
         didSet {
             let expanded = ActivitySelectionStore.expandingCategories(selection)
             ActivitySelectionStore.save(expanded)
-            ScreenTimeShields.sync(using: expanded)
+            LockedTokenStore.prune(to: expanded)
+            UsageStore.syncLockedNames()
+            ScreenTimeShields.sync()
         }
     }
     @Published var isPickerPresented = false
@@ -63,7 +65,8 @@ final class ScreenTimeManager: ObservableObject {
             didStartDailyMonitor = true
         }
         checkAndPerformWeeklyLockIfNeeded()
-        ScreenTimeShields.sync(using: selection)
+        UsageStore.syncLockedNames()
+        ScreenTimeShields.sync()
     }
 
     func requestAuthorization() async {
@@ -97,7 +100,8 @@ final class ScreenTimeManager: ObservableObject {
 
     func noteUsageUpdated() {
         usageRevision += 1
-        ScreenTimeShields.sync(using: selection)
+        UsageStore.syncLockedNames()
+        ScreenTimeShields.sync()
         markReady()
     }
 

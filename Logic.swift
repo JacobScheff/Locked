@@ -38,12 +38,12 @@ final class LogicStore {
     private let defaults = AppGroupStore.defaults
     
     var isEmergencyOverrideActive: Bool {
-        Date(timeIntervalSince1970: defaults.double(forKey: EmergencyOverride.untilKey)) > Date()
+        EmergencyOverride.isActive()
     }
     
     func activateEmergencyOverride() {
         let expiry = Date().addingTimeInterval(EmergencyOverride.duration).timeIntervalSince1970
-        defaults.set(expiry, forKey: EmergencyOverride.untilKey)
+        EmergencyOverride.setUntil(expiry)
         emergencyOverrideUntil = expiry
         lockInnerVault()
         ScreenTimeShields.clear()
@@ -51,7 +51,7 @@ final class LogicStore {
     }
     
     func endEmergencyOverride() {
-        defaults.set(0.0, forKey: EmergencyOverride.untilKey)
+        EmergencyOverride.setUntil(0)
         emergencyOverrideUntil = 0
         lockInnerVault()
         ScreenTimeMonitor.stopEmergencyOverrideWindow()
@@ -59,7 +59,7 @@ final class LogicStore {
     }
     
     func unlockInnerVault() {
-        let until = defaults.double(forKey: EmergencyOverride.untilKey)
+        let until = EmergencyOverride.untilTimestamp()
         defaults.set(until, forKey: InnerVault.unlockedUntilKey)
         innerVaultUnlockedUntil = until
     }
@@ -111,11 +111,11 @@ func getZScoreFromKarma() -> Double {
 
 // MARK: - App Locking
 
-func lockAppByKarma(from snapshot: [String: Int]) -> String {
-    guard !snapshot.isEmpty else { return "" }
+func lockAppByKarma<Key: Hashable>(from snapshot: [Key: Int]) -> Key? {
+    guard !snapshot.isEmpty else { return nil }
 
     let sortedApps = snapshot.sorted { $0.value < $1.value }
-    let totalFrequency = sortedApps.reduce(0) { $0 + $1.value }
+    let totalFrequency = max(1, sortedApps.reduce(0) { $0 + $1.value })
 
     let precision: Float = 1000.0
     let meanZScore = Float(getZScoreFromKarma())
@@ -146,8 +146,45 @@ func lockAppByKarma(from snapshot: [String: Int]) -> String {
     return appToLock
 }
 
+/// Every app karma may lock this week, keyed by its Screen Time token and
+/// weighted by usage. Picker tokens are the primary pool because the main
+/// app always has them; report tokens fill in apps that only came from a
+/// category pick. An app with no recorded usage keeps weight 1 so it is
+/// still eligible without outweighing anything that was actually used.
+func weeklyLockCandidates(
+    selection: FamilyActivitySelection,
+    appCounts: [String: Int],
+    tokenMap: [String: ApplicationToken]
+) -> [ApplicationToken: Int] {
+    var pool: [ApplicationToken: Int] = [:]
+    for token in selection.applicationTokens {
+        pool[token] = 1
+    }
+    for (name, token) in tokenMap where !ExcludedApps.isExcludedName(name) {
+        if pool[token] != nil || selection.applicationTokens.isEmpty || !selection.categoryTokens.isEmpty {
+            pool[token] = max(1, appCounts[name] ?? 0)
+        }
+    }
+    for token in ExcludedApps.tokens {
+        pool.removeValue(forKey: token)
+    }
+    return pool
+}
+
+/// How many of `totalApps` karma locks. 100 karma = 0%, 77 karma = 23%, 0 karma = 100%.
+func weeklyLockCount(karma: Double, totalApps: Int, minimumLockCount: Int = 0) -> Int {
+    guard totalApps > 0 else { return 0 }
+    let lockPercent = max(0.0, min(100.0, 100.0 - karma))
+    let byKarma = Int((lockPercent / 100.0 * Double(totalApps)).rounded(.up))
+    return min(totalApps, max(byKarma, min(minimumLockCount, totalApps)))
+}
+
 /// Locks the appropriate number of apps based on current karma.
-/// Returns the list of names that were locked. Safety-critical apps are never included.
+///
+/// Tokens are the only thing that gets locked. An app is never marked locked
+/// by name without a token to shield, and the name list is derived from the
+/// shielded tokens, so the UI and SpringBoard can't disagree.
+/// Returns the display names that were locked (unnamed tokens are still shielded).
 @discardableResult
 func performSundayLocking(
     using selection: FamilyActivitySelection? = nil,
@@ -156,90 +193,55 @@ func performSundayLocking(
     let store = LogicStore.shared
     let karma = AppGroupStore.defaults.double(forKey: "karma")
     let picker = ActivitySelectionStore.expandingCategories(selection ?? ActivitySelectionStore.load())
-    
-    var snapshot = ExcludedApps.strippingExcluded(UsageStore.loadAppCounts())
-    var tokenByName: [String: ApplicationToken] = UsageStore.loadTokenMap()
-    for name in snapshot.keys where tokenByName[name] == nil {
-        if let token = UsageStore.token(for: name) {
-            tokenByName[name] = token
-        }
-    }
 
-    var unusedSelected = picker.applicationTokens.subtracting(ExcludedApps.tokens)
-    for token in tokenByName.values {
-        unusedSelected.remove(token)
-    }
-    for token in unusedSelected {
-        let name = "token:" + TokenCoding.id(for: token)
-        snapshot[name] = snapshot[name] ?? 1
-        tokenByName[name] = token
-    }
-    
-    let totalApps = snapshot.count
-    guard totalApps > 0 else { return [] }
+    var pool = weeklyLockCandidates(
+        selection: picker,
+        appCounts: UsageStore.loadAppCounts(),
+        tokenMap: UsageStore.loadTokenMap()
+    )
+    guard !pool.isEmpty else { return [] }
 
-    // 100 Karma = 0% locked. 77 Karma = 23% locked. 0 Karma = 100% locked.
-    let lockPercent = max(0.0, min(100.0, 100.0 - karma))
-    var numToLock = Int((lockPercent / 100.0 * Double(totalApps)).rounded(.up))
-    numToLock = max(numToLock, min(minimumLockCount, totalApps))
+    let numToLock = weeklyLockCount(karma: karma, totalApps: pool.count, minimumLockCount: minimumLockCount)
 
-    var locked: [String] = []
     var lockedTokens: Set<ApplicationToken> = []
-    var attempts = 0
-    while locked.count < numToLock && !snapshot.isEmpty && attempts < totalApps + numToLock + 8 {
-        attempts += 1
-        let picked = lockAppByKarma(from: snapshot)
-        snapshot.removeValue(forKey: picked)
-        guard !picked.isEmpty,
-              !locked.contains(picked),
-              !ExcludedApps.isExcludedName(picked)
-        else { continue }
-        locked.append(picked)
-        if let token = tokenByName[picked] ?? UsageStore.token(for: picked) {
-            lockedTokens.insert(token)
-        }
+    while lockedTokens.count < numToLock, let picked = lockAppByKarma(from: pool) {
+        pool.removeValue(forKey: picked)
+        lockedTokens.insert(picked)
     }
 
-    let displayNames = locked.filter { !$0.hasPrefix("token:") }
-    for name in displayNames {
-        if let token = tokenByName[name] {
-            UsageStore.saveToken(token, for: name)
-        }
-    }
-    UsageStore.saveLockedApps(displayNames)
-    store.lockedApps = displayNames
-    if !lockedTokens.isEmpty {
-        ScreenTimeShields.lock(tokens: lockedTokens)
-    } else {
-        ScreenTimeShields.sync(using: picker)
-    }
-    return displayNames
+    ScreenTimeShields.lock(tokens: lockedTokens)
+    let names = UsageStore.loadLockedApps()
+    store.lockedApps = names
+    return names
 }
 
+let weeklyLockDateKey = "lastWeeklyLockDate"
+
+func currentWeekStamp(for date: Date = Date()) -> String? {
+    guard let startOfWeek = Calendar.current.dateInterval(of: .weekOfYear, for: date)?.start else { return nil }
+    return ISO8601DateFormatter().string(from: startOfWeek)
+}
+
+/// Runs the weekly lock once per week, and only once a pool of apps exists.
+/// The stamp is written after a successful pick so a run that had nothing to
+/// choose from is retried later; a week that already locked is never re-run,
+/// because that would re-lock apps the user paid Keys to unlock.
 func checkAndPerformWeeklyLockIfNeeded() {
-    let defaults = AppGroupStore.defaults
-    let now = Date()
-    let calendar = Calendar.current
-    guard let startOfWeek = calendar.dateInterval(of: .weekOfYear, for: now)?.start else { return }
+    guard let currentWeekString = currentWeekStamp() else { return }
+    let alreadyRan = AppGroupStore.sharedString(forKey: weeklyLockDateKey) == currentWeekString
+        || AppGroupStore.defaults.string(forKey: weeklyLockDateKey) == currentWeekString
+    guard !alreadyRan else { return }
 
-    let currentWeekString = ISO8601DateFormatter().string(from: startOfWeek)
-    let lastLockKey = "lastWeeklyLockDate"
-    let poolReady = !UsageStore.loadAppCounts().isEmpty || ActivitySelectionStore.hasSelection
-    let alreadyRan = AppGroupStore.sharedString(forKey: lastLockKey) == currentWeekString
-        || defaults.string(forKey: lastLockKey) == currentWeekString
-    let hasLocks = !UsageStore.loadLockedApps().isEmpty || !LockedTokenStore.load().isEmpty
+    let pool = weeklyLockCandidates(
+        selection: ActivitySelectionStore.load(),
+        appCounts: UsageStore.loadAppCounts(),
+        tokenMap: UsageStore.loadTokenMap()
+    )
+    guard !pool.isEmpty else { return }
 
-    if !alreadyRan {
-        guard poolReady else { return }
-        AppGroupStore.setSharedString(currentWeekString, forKey: lastLockKey)
-        let locked = performSundayLocking()
-        print("Weekly lock: locked \(locked.count) app(s): \(locked)")
-    } else if !hasLocks && poolReady {
-        // Earlier this week we stamped the lock date before any apps/tokens
-        // existed, so nothing was shielded. Retry now that a pool is ready.
-        let locked = performSundayLocking()
-        print("Weekly lock retry: locked \(locked.count) app(s): \(locked)")
-    }
+    AppGroupStore.setSharedString(currentWeekString, forKey: weeklyLockDateKey)
+    let locked = performSundayLocking()
+    print("Weekly lock: locked \(locked.count) named app(s): \(locked); \(LockedTokenStore.load().count) token(s) shielded")
 }
 
 // MARK: - Sunday Scheduler
@@ -314,7 +316,7 @@ enum InnerVault {
     ) -> Bool {
         guard EmergencyOverride.isActive(at: date, defaults: defaults) else { return false }
         let unlockedUntil = defaults.double(forKey: unlockedUntilKey)
-        let overrideUntil = defaults.double(forKey: EmergencyOverride.untilKey)
+        let overrideUntil = EmergencyOverride.untilTimestamp(defaults: defaults)
         return unlockedUntil > 0 && abs(unlockedUntil - overrideUntil) < 0.5
     }
 }
