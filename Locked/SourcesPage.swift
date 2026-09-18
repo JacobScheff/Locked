@@ -45,8 +45,8 @@ struct SourcesPage: View {
         .background(LockedBackground())
         .navigationTitle("Sources")
         .navigationBarTitleDisplayMode(.large)
-        .refreshable {
-            guard sources.canRefresh else { return }
+        .lockedRefreshable {
+            guard sources.canRefresh, !sources.isRefreshing else { return }
             await refreshAll()
         }
         .sheet(item: $gradescopeLogin) { _ in
@@ -190,6 +190,7 @@ struct SourcesPage: View {
             let result = try await sources.refreshConnectedSources(courses: courses, keys: keys, karma: karma)
             apply(result)
         } catch {
+            if ExternalSourceController.isCancellation(error) { return }
             errorMessage = error.localizedDescription
         }
     }
@@ -205,6 +206,7 @@ struct SourcesPage: View {
             }
             apply(result)
         } catch {
+            if ExternalSourceController.isCancellation(error) { return }
             errorMessage = error.localizedDescription
         }
     }

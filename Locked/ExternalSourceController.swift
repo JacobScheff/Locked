@@ -140,7 +140,9 @@ final class ExternalSourceController: ObservableObject {
                 nextKeys = result.keys
                 nextKarma = result.karma
             } catch {
-                errors.append("Gradescope: \(error.localizedDescription)")
+                if !Self.isCancellation(error) {
+                    errors.append("Gradescope: \(error.localizedDescription)")
+                }
             }
         }
         if canRefreshBrightspace {
@@ -151,7 +153,9 @@ final class ExternalSourceController: ObservableObject {
                 nextKeys = result.keys
                 nextKarma = result.karma
             } catch {
-                errors.append("Brightspace: \(error.localizedDescription)")
+                if !Self.isCancellation(error) {
+                    errors.append("Brightspace: \(error.localizedDescription)")
+                }
             }
         }
 
@@ -213,8 +217,10 @@ final class ExternalSourceController: ObservableObject {
             persistGradescope()
             return (nextCourses, nextKeys, nextKarma)
         } catch {
-            gradescope.lastError = error.localizedDescription
-            persistGradescope()
+            if !Self.isCancellation(error) {
+                gradescope.lastError = error.localizedDescription
+                persistGradescope()
+            }
             throw error
         }
     }
@@ -258,8 +264,10 @@ final class ExternalSourceController: ObservableObject {
             persistBrightspace()
             return (nextCourses, nextKeys, nextKarma)
         } catch {
-            brightspace.lastError = error.localizedDescription
-            persistBrightspace()
+            if !Self.isCancellation(error) {
+                brightspace.lastError = error.localizedDescription
+                persistBrightspace()
+            }
             throw error
         }
     }
@@ -296,6 +304,13 @@ final class ExternalSourceController: ObservableObject {
               let auth = try? decoder.decode(BrightspaceStoredAuth.self, from: data)
         else { return nil }
         return auth
+    }
+
+    static func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        if let urlError = error as? URLError, urlError.code == .cancelled { return true }
+        let nsError = error as NSError
+        return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
     }
 }
 

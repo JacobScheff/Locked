@@ -30,17 +30,11 @@ struct CoursesPage: View {
             VStack(alignment: .leading, spacing: 28) {
                 if visibleCourses.isEmpty {
                     emptyState
-                    if sources.canRefresh {
-                        sourceStrip
-                    }
                     if hiddenCount > 0 {
                         hiddenSection
                     }
                 } else {
                     workloadHero
-                    if sources.canRefresh {
-                        sourceStrip
-                    }
                     UpcomingPreviewSection(courses: $courses, limit: 4)
                     coursesSection
                     if hiddenCount > 0 {
@@ -81,8 +75,8 @@ struct CoursesPage: View {
                 }
             }
         }
-        .refreshable {
-            guard sources.canRefresh else { return }
+        .lockedRefreshable {
+            guard sources.canRefresh, !sources.isRefreshing else { return }
             await refreshSources()
         }
         .sheet(item: $editingCourse) { course in
@@ -229,42 +223,6 @@ struct CoursesPage: View {
         }
     }
 
-    private var sourceStrip: some View {
-        Button {
-            Task { await refreshSources() }
-        } label: {
-            HStack(spacing: 12) {
-                SpinningSyncIcon(
-                    spinning: sources.isRefreshing,
-                    color: .lockedIndigo,
-                    font: .body.weight(.bold)
-                )
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(sourceStripTitle)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                    Text(sourceStripDetail)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                if sources.isRefreshing {
-                    Text("Refreshing")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(Color.lockedIndigo)
-                } else {
-                    Text("Refresh")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(Color.lockedIndigo)
-                }
-            }
-            .padding(14)
-            .background(LockedCardBackground(cornerRadius: 18))
-        }
-        .buttonStyle(.plain)
-        .allowsHitTesting(!sources.isRefreshing)
-    }
-
     private var hiddenSection: some View {
         NavigationLink {
             HiddenWorkView(courses: $courses, keys: $keys, karma: $karma)
@@ -292,27 +250,6 @@ struct CoursesPage: View {
         .buttonStyle(.plain)
     }
 
-    private var sourceStripTitle: String {
-        let names = [
-            sources.canRefreshGradescope ? "Gradescope" : nil,
-            sources.canRefreshBrightspace ? "Brightspace" : nil,
-        ].compactMap { $0 }
-        if names.count == 2 { return "Sources" }
-        return names.first ?? "Sources"
-    }
-
-    private var sourceStripDetail: String {
-        if sources.isRefreshing { return "Updating assignments…" }
-        let states = [sources.gradescope, sources.brightspace].filter(\.isConnected)
-        if let latest = states.max(by: { ($0.lastSyncedAt ?? .distantPast) < ($1.lastSyncedAt ?? .distantPast) }) {
-            if let summary = latest.lastSummary { return summary }
-            if let date = latest.lastSyncedAt {
-                return "Updated \(date.formatted(.relative(presentation: .named)))"
-            }
-        }
-        return "Tap to pull the latest submissions"
-    }
-
     private func refreshSources() async {
         do {
             let result = try await sources.refreshConnectedSources(courses: courses, keys: keys, karma: karma)
@@ -322,6 +259,7 @@ struct CoursesPage: View {
                 karma = result.karma
             }
         } catch {
+            if ExternalSourceController.isCancellation(error) { return }
             sourceError = error.localizedDescription
         }
     }
