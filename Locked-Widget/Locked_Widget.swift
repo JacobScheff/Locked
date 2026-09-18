@@ -189,9 +189,9 @@ struct Locked_WidgetEntryView: View {
     // MARK: Medium — ring, status copy, keys
 
     private var mediumView: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 16) {
-                KarmaRing(karma: entry.karma, size: 88, lineWidth: 9, numberSize: 30)
+        HStack(alignment: .center, spacing: 16) {
+            KarmaRing(karma: entry.karma, size: 88, lineWidth: 9, numberSize: 30)
+            VStack(alignment: .leading, spacing: 6) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(entry.lockCountCopy)
                         .font(.system(.subheadline, design: .rounded, weight: .bold))
@@ -200,9 +200,10 @@ struct Locked_WidgetEntryView: View {
                     Text(weeklyLockSubtitle)
                         .font(.system(.caption, design: .rounded, weight: .medium))
                         .foregroundStyle(.white.opacity(0.72))
-                    Spacer(minLength: 0)
-                    KeysChip(keys: entry.keys)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+
+                KeysChip(keys: entry.keys)
             }
         }
     }
