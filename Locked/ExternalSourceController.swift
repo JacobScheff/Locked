@@ -28,7 +28,7 @@ final class ExternalSourceController: ObservableObject {
     }()
 
     var canRefreshGradescope: Bool {
-        gradescope.isConnected && !gradescope.email.isEmpty
+        gradescope.isConnected && loadGradescopeAuth() != nil
     }
 
     var canRefreshBrightspace: Bool {
@@ -42,26 +42,31 @@ final class ExternalSourceController: ObservableObject {
     private init() {
         gradescope = loadState(forKey: gradescopeKey)
         brightspace = loadState(forKey: brightspaceKey)
+        forgetLegacyGradescopePassword()
     }
 
     func connectGradescope(
-        email: String,
-        password: String,
+        auth: GradescopeStoredAuth,
         courses: [Course],
         keys: Double,
         karma: Double
     ) async throws -> (courses: [Course], keys: Double, karma: Double) {
-        let cleaned = email.trimmingCharacters(in: .whitespacesAndNewlines)
-        try SourceKeychain.savePassword(password, provider: .gradescope, email: cleaned)
-        gradescope.email = cleaned
+        var auth = auth
+        auth.host = GradescopeConfig.host
+        try saveGradescopeAuth(auth)
+        gradescope.host = GradescopeConfig.host
+        if let email = auth.email, !email.isEmpty {
+            gradescope.email = email
+        }
         persistGradescope()
+
         do {
             let result = try await refreshGradescope(courses: courses, keys: keys, karma: karma)
             gradescope.isConnected = true
             persistGradescope()
             return result
         } catch {
-            SourceKeychain.deletePassword(provider: .gradescope, email: cleaned)
+            SourceKeychain.deletePassword(provider: .gradescope, email: GradescopeConfig.host)
             gradescope.isConnected = false
             persistGradescope()
             throw error
@@ -162,7 +167,11 @@ final class ExternalSourceController: ObservableObject {
     }
 
     func disconnectGradescope() {
-        SourceKeychain.deletePassword(provider: .gradescope, email: gradescope.email)
+        SourceKeychain.deletePassword(provider: .gradescope, email: GradescopeConfig.host)
+        if !gradescope.email.isEmpty {
+            SourceKeychain.deletePassword(provider: .gradescope, email: gradescope.email)
+        }
+        GradescopeParser.clearWebCookies()
         gradescope = SourceConnectionState()
         lastReport = nil
         persistGradescope()
@@ -183,10 +192,7 @@ final class ExternalSourceController: ObservableObject {
         keys: Double,
         karma: Double
     ) async throws -> (courses: [Course], keys: Double, karma: Double) {
-        guard !gradescope.email.isEmpty else { throw GradescopeError.notConnected }
-        guard let password = SourceKeychain.password(provider: .gradescope, email: gradescope.email) else {
-            throw GradescopeError.notConnected
-        }
+        guard var auth = loadGradescopeAuth() else { throw GradescopeError.notConnected }
 
         gradescope.lastError = nil
         persistGradescope()
@@ -195,21 +201,27 @@ final class ExternalSourceController: ObservableObject {
             var nextCourses = courses
             var nextKeys = keys
             var nextKarma = karma
-            let catalog = try await gradescopeClient.fetchCatalog(email: gradescope.email, password: password)
+            let result = try await gradescopeClient.fetchCatalog(auth: auth)
+            if !result.email.isEmpty {
+                auth.email = result.email
+                gradescope.email = result.email
+                try? saveGradescopeAuth(auth)
+            }
             let report = CourseStore.applyExternalCatalog(
-                catalog,
+                result.catalog,
                 courses: &nextCourses,
                 keys: &nextKeys,
                 karma: &nextKarma
             )
             lastReport = report
             gradescope.isConnected = true
+            gradescope.host = GradescopeConfig.host
             gradescope.lastSyncedAt = .now
-            gradescope.lastTermName = catalog.termNames.first
+            gradescope.lastTermName = result.catalog.termNames.first
             gradescope.lastSummary = report.summary
             gradescope.lastError = nil
-            gradescope.courseCount = catalog.courses.count
-            gradescope.assignmentCount = catalog.courses.reduce(0) { $0 + $1.assignments.count }
+            gradescope.courseCount = result.catalog.courses.count
+            gradescope.assignmentCount = result.catalog.courses.reduce(0) { $0 + $1.assignments.count }
             persistGradescope()
             return (nextCourses, nextKeys, nextKarma)
         } catch {
@@ -282,6 +294,33 @@ final class ExternalSourceController: ObservableObject {
               let state = try? decoder.decode(SourceConnectionState.self, from: data)
         else { return SourceConnectionState() }
         return state
+    }
+
+    private func saveGradescopeAuth(_ auth: GradescopeStoredAuth) throws {
+        let data = try encoder.encode(auth)
+        let payload = String(data: data, encoding: .utf8) ?? ""
+        try SourceKeychain.savePassword(payload, provider: .gradescope, email: GradescopeConfig.host)
+    }
+
+    private func loadGradescopeAuth() -> GradescopeStoredAuth? {
+        guard let raw = SourceKeychain.password(provider: .gradescope, email: GradescopeConfig.host),
+              let data = raw.data(using: .utf8),
+              let auth = try? decoder.decode(GradescopeStoredAuth.self, from: data),
+              !auth.cookies.isEmpty
+        else { return nil }
+        return auth
+    }
+
+    /// Old builds stored a Gradescope password. Cookie sessions replaced that.
+    private func forgetLegacyGradescopePassword() {
+        if loadGradescopeAuth() != nil { return }
+        if !gradescope.email.isEmpty {
+            SourceKeychain.deletePassword(provider: .gradescope, email: gradescope.email)
+        }
+        if gradescope.isConnected {
+            gradescope.isConnected = false
+            persistGradescope()
+        }
     }
 
     private func saveBrightspaceAuth(_ auth: BrightspaceStoredAuth) throws {
