@@ -35,12 +35,14 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
             karma: karma
         )
 
+        // The shield icon slot is small and fixed by the system, so the key
+        // math lives in the title/subtitle labels where the type is large.
         return ManagedSettingsUI.ShieldConfiguration(
             backgroundBlurStyle: .dark,
             backgroundColor: ShieldLook.indigo,
-            icon: ShieldArtwork.ledger(for: state),
+            icon: ShieldArtwork.glyph(for: state),
             title: .init(text: state.title, color: .white),
-            subtitle: .init(text: state.subtitle, color: UIColor.white.withAlphaComponent(0.78)),
+            subtitle: .init(text: state.ledger, color: state.ledgerColor),
             primaryButtonLabel: .init(text: state.primaryTitle, color: .white),
             primaryButtonBackgroundColor: state.primaryBackground,
             secondaryButtonLabel: .init(text: state.secondaryTitle, color: UIColor.white.withAlphaComponent(0.88))
@@ -53,9 +55,7 @@ private enum ShieldLook {
     static let keyButton = UIColor(red: 0.62, green: 0.34, blue: 0.04, alpha: 1)
     static let mutedButton = UIColor(red: 0.30, green: 0.28, blue: 0.52, alpha: 1)
     static let amber = UIColor(red: 0.97, green: 0.70, blue: 0.22, alpha: 1)
-    static let violet = UIColor(red: 0.78, green: 0.58, blue: 1.0, alpha: 1)
     static let rose = UIColor(red: 0.98, green: 0.38, blue: 0.48, alpha: 1)
-    static let teal = UIColor(red: 0.28, green: 0.86, blue: 0.78, alpha: 1)
 
     struct State {
         var confirming: Bool
@@ -73,16 +73,22 @@ private enum ShieldLook {
             return "Not enough keys"
         }
 
-        var subtitle: String {
-            let current = ShieldLook.format(keys)
-            let unlock = ShieldLook.format(cost)
-            if confirming {
-                return "\(current) − \(unlock) = \(ShieldLook.format(remaining)) left until Sunday"
-            }
+        var ledger: String {
+            var lines = [
+                "Keys  \(ShieldLook.format(keys))",
+                "Cost  −\(ShieldLook.format(cost))",
+            ]
             if canAfford {
-                return "\(current) − \(unlock) = \(ShieldLook.format(remaining)) left"
+                lines.append("Left  \(ShieldLook.format(remaining))")
+            } else {
+                lines.append("Need  \(ShieldLook.format(shortfall)) more")
             }
-            return "\(current) − \(unlock) · need \(ShieldLook.format(shortfall)) more"
+            lines.append("Karma  \(karma)")
+            return lines.joined(separator: "\n")
+        }
+
+        var ledgerColor: UIColor {
+            canAfford ? UIColor.white.withAlphaComponent(0.88) : ShieldLook.rose
         }
 
         var primaryTitle: String {
@@ -112,132 +118,12 @@ private enum ShieldLook {
 }
 
 private enum ShieldArtwork {
-    static func ledger(for state: ShieldLook.State) -> UIImage {
-        // The system icon slot is small and fixed. Fill it with the equation
-        // only — title and subtitle now use the real (much larger) labels.
-        let size = CGSize(width: 180, height: 180)
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 3
-        format.opaque = false
-        let renderer = UIGraphicsImageRenderer(size: size, format: format)
-        return renderer.image { _ in
-            let content = CGRect(origin: .zero, size: size)
-            var y = content.minY
-
-            drawKarma(state.karma, in: CGRect(x: content.minX, y: y, width: content.width, height: 20))
-            y += 20
-
-            let rowHeight: CGFloat = 50
-            drawAlignedRow(
-                label: "KEYS",
-                value: ShieldLook.format(state.keys),
-                color: ShieldLook.amber,
-                in: CGRect(x: content.minX, y: y, width: content.width, height: rowHeight)
-            )
-            y += rowHeight
-            drawAlignedRow(
-                label: "COST",
-                value: "−\(ShieldLook.format(state.cost))",
-                color: ShieldLook.rose,
-                in: CGRect(x: content.minX, y: y, width: content.width, height: rowHeight)
-            )
-            y += rowHeight + 1
-
-            UIColor.white.withAlphaComponent(0.34).setStroke()
-            let rule = UIBezierPath()
-            rule.move(to: CGPoint(x: content.minX, y: y))
-            rule.addLine(to: CGPoint(x: content.maxX, y: y))
-            rule.lineWidth = 2
-            rule.lineCapStyle = .round
-            rule.stroke()
-            y += 3
-
-            if state.canAfford {
-                drawAlignedRow(
-                    label: "LEFT",
-                    value: ShieldLook.format(state.remaining),
-                    color: ShieldLook.teal,
-                    in: CGRect(x: content.minX, y: y, width: content.width, height: rowHeight)
-                )
-            } else {
-                drawAlignedRow(
-                    label: "NEED",
-                    value: ShieldLook.format(state.shortfall),
-                    color: ShieldLook.rose,
-                    in: CGRect(x: content.minX, y: y, width: content.width, height: rowHeight)
-                )
-            }
-        }
-    }
-
-    private static func drawKarma(_ karma: Int, in rect: CGRect) {
-        let style = NSMutableParagraphStyle()
-        style.alignment = .right
-        let font = roundedFont(size: 13, weight: .heavy)
-        ("\(karma)  KARMA" as NSString).draw(
-            in: rect.offsetBy(dx: 0, dy: (rect.height - font.lineHeight) / 2),
-            withAttributes: [
-                .font: font,
-                .foregroundColor: ShieldLook.violet,
-                .paragraphStyle: style,
-                .kern: 0.6
-            ]
-        )
-    }
-
-    private static func drawAlignedRow(label: String, value: String, color: UIColor, in rect: CGRect) {
-        let labelFont = roundedFont(size: 13, weight: .bold)
-        let labelColor = UIColor.white.withAlphaComponent(0.72)
-        let style = NSMutableParagraphStyle()
-        style.alignment = .left
-        (label as NSString).draw(
-            in: rect.offsetBy(dx: 0, dy: (rect.height - labelFont.lineHeight) / 2),
-            withAttributes: [
-                .font: labelFont,
-                .foregroundColor: labelColor,
-                .paragraphStyle: style,
-                .kern: 0.8
-            ]
-        )
-
-        let valueWidth = rect.width * 0.68
-        let valueRect = CGRect(
-            x: rect.maxX - valueWidth,
-            y: rect.minY,
-            width: valueWidth,
-            height: rect.height
-        )
-        drawFittedValue(value, color: color, in: valueRect, maxSize: 48)
-    }
-
-    private static func drawFittedValue(_ value: String, color: UIColor, in rect: CGRect, maxSize: CGFloat) {
-        let style = NSMutableParagraphStyle()
-        style.alignment = .right
-        style.lineBreakMode = .byClipping
-
-        var size = maxSize
-        var font = roundedFont(size: size, weight: .heavy)
-        let text = value as NSString
-        while size > 18 {
-            let width = text.size(withAttributes: [.font: font]).width
-            if width <= rect.width { break }
-            size -= 2
-            font = roundedFont(size: size, weight: .heavy)
-        }
-
-        text.draw(
-            in: rect.offsetBy(dx: 0, dy: (rect.height - font.lineHeight) / 2),
-            withAttributes: [
-                .font: font,
-                .foregroundColor: color,
-                .paragraphStyle: style
-            ]
-        )
-    }
-
-    private static func roundedFont(size: CGFloat, weight: UIFont.Weight) -> UIFont {
-        let base = UIFont.systemFont(ofSize: size, weight: weight)
-        guard let descriptor = base.fontDescriptor.withDesign(.rounded) else { return base }
-        return UIFont(descriptor: descriptor, size: size)
+    static func glyph(for state: ShieldLook.State) -> UIImage {
+        let name = state.confirming ? "lock.open.fill" : (state.canAfford ? "key.fill" : "lock.fill")
+        let tint = state.canAfford ? ShieldLook.amber : UIColor.white.withAlphaComponent(0.85)
+        let config = UIImage.SymbolConfiguration(pointSize: 120, weight: .bold)
+        return UIImage(systemName: name, withConfiguration: config)?
+            .withTintColor(tint, renderingMode: .alwaysOriginal)
+            ?? UIImage()
     }
 }
