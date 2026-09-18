@@ -1,11 +1,6 @@
 import SwiftUI
-#if DEBUG
-import WidgetKit
-#endif
 
 struct HowToUseView: View {
-    @EnvironmentObject private var screenTime: ScreenTimeManager
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
@@ -19,7 +14,7 @@ struct HowToUseView: View {
                             icon: "checkmark.circle.fill",
                             color: .lockedTeal,
                             title: "Finish work early",
-                            detail: "Assignments you complete before the due date earn Karma. Every completion also grants Keys."
+                            detail: "Assignments you complete before the due date earn Karma. Gradescope submissions use the real submitted time, not whenever you refresh. Every completion also grants Keys."
                         )
                         LoopCard(
                             icon: "star.fill",
@@ -66,6 +61,21 @@ struct HowToUseView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 12) {
+                    LockedSectionLabel(title: "Sources", icon: "link")
+
+                    LockedCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Import from school sites")
+                                .font(.headline)
+                            Text("On Courses, tap the link icon to connect Gradescope. Locked loads this term’s courses only. Hide a class to archive it. Permanently delete archived classes in Settings — a source refresh will import them again if they’re still listed there. Brightspace is listed as a placeholder for later.")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 12) {
                     LockedSectionLabel(title: "Rankings", icon: "chart.bar.fill")
 
                     LockedCard {
@@ -90,10 +100,6 @@ struct HowToUseView: View {
                         }
                     }
                 }
-
-                #if DEBUG
-                debugTools
-                #endif
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 36)
@@ -113,28 +119,6 @@ struct HowToUseView: View {
         }
         .padding(.top, 4)
     }
-
-    #if DEBUG
-    private var debugTools: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            LockedSectionLabel(title: "Developer", icon: "hammer.fill")
-            Button {
-                screenTime.simulateWeeklyLock()
-                WidgetCenter.shared.reloadTimelines(ofKind: "Locked_Widget")
-            } label: {
-                Label("Simulate weekly lock", systemImage: "lock.rotation")
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-            }
-            .buttonStyle(.bordered)
-            .tint(.lockedRose)
-            Text("Locks at least one managed app using Screen Time tokens, then refreshes usage so remaining names get their shields.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-    #endif
 }
 
 private struct LoopCard: View {

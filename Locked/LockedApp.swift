@@ -23,6 +23,7 @@ struct LockedApp: App {
                 .tint(.lockedIndigo)
                 .fontDesign(.rounded)
                 .environmentObject(ScreenTimeManager.shared)
+                .environmentObject(ExternalSourceController.shared)
                 .onAppear {
                     lockScheduler.start()
                     ScreenTimeManager.shared.refreshStatus()

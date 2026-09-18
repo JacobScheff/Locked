@@ -4,11 +4,12 @@ struct CourseDetailView: View {
     @Binding var courses: [Course]
     let courseID: UUID
 
+    @Environment(\.dismiss) private var dismiss
     @AppStorage("keys", store: .lockedGroup) var keys: Double = 0.0
     @AppStorage("karma", store: .lockedGroup) var karma: Double = 0.0
 
     @State private var composer: AssignmentComposer?
-    @State private var assignmentToDelete: Assignment?
+    @State private var assignmentToHide: Assignment?
     @State private var assignmentToComplete: Assignment?
     @State private var assignmentToUncomplete: Assignment?
     @State private var filter: Filter = .open
@@ -23,11 +24,11 @@ struct CourseDetailView: View {
     private var course: Course? { courseIndex.map { courses[$0] } }
 
     private var pendingAssignments: [Assignment] {
-        course?.assignments.filter { !$0.isCompleted }.sorted { $0.dueDate < $1.dueDate } ?? []
+        course?.visibleAssignments.filter { !$0.isCompleted }.sorted { $0.dueDate < $1.dueDate } ?? []
     }
 
     private var completedAssignments: [Assignment] {
-        course?.assignments
+        course?.visibleAssignments
             .filter(\.isCompleted)
             .sorted { $0.completionDate ?? .now > $1.completionDate ?? .now } ?? []
     }
@@ -43,7 +44,7 @@ struct CourseDetailView: View {
                     VStack(alignment: .leading, spacing: 22) {
                         CourseProgressHeader(course: course)
 
-                        if !course.assignments.isEmpty {
+                        if !course.visibleAssignments.isEmpty {
                             Picker("Filter", selection: $filter) {
                                 ForEach(Filter.allCases) { option in
                                     Text(option.rawValue).tag(option)
@@ -52,7 +53,7 @@ struct CourseDetailView: View {
                             .pickerStyle(.segmented)
                         }
 
-                        if course.assignments.isEmpty {
+                        if course.visibleAssignments.isEmpty {
                             emptyAssignments
                         } else if visibleAssignments.isEmpty {
                             filterEmpty
@@ -103,10 +104,10 @@ struct CourseDetailView: View {
                                         } label: {
                                             Label("Edit", systemImage: "pencil")
                                         }
-                                        Button(role: .destructive) {
-                                            assignmentToDelete = assignment
+                                        Button {
+                                            assignmentToHide = assignment
                                         } label: {
-                                            Label("Delete", systemImage: "trash")
+                                            Label("Hide", systemImage: "eye.slash")
                                         }
                                     }
                                 }
@@ -125,21 +126,20 @@ struct CourseDetailView: View {
         .toolbar(.visible, for: .navigationBar)
         .toolbar {
             Button {
-                composer = AssignmentComposer(
-                    courseID: courseID,
-                    assignment: .blank(),
-                    allowsCourseSwitch: false,
-                    isNew: true
-                )
+                if let course {
+                    CourseStore.setCourseHidden(
+                        course.id,
+                        hidden: true,
+                        courses: &courses,
+                        keys: &keys,
+                        karma: &karma
+                    )
+                    dismiss()
+                }
             } label: {
-                Image(systemName: "plus")
-                    .font(.body.weight(.bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 32, height: 32)
-                    .background(LockedTheme.karmaGradient)
-                    .clipShape(Circle())
+                Image(systemName: "eye.slash")
             }
-            .accessibilityLabel("Add assignment")
+            .accessibilityLabel("Hide course")
         }
         .sheet(item: $composer) { draft in
             AssignmentEditorView(
@@ -152,26 +152,31 @@ struct CourseDetailView: View {
             )
         }
         .confirmationDialog(
-            "Delete \"\(assignmentToDelete?.name ?? "Assignment")\"?",
+            "Hide \"\(assignmentToHide?.name ?? "Assignment")\"?",
             isPresented: Binding(
-                get: { assignmentToDelete != nil },
-                set: { if !$0 { assignmentToDelete = nil } }
+                get: { assignmentToHide != nil },
+                set: { if !$0 { assignmentToHide = nil } }
             ),
             titleVisibility: .visible
         ) {
-            Button("Delete", role: .destructive) {
-                if let assignment = assignmentToDelete, let courseIndex {
-                    withAnimation {
-                        courses[courseIndex].assignments.removeAll { $0.id == assignment.id }
-                    }
+            Button("Hide") {
+                if let assignment = assignmentToHide {
+                    CourseStore.setAssignmentHidden(
+                        assignment.id,
+                        in: courseID,
+                        hidden: true,
+                        courses: &courses,
+                        keys: &keys,
+                        karma: &karma
+                    )
                 }
-                assignmentToDelete = nil
+                assignmentToHide = nil
             }
             Button("Cancel", role: .cancel) {
-                assignmentToDelete = nil
+                assignmentToHide = nil
             }
         } message: {
-            Text("This action cannot be undone.")
+            Text("It won’t show in Locked or count toward Keys and Karma until you unhide it.")
         }
         .confirmationDialog(
             "Mark \"\(assignmentToComplete?.name ?? "Assignment")\" as completed?",
@@ -229,32 +234,15 @@ struct CourseDetailView: View {
 
     private var emptyAssignments: some View {
         VStack(spacing: 12) {
-            Image(systemName: "doc.badge.plus")
+            Image(systemName: "doc.text")
                 .font(.system(size: 34))
                 .foregroundStyle(course?.accent ?? Color.lockedIndigo)
             Text("No assignments")
                 .font(.headline)
-            Text("Add work to earn Keys and Karma when you finish it.")
+            Text("Refresh your source to load assignments for this course.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            Button {
-                composer = AssignmentComposer(
-                    courseID: courseID,
-                    assignment: .blank(),
-                    allowsCourseSwitch: false,
-                    isNew: true
-                )
-            } label: {
-                Label("Add assignment", systemImage: "plus")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 10)
-                    .background(LockedTheme.karmaGradient)
-                    .clipShape(Capsule())
-            }
-            .padding(.top, 4)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 32)
@@ -392,6 +380,9 @@ struct AssignmentRowView: View {
                     if assignment.isOverdue {
                         LockedStatusPill(text: "Overdue", color: .lockedRose, filled: true)
                     }
+                    if let provider = assignment.sourceProvider {
+                        LockedStatusPill(text: provider.title, color: .lockedIndigo)
+                    }
                 }
                 .font(.caption)
             }
@@ -427,7 +418,7 @@ struct AssignmentDetailView: View {
     @State private var composer: AssignmentComposer?
     @State private var confirmComplete = false
     @State private var confirmPending = false
-    @State private var confirmDelete = false
+    @State private var confirmHide = false
 
     private var resolved: (course: Course, assignment: Assignment)? {
         for course in courses {
@@ -544,19 +535,24 @@ struct AssignmentDetailView: View {
             Button("Cancel", role: .cancel) {}
         }
         .confirmationDialog(
-            "Delete \"\(assignment?.name ?? "Assignment")\"?",
-            isPresented: $confirmDelete,
+            "Hide \"\(assignment?.name ?? "Assignment")\"?",
+            isPresented: $confirmHide,
             titleVisibility: .visible
         ) {
-            Button("Delete", role: .destructive) {
-                if let index = courses.firstIndex(where: { $0.id == resolvedCourseID }) {
-                    courses[index].assignments.removeAll { $0.id == assignmentID }
-                }
+            Button("Hide") {
+                CourseStore.setAssignmentHidden(
+                    assignmentID,
+                    in: resolvedCourseID,
+                    hidden: true,
+                    courses: &courses,
+                    keys: &keys,
+                    karma: &karma
+                )
                 dismiss()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This action cannot be undone.")
+            Text("It won’t show in Locked or count toward Keys and Karma until you unhide it.")
         }
     }
 
@@ -572,6 +568,10 @@ struct AssignmentDetailView: View {
             Text(assignment.name)
                 .font(.lockedTitle(28))
                 .fixedSize(horizontal: false, vertical: true)
+
+            if let provider = assignment.sourceProvider {
+                LockedStatusPill(text: provider.title, color: .lockedIndigo)
+            }
 
             TimelineView(.periodic(from: .now, by: 30)) { context in
                 VStack(alignment: .leading, spacing: 6) {
@@ -600,7 +600,15 @@ struct AssignmentDetailView: View {
             }
             if let completed = assignment.completionDate {
                 Divider().padding(.leading, 52)
-                factRow(icon: "checkmark.circle.fill", title: "Finished", value: completed.formatted(date: .abbreviated, time: .shortened))
+                factRow(
+                    icon: "checkmark.circle.fill",
+                    title: assignment.sourceProvider == nil ? "Finished" : "Submitted",
+                    value: completed.formatted(date: .abbreviated, time: .shortened)
+                )
+            }
+            if let provider = assignment.sourceProvider {
+                Divider().padding(.leading, 52)
+                factRow(icon: "link", title: "Source", value: provider.title)
             }
         }
         .background(LockedCardBackground())
@@ -646,7 +654,11 @@ struct AssignmentDetailView: View {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
-            Text("Karma is based on how early you finish relative to the assigned and due dates. Keys are a base of 10 plus the point value.")
+            Text(assignment.isCompleted
+                 ? (assignment.sourceProvider == nil
+                    ? "Karma is based on how early you finish relative to the assigned and due dates. Keys are a base of 10 plus the point value."
+                    : "Karma used the submitted time from \(assignment.sourceProvider?.title ?? "your source"), not the time you refreshed.")
+                 : "Karma is based on how early you finish relative to the assigned and due dates. Keys are a base of 10 plus the point value.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -691,10 +703,10 @@ struct AssignmentDetailView: View {
                 .buttonStyle(.plain)
             }
 
-            Button(role: .destructive) {
-                confirmDelete = true
+            Button {
+                confirmHide = true
             } label: {
-                Label("Delete assignment", systemImage: "trash")
+                Label("Hide assignment", systemImage: "eye.slash")
                     .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)

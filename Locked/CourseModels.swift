@@ -10,9 +10,15 @@ struct Assignment: Identifiable, Codable, Equatable {
     var releaseDate: Date
     var completionDate: Date?
     var pointsPossible: Double?
+    var sourceProvider: ExternalSourceProvider? = nil
+    var sourceRemoteID: String? = nil
+    var isHidden: Bool? = nil
+    var rewardsApplied: Bool? = nil
 
     var isCompleted: Bool { completionDate != nil }
     var isOverdue: Bool { !isCompleted && dueDate < Date.now }
+    var isFromSource: Bool { sourceRemoteID != nil }
+    var isHiddenFromApp: Bool { isHidden == true }
 
     var statusColor: Color {
         if isCompleted { return .lockedTeal }
@@ -84,18 +90,30 @@ struct Course: Identifiable, Codable, Equatable {
     var name: String
     var assignments: [Assignment] = []
     var accentIndex: Int? = nil
+    var sourceProvider: ExternalSourceProvider? = nil
+    var sourceRemoteID: String? = nil
+    var isHidden: Bool? = nil
 
-    var completionPercentage: Double {
-        guard !assignments.isEmpty else { return 0 }
-        return Double(completedCount) / Double(assignments.count)
+    var isFromSource: Bool { sourceRemoteID != nil }
+    var isHiddenFromApp: Bool { isHidden == true }
+
+    var visibleAssignments: [Assignment] {
+        guard !isHiddenFromApp else { return [] }
+        return assignments.filter { !$0.isHiddenFromApp }
     }
 
-    var completedCount: Int { assignments.filter(\.isCompleted).count }
-    var overdueCount: Int { assignments.filter(\.isOverdue).count }
-    var openCount: Int { assignments.filter { !$0.isCompleted }.count }
+    var completionPercentage: Double {
+        let visible = visibleAssignments
+        guard !visible.isEmpty else { return 0 }
+        return Double(visible.filter(\.isCompleted).count) / Double(visible.count)
+    }
+
+    var completedCount: Int { visibleAssignments.filter(\.isCompleted).count }
+    var overdueCount: Int { visibleAssignments.filter(\.isOverdue).count }
+    var openCount: Int { visibleAssignments.filter { !$0.isCompleted }.count }
 
     var nextDueAssignment: Assignment? {
-        assignments.filter { !$0.isCompleted }.sorted { $0.dueDate < $1.dueDate }.first
+        visibleAssignments.filter { !$0.isCompleted }.sorted { $0.dueDate < $1.dueDate }.first
     }
 
     var accent: Color { CourseAccent.color(for: name, index: accentIndex) }
@@ -159,9 +177,21 @@ enum AssignmentDueGroup: Int, CaseIterable, Identifiable {
 }
 
 enum CourseStore {
+    static func visibleCourses(from courses: [Course]) -> [Course] {
+        courses.filter { !$0.isHiddenFromApp }
+    }
+
+    static func hiddenCourseCount(in courses: [Course]) -> Int {
+        courses.filter(\.isHiddenFromApp).count
+    }
+
+    static func hiddenAssignmentCount(in courses: [Course]) -> Int {
+        courses.filter { !$0.isHiddenFromApp }.reduce(0) { $0 + $1.assignments.filter(\.isHiddenFromApp).count }
+    }
+
     static func upcoming(from courses: [Course]) -> [UpcomingWork] {
-        courses.flatMap { course in
-            course.assignments
+        visibleCourses(from: courses).flatMap { course in
+            course.visibleAssignments
                 .filter { !$0.isCompleted }
                 .map { UpcomingWork(course: course, assignment: $0) }
         }
@@ -177,7 +207,7 @@ enum CourseStore {
     }
 
     static func totals(from courses: [Course]) -> (open: Int, overdue: Int, completed: Int) {
-        let assignments = courses.flatMap(\.assignments)
+        let assignments = visibleCourses(from: courses).flatMap(\.visibleAssignments)
         return (
             assignments.filter { !$0.isCompleted }.count,
             assignments.filter(\.isOverdue).count,
@@ -204,25 +234,119 @@ enum CourseStore {
         let assignmentIndex = courses[courseIndex].assignments.firstIndex(where: { $0.id == savedAssignment.id })
         let wasCompleted = assignmentIndex.map { courses[courseIndex].assignments[$0].isCompleted } ?? false
         var awarded = false
+        var assignment = savedAssignment
+        let suppressed = courses[courseIndex].isHiddenFromApp || assignment.isHiddenFromApp
 
-        if !wasCompleted && savedAssignment.isCompleted {
-            karma = clampKarma(karma + savedAssignment.karmaReward(ifCompletedAt: savedAssignment.completionDate ?? .now))
-            keys = clampKeys(keys + savedAssignment.keysReward)
-            Economy.setKarma(karma)
-            Economy.setKeys(keys)
-            WidgetCenter.shared.reloadTimelines(ofKind: "Locked_Widget")
-            awarded = true
+        if !wasCompleted && assignment.isCompleted {
+            if suppressed {
+                assignment.rewardsApplied = false
+            } else {
+                karma = clampKarma(karma + assignment.karmaReward(ifCompletedAt: assignment.completionDate ?? .now))
+                keys = clampKeys(keys + assignment.keysReward)
+                assignment.rewardsApplied = true
+                Economy.setKarma(karma)
+                Economy.setKeys(keys)
+                WidgetCenter.shared.reloadTimelines(ofKind: "Locked_Widget")
+                awarded = true
+            }
         }
 
         withAnimation {
             if let assignmentIndex {
-                courses[courseIndex].assignments[assignmentIndex] = savedAssignment
+                courses[courseIndex].assignments[assignmentIndex] = assignment
             } else {
-                courses[courseIndex].assignments.append(savedAssignment)
+                courses[courseIndex].assignments.append(assignment)
             }
         }
 
         return awarded
+    }
+
+    static func setCourseHidden(
+        _ courseID: UUID,
+        hidden: Bool,
+        courses: inout [Course],
+        keys: inout Double,
+        karma: inout Double
+    ) {
+        guard let index = courses.firstIndex(where: { $0.id == courseID }) else { return }
+        withAnimation {
+            courses[index].isHidden = hidden
+        }
+        if !hidden {
+            applyDeferredRewards(in: &courses[index], keys: &keys, karma: &karma)
+        }
+    }
+
+    static func setAssignmentHidden(
+        _ assignmentID: UUID,
+        in courseID: UUID,
+        hidden: Bool,
+        courses: inout [Course],
+        keys: inout Double,
+        karma: inout Double
+    ) {
+        guard let courseIndex = courses.firstIndex(where: { $0.id == courseID }),
+              let assignmentIndex = courses[courseIndex].assignments.firstIndex(where: { $0.id == assignmentID })
+        else { return }
+        withAnimation {
+            courses[courseIndex].assignments[assignmentIndex].isHidden = hidden
+        }
+        if !hidden {
+            applyDeferredRewards(
+                for: &courses[courseIndex].assignments[assignmentIndex],
+                courseHidden: courses[courseIndex].isHiddenFromApp,
+                keys: &keys,
+                karma: &karma
+            )
+        }
+    }
+
+    private static func applyDeferredRewards(
+        in course: inout Course,
+        keys: inout Double,
+        karma: inout Double
+    ) {
+        guard !course.isHiddenFromApp else { return }
+        for index in course.assignments.indices {
+            applyDeferredRewards(
+                for: &course.assignments[index],
+                courseHidden: false,
+                keys: &keys,
+                karma: &karma
+            )
+        }
+    }
+
+    private static func applyDeferredRewards(
+        for assignment: inout Assignment,
+        courseHidden: Bool,
+        keys: inout Double,
+        karma: inout Double
+    ) {
+        guard !courseHidden,
+              !assignment.isHiddenFromApp,
+              assignment.isCompleted,
+              assignment.rewardsApplied != true
+        else { return }
+        karma = clampKarma(karma + assignment.karmaReward(ifCompletedAt: assignment.completionDate ?? .now))
+        keys = clampKeys(keys + assignment.keysReward)
+        assignment.rewardsApplied = true
+        Economy.setKarma(karma)
+        Economy.setKeys(keys)
+        WidgetCenter.shared.reloadTimelines(ofKind: "Locked_Widget")
+    }
+
+    static func deleteCourse(_ courseID: UUID, courses: inout [Course]) {
+        withAnimation {
+            courses.removeAll { $0.id == courseID }
+        }
+    }
+
+    static func deleteAllHiddenCourses(from courses: inout [Course]) {
+        withAnimation {
+            courses.removeAll { $0.isHiddenFromApp }
+        }
     }
 }
 

@@ -369,3 +369,22 @@ enum CourseAccent {
 func courseAccent(_ name: String, index: Int? = nil) -> Color {
     CourseAccent.color(for: name, index: index)
 }
+
+struct SpinningSyncIcon: View {
+    var spinning: Bool
+    var color: Color = .white
+    var font: Font = .title3.weight(.bold)
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !spinning)) { context in
+            let turns = spinning
+                ? context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 0.85) / 0.85
+                : 0
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(font)
+                .foregroundStyle(color)
+                .rotationEffect(.degrees(turns * 360))
+        }
+        .accessibilityLabel(spinning ? "Refreshing" : "Refresh")
+    }
+}

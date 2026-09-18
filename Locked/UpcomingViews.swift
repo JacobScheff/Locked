@@ -52,7 +52,7 @@ struct UpcomingAssignmentsView: View {
                 .padding(.top, 40)
             Text("Nothing due")
                 .font(.lockedTitle(24))
-            Text("Finished work earns Keys and Karma. Add an assignment to start the loop.")
+            Text("Finished work earns Keys and Karma. Refresh a source to load assignments.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -108,6 +108,8 @@ struct UpcomingWorkCard: View {
                     LockedStatusPill(text: "Overdue", color: .lockedRose, filled: true)
                 } else if item.group == .today {
                     LockedStatusPill(text: "Today", color: .lockedIndigo)
+                } else if let provider = item.assignment.sourceProvider {
+                    LockedStatusPill(text: provider.title, color: .lockedIndigo)
                 }
             }
         }
