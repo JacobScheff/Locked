@@ -150,14 +150,6 @@ enum AppGroupStore {
         }
         return nil
     }
-
-    static func hasSharedValue(forKey key: String) -> Bool {
-        if let url = fileURL(for: key),
-           FileManager.default.fileExists(atPath: url.path) {
-            return true
-        }
-        return defaults.object(forKey: key) != nil
-    }
 }
 
 extension UserDefaults {
