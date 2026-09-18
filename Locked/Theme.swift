@@ -529,3 +529,19 @@ struct SpinningSyncIcon: View {
         .accessibilityLabel(spinning ? "Refreshing" : "Refresh")
     }
 }
+
+extension View {
+    /// SwiftUI cancels `.refreshable` when the view updates (for example when
+    /// the toolbar spinner starts). Button taps use an unstructured `Task`, so
+    /// they keep running. Pull-to-refresh should do the same.
+    func lockedRefreshable(_ action: @escaping @MainActor () async -> Void) -> some View {
+        refreshable {
+            await withCheckedContinuation { continuation in
+                Task { @MainActor in
+                    await action()
+                    continuation.resume()
+                }
+            }
+        }
+    }
+}
