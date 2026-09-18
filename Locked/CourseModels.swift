@@ -83,6 +83,7 @@ struct Course: Identifiable, Codable, Equatable {
     var id: UUID = UUID()
     var name: String
     var assignments: [Assignment] = []
+    var accentIndex: Int? = nil
 
     var completionPercentage: Double {
         guard !assignments.isEmpty else { return 0 }
@@ -97,7 +98,7 @@ struct Course: Identifiable, Codable, Equatable {
         assignments.filter { !$0.isCompleted }.sorted { $0.dueDate < $1.dueDate }.first
     }
 
-    var accent: Color { courseAccent(name) }
+    var accent: Color { CourseAccent.color(for: name, index: accentIndex) }
 }
 
 struct UpcomingWork: Identifiable {

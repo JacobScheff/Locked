@@ -309,11 +309,45 @@ func karmaStatusCopy(karma: Double, appCount: Int) -> (headline: String, detail:
     return (headline, "About \(numToLock) of \(appCount) apps lock on Sunday.")
 }
 
-func courseAccent(_ name: String) -> Color {
-    let palette: [Color] = [
-        .lockedIndigo, .lockedTeal, .lockedViolet, .orange,
-        .pink, .blue, .mint, .cyan, .purple, .lockedRose
+enum CourseAccent {
+    static let palette: [Color] = [
+        .lockedIndigo,
+        .lockedTeal,
+        .lockedViolet,
+        .lockedAmber,
+        .lockedRose,
+        Color(red: 0.20, green: 0.62, blue: 0.96), // sky
+        Color(red: 0.98, green: 0.50, blue: 0.18), // orange
+        Color(red: 0.20, green: 0.70, blue: 0.42), // green
+        Color(red: 0.90, green: 0.32, blue: 0.62), // magenta
+        Color(red: 0.12, green: 0.52, blue: 0.58), // deep teal
+        Color(red: 0.52, green: 0.42, blue: 0.96), // periwinkle
+        Color(red: 0.82, green: 0.24, blue: 0.28), // crimson
+        Color(red: 0.45, green: 0.68, blue: 0.22), // lime
+        Color(red: 0.16, green: 0.38, blue: 0.74), // cobalt
+        Color(red: 0.78, green: 0.58, blue: 0.18), // gold
+        Color(red: 0.58, green: 0.30, blue: 0.68)  // plum
     ]
-    let hash = name.unicodeScalars.reduce(into: 0) { $0 = $0 &+ Int($1.value) }
-    return palette[abs(hash) % palette.count]
+
+    static func color(for name: String, index: Int? = nil) -> Color {
+        if let index, palette.indices.contains(index) {
+            return palette[index]
+        }
+        return palette[hashIndex(for: name)]
+    }
+
+    static func hashIndex(for name: String) -> Int {
+        let source = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let seed = source.isEmpty ? "Course" : source
+        var hash: UInt64 = 5381
+        for (offset, scalar) in seed.unicodeScalars.enumerated() {
+            hash = hash &* 33 &+ UInt64(scalar.value) &* UInt64(offset + 1)
+        }
+        hash ^= hash >> 13
+        return Int(hash % UInt64(palette.count))
+    }
+}
+
+func courseAccent(_ name: String, index: Int? = nil) -> Color {
+    CourseAccent.color(for: name, index: index)
 }

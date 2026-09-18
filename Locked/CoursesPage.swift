@@ -369,11 +369,17 @@ struct CourseEditorView: View {
     let onSave: (Course) -> Void
 
     @State private var name: String
+    @State private var accentIndex: Int?
 
     init(course: Course, onSave: @escaping (Course) -> Void) {
         self.course = course
         self.onSave = onSave
         _name = State(initialValue: course.name)
+        _accentIndex = State(initialValue: course.accentIndex)
+    }
+
+    private var previewIndex: Int {
+        accentIndex ?? CourseAccent.hashIndex(for: name)
     }
 
     var body: some View {
@@ -391,16 +397,46 @@ struct CourseEditorView: View {
                             .background(LockedCardBackground(cornerRadius: 16))
                     }
 
-                    HStack(spacing: 10) {
-                        Circle()
-                            .fill(courseAccent(name.isEmpty ? "Course" : name))
-                            .frame(width: 14, height: 14)
-                        Text("This color is based on the course name.")
-                            .font(.subheadline)
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Color")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        LazyVGrid(
+                            columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 8),
+                            spacing: 10
+                        ) {
+                            ForEach(CourseAccent.palette.indices, id: \.self) { index in
+                                Button {
+                                    accentIndex = index
+                                } label: {
+                                    Circle()
+                                        .fill(CourseAccent.palette[index])
+                                        .frame(width: 28, height: 28)
+                                        .overlay {
+                                            Circle()
+                                                .strokeBorder(
+                                                    Color.primary.opacity(previewIndex == index ? 0.9 : 0),
+                                                    lineWidth: 2
+                                                )
+                                        }
+                                        .overlay {
+                                            if previewIndex == index {
+                                                Image(systemName: "checkmark")
+                                                    .font(.system(size: 10, weight: .bold))
+                                                    .foregroundStyle(.white)
+                                            }
+                                        }
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Course color \(index + 1)")
+                                .accessibilityAddTraits(previewIndex == index ? .isSelected : [])
+                            }
+                        }
+                        Text(accentIndex == nil ? "Suggested from the course name — tap to lock in a color." : "This color stays if you rename the course.")
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     .padding(14)
-                    .frame(maxWidth: .infinity, alignment: .leading)
                     .background(LockedCardBackground(cornerRadius: 16))
 
                     Text("Completing this course’s assignments earns Keys and Karma.")
@@ -420,7 +456,12 @@ struct CourseEditorView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         let cleaned = name.trimmingCharacters(in: .whitespacesAndNewlines)
-                        let saved = Course(id: course.id, name: cleaned, assignments: course.assignments)
+                        let saved = Course(
+                            id: course.id,
+                            name: cleaned,
+                            assignments: course.assignments,
+                            accentIndex: accentIndex ?? CourseAccent.hashIndex(for: cleaned)
+                        )
                         onSave(saved)
                         dismiss()
                     }
@@ -430,7 +471,7 @@ struct CourseEditorView: View {
             }
             .onAppear { isFocused = true }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
         .tint(.lockedIndigo)
     }
 }
