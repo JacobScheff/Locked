@@ -14,7 +14,7 @@ struct HowToUseView: View {
                             icon: "checkmark.circle.fill",
                             color: .lockedTeal,
                             title: "Finish work early",
-                            detail: "Assignments you complete before the due date earn Karma. Gradescope submissions use the real submitted time, not whenever you refresh. Every completion also grants Keys."
+                            detail: "Assignments you complete before the due date earn Karma. Gradescope and Brightspace submissions use the real submitted time, not whenever you refresh. Every completion also grants Keys."
                         )
                         LoopCard(
                             icon: "star.fill",
@@ -67,7 +67,7 @@ struct HowToUseView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Import from school sites")
                                 .font(.headline)
-                            Text("On Courses, tap the link icon to connect Gradescope. Locked loads this term’s courses only. Hide a class to archive it. Permanently delete archived classes in Settings — a source refresh will import them again if they’re still listed there. Brightspace is listed as a placeholder for later.")
+                            Text("On Courses, tap the link icon to connect Gradescope or Brightspace. Locked loads this term’s courses only. Hide a class to archive it. Permanently delete archived classes in Settings — a source refresh will import them again if they’re still listed there.")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)

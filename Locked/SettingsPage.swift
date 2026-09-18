@@ -79,7 +79,7 @@ struct SettingsPage: View {
         VStack(alignment: .leading, spacing: 12) {
             LockedSectionLabel(title: "Archived classes", icon: "archivebox.fill")
 
-            Text("Hidden courses live here. Deleting is permanent on this iPhone. If the class is still in Gradescope’s current term, the next refresh will load it again.")
+            Text("Hidden courses live here. Deleting is permanent on this iPhone. If the class is still in a linked source’s current term, the next refresh will load it again.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
