@@ -75,15 +75,16 @@ private enum ShieldLook {
 
         var ledger: String {
             var lines = [
-                "Keys  \(ShieldLook.format(keys))",
-                "Cost  −\(ShieldLook.format(cost))",
+                "\(karma) karma",
+                "",
+                "Current keys  \(ShieldLook.format(keys))",
+                "Unlock cost  −\(ShieldLook.format(cost))",
             ]
             if canAfford {
-                lines.append("Left  \(ShieldLook.format(remaining))")
+                lines.append("Keys left  \(ShieldLook.format(remaining))")
             } else {
-                lines.append("Need  \(ShieldLook.format(shortfall)) more")
+                lines.append("Keys needed  \(ShieldLook.format(shortfall))")
             }
-            lines.append("Karma  \(karma)")
             return lines.joined(separator: "\n")
         }
 
@@ -118,12 +119,28 @@ private enum ShieldLook {
 }
 
 private enum ShieldArtwork {
+    /// The shield recolors template symbols to black, so rasterize the lock
+    /// into a plain bitmap to keep its color.
     static func glyph(for state: ShieldLook.State) -> UIImage {
-        let name = state.confirming ? "lock.open.fill" : (state.canAfford ? "key.fill" : "lock.fill")
+        let name = state.confirming ? "lock.open.fill" : "lock.fill"
         let tint = state.canAfford ? ShieldLook.amber : UIColor.white.withAlphaComponent(0.85)
         let config = UIImage.SymbolConfiguration(pointSize: 120, weight: .bold)
-        return UIImage(systemName: name, withConfiguration: config)?
+        guard let symbol = UIImage(systemName: name, withConfiguration: config)?
             .withTintColor(tint, renderingMode: .alwaysOriginal)
-            ?? UIImage()
+        else { return UIImage() }
+
+        let size = CGSize(width: 160, height: 160)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 3
+        format.opaque = false
+        return UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            let rect = CGRect(
+                x: (size.width - symbol.size.width) / 2,
+                y: (size.height - symbol.size.height) / 2,
+                width: symbol.size.width,
+                height: symbol.size.height
+            )
+            symbol.draw(in: rect)
+        }.withRenderingMode(.alwaysOriginal)
     }
 }
