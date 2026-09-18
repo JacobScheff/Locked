@@ -310,24 +310,40 @@ func karmaStatusCopy(karma: Double, appCount: Int) -> (headline: String, detail:
 }
 
 enum CourseAccent {
-    static let palette: [Color] = [
-        .lockedIndigo,
-        .lockedTeal,
-        .lockedViolet,
-        .lockedAmber,
-        .lockedRose,
-        Color(red: 0.20, green: 0.62, blue: 0.96), // sky
-        Color(red: 0.98, green: 0.50, blue: 0.18), // orange
-        Color(red: 0.20, green: 0.70, blue: 0.42), // green
-        Color(red: 0.90, green: 0.32, blue: 0.62), // magenta
-        Color(red: 0.12, green: 0.52, blue: 0.58), // deep teal
-        Color(red: 0.52, green: 0.42, blue: 0.96), // periwinkle
-        Color(red: 0.82, green: 0.24, blue: 0.28), // crimson
-        Color(red: 0.45, green: 0.68, blue: 0.22), // lime
-        Color(red: 0.16, green: 0.38, blue: 0.74), // cobalt
-        Color(red: 0.78, green: 0.58, blue: 0.18), // gold
-        Color(red: 0.58, green: 0.30, blue: 0.68)  // plum
+    private struct Swatch {
+        let color: Color
+        /// Red stays pickable, but is never assigned as a default accent.
+        let isRed: Bool
+    }
+
+    private static let swatches: [Swatch] = [
+        Swatch(color: .lockedIndigo, isRed: false),
+        Swatch(color: .lockedTeal, isRed: false),
+        Swatch(color: .lockedViolet, isRed: false),
+        Swatch(color: .lockedAmber, isRed: false),
+        Swatch(color: .lockedRose, isRed: true),
+        Swatch(color: Color(red: 0.20, green: 0.62, blue: 0.96), isRed: false), // sky
+        Swatch(color: Color(red: 0.98, green: 0.50, blue: 0.18), isRed: false), // orange
+        Swatch(color: Color(red: 0.20, green: 0.70, blue: 0.42), isRed: false), // green
+        Swatch(color: Color(red: 0.90, green: 0.32, blue: 0.62), isRed: false), // magenta
+        Swatch(color: Color(red: 0.12, green: 0.52, blue: 0.58), isRed: false), // deep teal
+        Swatch(color: Color(red: 0.52, green: 0.42, blue: 0.96), isRed: false), // periwinkle
+        Swatch(color: Color(red: 0.82, green: 0.24, blue: 0.28), isRed: true), // crimson
+        Swatch(color: Color(red: 0.45, green: 0.68, blue: 0.22), isRed: false), // lime
+        Swatch(color: Color(red: 0.16, green: 0.38, blue: 0.74), isRed: false), // cobalt
+        Swatch(color: Color(red: 0.78, green: 0.58, blue: 0.18), isRed: false), // gold
+        Swatch(color: Color(red: 0.58, green: 0.30, blue: 0.68), isRed: false)  // plum
     ]
+
+    static var palette: [Color] { swatches.map(\.color) }
+
+    static var automaticIndices: [Int] {
+        swatches.indices.filter { !swatches[$0].isRed }
+    }
+
+    static func isRed(_ index: Int) -> Bool {
+        swatches.indices.contains(index) && swatches[index].isRed
+    }
 
     static func color(for name: String, index: Int? = nil) -> Color {
         palette[resolvedIndex(name: name, index: index)]
@@ -345,13 +361,14 @@ enum CourseAccent {
     }
 
     static func leastUsedIndex(in courses: [Course]) -> Int {
+        let candidates = automaticIndices
         var counts = Array(repeating: 0, count: palette.count)
         for course in courses {
             counts[resolvedIndex(for: course)] += 1
         }
-        let fewest = counts.min() ?? 0
-        let tied = counts.indices.filter { counts[$0] == fewest }
-        return tied.randomElement() ?? 0
+        let fewest = candidates.map { counts[$0] }.min() ?? 0
+        let tied = candidates.filter { counts[$0] == fewest }
+        return tied.randomElement() ?? candidates.first ?? 0
     }
 
     static func hashIndex(for name: String) -> Int {
@@ -362,7 +379,47 @@ enum CourseAccent {
             hash = hash &* 33 &+ UInt64(scalar.value) &* UInt64(offset + 1)
         }
         hash ^= hash >> 13
-        return Int(hash % UInt64(palette.count))
+        let candidates = automaticIndices
+        guard !candidates.isEmpty else { return 0 }
+        return candidates[Int(hash % UInt64(candidates.count))]
+    }
+}
+
+struct CourseColorPicker: View {
+    @Binding var selectedIndex: Int
+
+    var body: some View {
+        LazyVGrid(
+            columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 8),
+            spacing: 10
+        ) {
+            ForEach(CourseAccent.palette.indices, id: \.self) { index in
+                Button {
+                    selectedIndex = index
+                } label: {
+                    Circle()
+                        .fill(CourseAccent.palette[index])
+                        .frame(width: 28, height: 28)
+                        .overlay {
+                            Circle()
+                                .strokeBorder(
+                                    Color.primary.opacity(selectedIndex == index ? 0.9 : 0),
+                                    lineWidth: 2
+                                )
+                        }
+                        .overlay {
+                            if selectedIndex == index {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(.white)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Course color \(index + 1)")
+                .accessibilityAddTraits(selectedIndex == index ? .isSelected : [])
+            }
+        }
     }
 }
 

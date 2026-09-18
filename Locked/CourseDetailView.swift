@@ -8,11 +8,26 @@ struct CourseDetailView: View {
     @AppStorage("keys", store: .lockedGroup) var keys: Double = 0.0
     @AppStorage("karma", store: .lockedGroup) var karma: Double = 0.0
 
-    @State private var composer: AssignmentComposer?
+    @State private var presentedSheet: CourseDetailSheet?
     @State private var assignmentToHide: Assignment?
     @State private var assignmentToComplete: Assignment?
     @State private var assignmentToUncomplete: Assignment?
+    @State private var confirmHideCourse = false
     @State private var filter: Filter = .open
+
+    private enum CourseDetailSheet: Identifiable {
+        case composer(AssignmentComposer)
+        case color
+
+        var id: String {
+            switch self {
+            case .composer(let draft):
+                return "composer-\(draft.id.uuidString)"
+            case .color:
+                return "color"
+            }
+        }
+    }
 
     enum Filter: String, CaseIterable, Identifiable {
         case open = "To do"
@@ -35,6 +50,21 @@ struct CourseDetailView: View {
 
     private var visibleAssignments: [Assignment] {
         filter == .open ? pendingAssignments : completedAssignments
+    }
+
+    private var accentBinding: Binding<Int> {
+        Binding(
+            get: {
+                guard let course else { return CourseAccent.automaticIndices.first ?? 0 }
+                return CourseAccent.resolvedIndex(for: course)
+            },
+            set: { newValue in
+                guard let courseIndex else { return }
+                withAnimation {
+                    courses[courseIndex].accentIndex = newValue
+                }
+            }
+        )
     }
 
     var body: some View {
@@ -95,11 +125,13 @@ struct CourseDetailView: View {
                                     .background(LockedCardBackground(cornerRadius: 16))
                                     .contextMenu {
                                         Button {
-                                            composer = AssignmentComposer(
-                                                courseID: courseID,
-                                                assignment: assignment,
-                                                allowsCourseSwitch: false,
-                                                isNew: false
+                                            presentedSheet = .composer(
+                                                AssignmentComposer(
+                                                    courseID: courseID,
+                                                    assignment: assignment,
+                                                    allowsCourseSwitch: false,
+                                                    isNew: false
+                                                )
                                             )
                                         } label: {
                                             Label("Edit", systemImage: "pencil")
@@ -125,7 +157,31 @@ struct CourseDetailView: View {
         .navigationBarTitleDisplayMode(.large)
         .toolbar(.visible, for: .navigationBar)
         .toolbar {
-            Button {
+            if course != nil {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        presentedSheet = .color
+                    } label: {
+                        Image(systemName: "paintpalette")
+                    }
+                    .accessibilityLabel("Change course color")
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        confirmHideCourse = true
+                    } label: {
+                        Image(systemName: "eye.slash")
+                    }
+                    .accessibilityLabel("Hide course")
+                }
+            }
+        }
+        .confirmationDialog(
+            "Hide \"\(course?.name ?? "Course")\"?",
+            isPresented: $confirmHideCourse,
+            titleVisibility: .visible
+        ) {
+            Button("Hide") {
                 if let course {
                     CourseStore.setCourseHidden(
                         course.id,
@@ -136,20 +192,28 @@ struct CourseDetailView: View {
                     )
                     dismiss()
                 }
-            } label: {
-                Image(systemName: "eye.slash")
             }
-            .accessibilityLabel("Hide course")
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("It won’t show in Locked or count toward Keys and Karma until you unhide it.")
         }
-        .sheet(item: $composer) { draft in
-            AssignmentEditorView(
-                assignment: draft.assignment,
-                courseID: draft.courseID,
-                courseOptions: [],
-                onSave: { _, saved in
-                    save(saved)
-                }
-            )
+        .sheet(item: $presentedSheet) { sheet in
+            switch sheet {
+            case .composer(let draft):
+                AssignmentEditorView(
+                    assignment: draft.assignment,
+                    courseID: draft.courseID,
+                    courseOptions: [],
+                    onSave: { _, saved in
+                        save(saved)
+                    }
+                )
+            case .color:
+                CourseColorPickerSheet(
+                    courseName: course?.name ?? "Course",
+                    selectedIndex: accentBinding
+                )
+            }
         }
         .confirmationDialog(
             "Hide \"\(assignmentToHide?.name ?? "Assignment")\"?",
@@ -278,6 +342,45 @@ struct CourseDetailView: View {
         var updated = assignment
         updated.completionDate = nil
         save(updated)
+    }
+}
+
+private struct CourseColorPickerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let courseName: String
+    @Binding var selectedIndex: Int
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 16) {
+                Text(courseName)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(CourseAccent.palette.indices.contains(selectedIndex)
+                                     ? CourseAccent.palette[selectedIndex]
+                                     : Color.lockedIndigo)
+
+                CourseColorPicker(selectedIndex: $selectedIndex)
+
+                Text("Tap a color to change it.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(LockedBackground())
+            .navigationTitle("Course Color")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        .fontWeight(.semibold)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .tint(.lockedIndigo)
     }
 }
 

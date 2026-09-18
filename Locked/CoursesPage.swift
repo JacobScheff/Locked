@@ -506,37 +506,7 @@ struct CourseEditorView: View {
                         Text("Color")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
-                        LazyVGrid(
-                            columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 8),
-                            spacing: 10
-                        ) {
-                            ForEach(CourseAccent.palette.indices, id: \.self) { index in
-                                Button {
-                                    accentIndex = index
-                                } label: {
-                                    Circle()
-                                        .fill(CourseAccent.palette[index])
-                                        .frame(width: 28, height: 28)
-                                        .overlay {
-                                            Circle()
-                                                .strokeBorder(
-                                                    Color.primary.opacity(accentIndex == index ? 0.9 : 0),
-                                                    lineWidth: 2
-                                                )
-                                        }
-                                        .overlay {
-                                            if accentIndex == index {
-                                                Image(systemName: "checkmark")
-                                                    .font(.system(size: 10, weight: .bold))
-                                                    .foregroundStyle(.white)
-                                            }
-                                        }
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("Course color \(index + 1)")
-                                .accessibilityAddTraits(accentIndex == index ? .isSelected : [])
-                            }
-                        }
+                        CourseColorPicker(selectedIndex: $accentIndex)
                         Text("Tap a color to change it.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
