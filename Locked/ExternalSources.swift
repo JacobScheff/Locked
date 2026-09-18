@@ -18,7 +18,7 @@ enum ExternalSourceProvider: String, Codable, CaseIterable, Identifiable {
     var blurb: String {
         switch self {
         case .gradescope:
-            return "Import your courses and keep due dates and submissions in sync."
+            return "Sign in on gradescope.com. Locked imports this term’s courses and due dates."
         case .brightspace:
             return "Search your school and sign in on its Brightspace site. Locked imports this term’s courses and due dates."
         }

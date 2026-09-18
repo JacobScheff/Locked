@@ -1,20 +1,37 @@
 import Foundation
+import WebKit
+
+enum GradescopeConfig {
+    static let host = "www.gradescope.com"
+    static let loginURL = URL(string: "https://www.gradescope.com/login")!
+    static let accountURL = URL(string: "https://www.gradescope.com/account")!
+    static let safariUserAgent = BrightspaceConfig.safariUserAgent
+    static let signedInProbe = """
+    (function() {
+      var html = document.documentElement ? document.documentElement.innerHTML : '';
+      if (/session\\[(email|password)\\]/.test(html)) return false;
+      if (document.querySelector('a[href="/logout"], a[href*="logout"], form[action*="logout"], .courseList, .courseList--term, a.courseBox, .courseBox')) return true;
+      var text = (document.body && document.body.innerText || '').toLowerCase();
+      return text.indexOf('log out') !== -1;
+    })();
+    """
+}
 
 enum GradescopeError: LocalizedError {
-    case authenticityTokenMissing
-    case invalidCredentials
     case notConnected
+    case cancelled
+    case unauthorized
     case emptyAccount
     case requestFailed(String)
 
     var errorDescription: String? {
         switch self {
-        case .authenticityTokenMissing:
-            return "Gradescope didn’t return a login token. Try again in a moment."
-        case .invalidCredentials:
-            return "That Gradescope email or password didn’t work."
         case .notConnected:
             return "Connect Gradescope to refresh assignments."
+        case .cancelled:
+            return "Gradescope sign-in was cancelled."
+        case .unauthorized:
+            return "Gradescope sign-in expired. Open Gradescope and sign in again."
         case .emptyAccount:
             return "No student courses were found in the current Gradescope term."
         case .requestFailed(let message):
@@ -23,38 +40,120 @@ enum GradescopeError: LocalizedError {
     }
 }
 
+struct GradescopeStoredCookie: Codable, Equatable {
+    var name: String
+    var value: String
+    var domain: String
+    var path: String
+    var expiresAt: Date?
+    var isSecure: Bool
+
+    init(_ cookie: HTTPCookie) {
+        name = cookie.name
+        value = cookie.value
+        domain = cookie.domain
+        path = cookie.path
+        expiresAt = cookie.expiresDate
+        isSecure = cookie.isSecure
+    }
+
+    var httpCookie: HTTPCookie? {
+        var properties: [HTTPCookiePropertyKey: Any] = [
+            .name: name,
+            .value: value,
+            .domain: domain,
+            .path: path.isEmpty ? "/" : path,
+            .secure: isSecure ? "TRUE" : "FALSE",
+        ]
+        if let expiresAt {
+            properties[.expires] = expiresAt
+        }
+        return HTTPCookie(properties: properties)
+    }
+}
+
+struct GradescopeStoredAuth: Codable, Equatable {
+    var host: String
+    var cookies: [GradescopeStoredCookie]
+    var email: String?
+}
+
 enum GradescopeParser {
-    static func authenticityToken(in html: String) -> String? {
-        if let token = HTMLSnippet.firstGroup(
-            pattern: #"name\s*=\s*["']authenticity_token["'][^>]*\bvalue\s*=\s*["']([^"']+)["']"#,
-            in: html,
-            options: .caseInsensitive
-        ) {
-            return HTMLSnippet.decodeEntities(token)
+    static func cookieBelongs(_ cookie: HTTPCookie) -> Bool {
+        let domain = cookie.domain.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        return domain == "gradescope.com" || domain.hasSuffix(".gradescope.com")
+    }
+
+    static func isGradescopeHost(_ host: String?) -> Bool {
+        guard let host else { return false }
+        let lowered = host.lowercased()
+        return lowered == "gradescope.com" || lowered.hasSuffix(".gradescope.com")
+    }
+
+    static func isLoginURL(_ url: URL?) -> Bool {
+        guard let url else { return true }
+        let path = url.path.lowercased()
+        return path.contains("/login")
+            || path.contains("logon")
+            || path.hasSuffix("/signin")
+            || path.contains("/signin/")
+    }
+
+    static func hasAuthCookie(_ cookies: [HTTPCookie]) -> Bool {
+        cookies.contains { cookie in
+            guard cookieBelongs(cookie), !cookie.value.isEmpty else { return false }
+            let name = cookie.name.lowercased()
+            return name == "signed_token"
+                || name.contains("remember")
+                || name.contains("signed")
         }
-        if let token = HTMLSnippet.firstGroup(
-            pattern: #"value\s*=\s*["']([^"']+)["'][^>]*\bname\s*=\s*["']authenticity_token["']"#,
-            in: html,
-            options: .caseInsensitive
-        ) {
-            return HTMLSnippet.decodeEntities(token)
-        }
-        if let token = HTMLSnippet.firstGroup(
-            pattern: #"meta[^>]*name\s*=\s*["']csrf-token["'][^>]*content\s*=\s*["']([^"']+)["']"#,
-            in: html,
-            options: .caseInsensitive
-        ) {
-            return HTMLSnippet.decodeEntities(token)
+    }
+
+    static func session(
+        from cookies: [HTTPCookie],
+        currentURL: URL?,
+        pageLooksSignedIn: Bool,
+        force: Bool = false
+    ) -> GradescopeStoredAuth? {
+        guard isGradescopeHost(currentURL?.host), !isLoginURL(currentURL) else { return nil }
+        let matching = cookies.filter(cookieBelongs)
+        guard !matching.isEmpty else { return nil }
+        guard pageLooksSignedIn || hasAuthCookie(matching) || force else { return nil }
+        return GradescopeStoredAuth(
+            host: GradescopeConfig.host,
+            cookies: matching.map(GradescopeStoredCookie.init),
+            email: nil
+        )
+    }
+
+    static func looksLoggedOut(in html: String) -> Bool {
+        html.contains("session[password]")
+            || html.contains("session[email]")
+            || html.lowercased().contains("name=\"session[email]\"")
+    }
+
+    static func accountEmail(in html: String) -> String? {
+        let patterns = [
+            #""email"\s*:\s*"([^"]+@[^"]+)""#,
+            #"mailto:([^"'?]+@[^"'?]+)"#,
+            #"type\s*=\s*["']email["'][^>]*\bvalue\s*=\s*["']([^"']+@[^"']+)["']"#,
+            #"value\s*=\s*["']([^"']+@[^"']+)["'][^>]*\btype\s*=\s*["']email["']"#,
+        ]
+        for pattern in patterns {
+            if let email = HTMLSnippet.firstGroup(pattern: pattern, in: html, options: .caseInsensitive) {
+                let cleaned = HTMLSnippet.decodeEntities(email).trimmingCharacters(in: .whitespacesAndNewlines)
+                if cleaned.contains("@") { return cleaned }
+            }
         }
         return nil
     }
 
-    static func loginFailed(in html: String) -> Bool {
-        let lowered = html.lowercased()
-        return lowered.contains("invalid email")
-            || lowered.contains("invalid password")
-            || lowered.contains("incorrect email")
-            || lowered.contains("incorrect password")
+    static func clearWebCookies() {
+        WKWebsiteDataStore.default().httpCookieStore.getAllCookies { cookies in
+            for cookie in cookies where cookieBelongs(cookie) {
+                WKWebsiteDataStore.default().httpCookieStore.delete(cookie)
+            }
+        }
     }
 
     static func catalog(fromAccountHTML html: String) -> (termNames: [String], courses: [ExternalCourseSnapshot]) {
@@ -268,20 +367,27 @@ actor GradescopeClient {
         configuration.timeoutIntervalForRequest = 30
         configuration.httpMaximumConnectionsPerHost = 6
         configuration.httpAdditionalHeaders = [
-            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+            "User-Agent": GradescopeConfig.safariUserAgent,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         ]
         self.session = URLSession(configuration: configuration)
     }
 
-    func fetchCatalog(email: String, password: String) async throws -> ExternalCatalogSnapshot {
-        try await login(email: email, password: password)
+    func fetchCatalog(
+        auth: GradescopeStoredAuth
+    ) async throws -> (catalog: ExternalCatalogSnapshot, email: String) {
+        guard !auth.cookies.isEmpty else { throw GradescopeError.unauthorized }
+        installCookies(auth)
+
         let accountHTML = try await string(from: Self.url("/account"))
+        if GradescopeParser.looksLoggedOut(in: accountHTML) {
+            throw GradescopeError.unauthorized
+        }
+        let email = GradescopeParser.accountEmail(in: accountHTML)
+            ?? auth.email?.trimmingCharacters(in: .whitespacesAndNewlines)
+            ?? ""
         let parsed = GradescopeParser.catalog(fromAccountHTML: accountHTML)
         if parsed.courses.isEmpty {
-            if accountHTML.contains("session[password]") || accountHTML.lowercased().contains("log in") {
-                throw GradescopeError.invalidCredentials
-            }
             throw GradescopeError.emptyAccount
         }
 
@@ -290,6 +396,9 @@ actor GradescopeClient {
         for course in parsed.courses {
             let path = course.remoteID.contains("/") ? course.remoteID : "/courses/\(course.remoteID)"
             let html = try await string(from: Self.url(path))
+            if GradescopeParser.looksLoggedOut(in: html) {
+                throw GradescopeError.unauthorized
+            }
             let drafts = GradescopeParser.assignments(
                 fromCourseHTML: html,
                 courseRemoteID: course.remoteID,
@@ -338,38 +447,20 @@ actor GradescopeClient {
             courses.append(updated)
         }
 
-        return ExternalCatalogSnapshot(
-            provider: .gradescope,
-            termNames: parsed.termNames,
-            courses: courses
+        return (
+            ExternalCatalogSnapshot(
+                provider: .gradescope,
+                termNames: parsed.termNames,
+                courses: courses
+            ),
+            email
         )
     }
 
-    private func login(email: String, password: String) async throws {
-        let loginHTML = try await string(from: Self.url("/login"))
-        guard let token = GradescopeParser.authenticityToken(in: loginHTML) else {
-            throw GradescopeError.authenticityTokenMissing
-        }
-
-        var request = URLRequest(url: Self.url("/login"))
-        request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        request.setValue(Self.url("/login").absoluteString, forHTTPHeaderField: "Referer")
-        request.httpBody = formBody([
-            ("utf8", "✓"),
-            ("authenticity_token", token),
-            ("session[email]", email),
-            ("session[password]", password),
-            ("session[remember_me]", "1"),
-            ("commit", "Log In"),
-            ("session[remember_me_sso]", "0"),
-        ])
-
-        let (data, response) = try await session.data(for: request)
-        let html = String(data: data, encoding: .utf8) ?? ""
-        let url = (response as? HTTPURLResponse)?.url?.absoluteString.lowercased() ?? ""
-        if url.contains("login") || GradescopeParser.loginFailed(in: html) {
-            throw GradescopeError.invalidCredentials
+    private func installCookies(_ auth: GradescopeStoredAuth) {
+        guard let storage = session.configuration.httpCookieStorage else { return }
+        for cookie in auth.cookies.compactMap(\.httpCookie) {
+            storage.setCookie(cookie)
         }
     }
 
@@ -389,6 +480,9 @@ actor GradescopeClient {
         let (data, response) = try await session.data(from: url)
         guard let http = response as? HTTPURLResponse, (200..<400).contains(http.statusCode) else {
             let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+            if code == 401 || code == 403 {
+                throw GradescopeError.unauthorized
+            }
             throw GradescopeError.requestFailed("Gradescope returned \(code).")
         }
         return String(data: data, encoding: .utf8) ?? ""
@@ -397,16 +491,5 @@ actor GradescopeClient {
     private static func url(_ path: String) -> URL {
         if path.hasPrefix("http") { return URL(string: path)! }
         return URL(string: path, relativeTo: baseURL)!.absoluteURL
-    }
-
-    private func formBody(_ pairs: [(String, String)]) -> Data {
-        var allowed = CharacterSet.alphanumerics
-        allowed.insert(charactersIn: "-._*")
-        let encoded = pairs.map { key, value in
-            let k = key.addingPercentEncoding(withAllowedCharacters: allowed) ?? key
-            let v = value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
-            return "\(k)=\(v)"
-        }.joined(separator: "&")
-        return Data(encoded.utf8)
     }
 }
