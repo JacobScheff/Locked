@@ -116,12 +116,26 @@ enum BrightspaceParser {
         }
     }
 
+    /// Prefer the course offering title students see in Brightspace, not the SIS/org-unit code.
     static func displayName(code: String?, name: String) -> String {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedName.isEmpty { return trimmedName }
         if let code {
             let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty { return trimmed }
         }
         return name
+    }
+
+    /// SIS identifiers look like `20253_csci_201_32414` or `2025FA-CSCI-201-32414`.
+    static func looksLikeOrgUnitCode(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return true }
+        if trimmed.contains("_") { return true }
+        let hasWhitespace = trimmed.contains(where: \.isWhitespace)
+        let hasDigit = trimmed.contains(where: \.isNumber)
+        let hasSeparator = trimmed.contains(where: { $0 == "-" || $0 == "." })
+        return !hasWhitespace && hasDigit && hasSeparator
     }
 
     static func isCurrentCourse(access: BrightspaceAccess, now: Date = .now) -> Bool {

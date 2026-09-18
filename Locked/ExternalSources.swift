@@ -222,6 +222,9 @@ extension CourseStore {
                 courseIndex = existing
                 courses[courseIndex].sourceProvider = catalog.provider
                 courses[courseIndex].sourceRemoteID = remoteCourse.remoteID
+                if shouldReplaceImportedName(courses[courseIndex].name, with: remoteCourse.name) {
+                    courses[courseIndex].name = remoteCourse.name
+                }
                 report.coursesUpdated += 1
             } else {
                 let course = Course(
@@ -299,6 +302,14 @@ extension CourseStore {
             WidgetCenter.shared.reloadTimelines(ofKind: "Locked_Widget")
         }
         return report
+    }
+
+    private static func shouldReplaceImportedName(_ current: String, with remote: String) -> Bool {
+        let next = remote.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !next.isEmpty else { return false }
+        let existing = current.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard existing.caseInsensitiveCompare(next) != .orderedSame else { return false }
+        return BrightspaceParser.looksLikeOrgUnitCode(existing)
     }
 
     private static func indexOfCourse(
