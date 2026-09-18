@@ -39,9 +39,12 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
             backgroundBlurStyle: .dark,
             backgroundColor: ShieldLook.indigo,
             icon: ShieldArtwork.ledger(for: state),
-            title: .init(text: state.title, color: .white),
-            subtitle: .init(text: state.subtitle, color: UIColor.white.withAlphaComponent(0.82)),
-            primaryButtonLabel: .init(text: state.primaryTitle, color: state.primaryTitleColor),
+            // System chrome always draws the icon above these labels. The
+            // heading lives in the image so the ledger sits under the text;
+            // keep the real copy here (invisible) for VoiceOver.
+            title: .init(text: state.title, color: .clear),
+            subtitle: .init(text: state.subtitle, color: .clear),
+            primaryButtonLabel: .init(text: state.primaryTitle, color: .white),
             primaryButtonBackgroundColor: state.primaryBackground,
             secondaryButtonLabel: .init(text: state.secondaryTitle, color: UIColor.white.withAlphaComponent(0.88))
         )
@@ -50,12 +53,12 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
 
 private enum ShieldLook {
     static let indigo = UIColor(red: 0.22, green: 0.18, blue: 0.58, alpha: 1)
-    static let keyButton = UIColor(red: 0.93, green: 0.62, blue: 0.16, alpha: 1)
+    static let keyButton = UIColor(red: 0.62, green: 0.34, blue: 0.04, alpha: 1)
     static let mutedButton = UIColor(red: 0.30, green: 0.28, blue: 0.52, alpha: 1)
     static let amber = UIColor(red: 0.97, green: 0.70, blue: 0.22, alpha: 1)
-    static let violet = UIColor(red: 0.72, green: 0.52, blue: 0.98, alpha: 1)
-    static let rose = UIColor(red: 0.93, green: 0.33, blue: 0.46, alpha: 1)
-    static let teal = UIColor(red: 0.18, green: 0.78, blue: 0.72, alpha: 1)
+    static let violet = UIColor(red: 0.78, green: 0.58, blue: 1.0, alpha: 1)
+    static let rose = UIColor(red: 0.98, green: 0.38, blue: 0.48, alpha: 1)
+    static let teal = UIColor(red: 0.28, green: 0.86, blue: 0.78, alpha: 1)
 
     struct State {
         var confirming: Bool
@@ -96,185 +99,128 @@ private enum ShieldLook {
         var primaryBackground: UIColor {
             canAfford || confirming ? ShieldLook.keyButton : ShieldLook.mutedButton
         }
-
-        var primaryTitleColor: UIColor {
-            canAfford || confirming ? UIColor(red: 0.22, green: 0.12, blue: 0.04, alpha: 1) : .white
-        }
     }
 }
 
 private enum ShieldArtwork {
     static func ledger(for state: ShieldLook.State) -> UIImage {
-        let size = CGSize(width: 360, height: 400)
+        let size = CGSize(width: 640, height: 640)
         let renderer = UIGraphicsImageRenderer(size: size)
-        return renderer.image { ctx in
-            let cg = ctx.cgContext
-            let card = CGRect(origin: .zero, size: size).insetBy(dx: 16, dy: 16)
-
-            cg.setShadow(
-                offset: CGSize(width: 0, height: 10),
-                blur: 20,
-                color: UIColor.black.withAlphaComponent(0.32).cgColor
-            )
-            UIBezierPath(roundedRect: card, cornerRadius: 36).fill()
-            cg.setShadow(offset: .zero, blur: 0, color: nil)
-
-            let top = UIColor(red: 0.34, green: 0.28, blue: 0.78, alpha: 1)
-            let bottom = UIColor(red: 0.20, green: 0.16, blue: 0.48, alpha: 1)
-            cg.saveGState()
-            UIBezierPath(roundedRect: card, cornerRadius: 36).addClip()
-            if let gradient = CGGradient(
-                colorsSpace: CGColorSpaceCreateDeviceRGB(),
-                colors: [top.cgColor, bottom.cgColor] as CFArray,
-                locations: [0, 1]
-            ) {
-                cg.drawLinearGradient(
-                    gradient,
-                    start: card.origin,
-                    end: CGPoint(x: card.maxX, y: card.maxY),
-                    options: []
-                )
-            }
-            cg.restoreGState()
-
-            UIColor.white.withAlphaComponent(0.20).setStroke()
-            let stroke = UIBezierPath(roundedRect: card.insetBy(dx: 1, dy: 1), cornerRadius: 35)
-            stroke.lineWidth = 2
-            stroke.stroke()
-
-            let content = card.insetBy(dx: 24, dy: 22)
+        return renderer.image { _ in
+            let content = CGRect(origin: .zero, size: size).insetBy(dx: 24, dy: 16)
             var y = content.minY
 
-            drawLabel("THIS WEEK", in: CGRect(x: content.minX, y: y, width: content.width, height: 16))
-            y += 22
+            y += drawWrapped(
+                state.title,
+                font: roundedFont(size: 44, weight: .bold),
+                color: .white,
+                in: CGRect(x: content.minX, y: y, width: content.width, height: 120)
+            )
+            y += 8
+            y += drawWrapped(
+                state.subtitle,
+                font: roundedFont(size: 24, weight: .medium),
+                color: UIColor.white.withAlphaComponent(0.78),
+                in: CGRect(x: content.minX, y: y, width: content.width, height: 80)
+            )
+            y += 28
 
-            let chipHeight: CGFloat = 78
-            let chipGap: CGFloat = 10
-            let chipWidth = (content.width - chipGap) / 2
-            drawBalanceChip(
-                icon: "key.fill",
+            let rowHeight: CGFloat = 78
+            drawAlignedRow(
+                label: "Keys",
                 value: "\(state.keys)",
-                caption: "Keys",
-                tint: ShieldLook.amber,
-                in: CGRect(x: content.minX, y: y, width: chipWidth, height: chipHeight)
+                color: ShieldLook.amber,
+                in: CGRect(x: content.minX, y: y, width: content.width, height: rowHeight)
             )
-            drawBalanceChip(
-                icon: "star.fill",
+            y += rowHeight
+            drawAlignedRow(
+                label: "Karma",
                 value: "\(state.karma)",
-                caption: "Karma",
-                tint: ShieldLook.violet,
-                in: CGRect(x: content.minX + chipWidth + chipGap, y: y, width: chipWidth, height: chipHeight)
+                color: ShieldLook.violet,
+                in: CGRect(x: content.minX, y: y, width: content.width, height: rowHeight)
             )
-            y += chipHeight + 20
-
-            drawLabel("UNLOCK", in: CGRect(x: content.minX, y: y, width: content.width, height: 16))
-            y += 20
-
-            drawLedgerRow(
-                text: "− \(state.cost)",
-                detail: state.cost == 1 ? "key" : "keys",
+            y += rowHeight + 8
+            drawAlignedRow(
+                label: "Cost",
+                value: "−\(state.cost)",
                 color: ShieldLook.rose,
-                in: CGRect(x: content.minX, y: y, width: content.width, height: 52)
+                in: CGRect(x: content.minX, y: y, width: content.width, height: rowHeight)
             )
-            y += 60
+            y += rowHeight + 10
 
-            UIColor.white.withAlphaComponent(0.22).setStroke()
+            UIColor.white.withAlphaComponent(0.28).setStroke()
             let rule = UIBezierPath()
             rule.move(to: CGPoint(x: content.minX, y: y))
             rule.addLine(to: CGPoint(x: content.maxX, y: y))
-            rule.lineWidth = 2
+            rule.lineWidth = 3
             rule.lineCapStyle = .round
             rule.stroke()
             y += 16
 
             if state.canAfford {
-                drawLedgerRow(
-                    text: "\(state.remaining)",
-                    detail: state.remaining == 1 ? "key left" : "keys left",
+                drawAlignedRow(
+                    label: "Left",
+                    value: "\(state.remaining)",
                     color: ShieldLook.teal,
-                    in: CGRect(x: content.minX, y: y, width: content.width, height: 64)
+                    in: CGRect(x: content.minX, y: y, width: content.width, height: rowHeight)
                 )
             } else {
-                drawLedgerRow(
-                    text: "\(state.shortfall)",
-                    detail: state.shortfall == 1 ? "more key needed" : "more keys needed",
+                drawAlignedRow(
+                    label: "Need",
+                    value: "\(state.shortfall)",
                     color: ShieldLook.rose,
-                    in: CGRect(x: content.minX, y: y, width: content.width, height: 64)
+                    in: CGRect(x: content.minX, y: y, width: content.width, height: rowHeight)
                 )
             }
         }
     }
 
-    private static func drawBalanceChip(
-        icon: String,
-        value: String,
-        caption: String,
-        tint: UIColor,
-        in rect: CGRect
-    ) {
-        UIColor.white.withAlphaComponent(0.10).setFill()
-        UIBezierPath(roundedRect: rect, cornerRadius: 20).fill()
-        UIColor.white.withAlphaComponent(0.10).setStroke()
-        let border = UIBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), cornerRadius: 20)
-        border.lineWidth = 1
-        border.stroke()
-
-        let symbolConfig = UIImage.SymbolConfiguration(pointSize: 15, weight: .bold)
-        let symbol = UIImage(systemName: icon, withConfiguration: symbolConfig)?
-            .withTintColor(tint, renderingMode: .alwaysOriginal)
-        let iconSize = symbol?.size ?? .zero
-        let iconRect = CGRect(
-            x: rect.minX + 14,
-            y: rect.minY + 14,
-            width: iconSize.width,
-            height: iconSize.height
-        )
-        symbol?.draw(in: iconRect)
-
-        drawText(
-            caption.uppercased(),
-            font: roundedFont(size: 11, weight: .bold),
-            color: UIColor.white.withAlphaComponent(0.62),
-            in: CGRect(x: iconRect.maxX + 6, y: rect.minY + 16, width: rect.maxX - iconRect.maxX - 18, height: 14)
-        )
-        drawText(
-            value,
-            font: roundedFont(size: 30, weight: .heavy),
-            color: .white,
-            in: CGRect(x: rect.minX + 14, y: rect.maxY - 40, width: rect.width - 28, height: 34)
-        )
-    }
-
-    private static func drawLedgerRow(text: String, detail: String, color: UIColor, in rect: CGRect) {
-        let numberFont = roundedFont(size: 40, weight: .heavy)
-        let numberHeight = numberFont.lineHeight
-        drawText(text, font: numberFont, color: color, in: CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: numberHeight))
-        drawText(
-            detail,
-            font: roundedFont(size: 14, weight: .semibold),
-            color: color.withAlphaComponent(0.86),
-            in: CGRect(x: rect.minX, y: rect.minY + numberHeight - 2, width: rect.width, height: 18)
-        )
-    }
-
-    private static func drawLabel(_ text: String, in rect: CGRect) {
-        drawText(
-            text,
-            font: roundedFont(size: 11, weight: .bold),
-            color: UIColor.white.withAlphaComponent(0.52),
-            in: rect
-        )
-    }
-
-    private static func drawText(_ text: String, font: UIFont, color: UIColor, in rect: CGRect) {
+    @discardableResult
+    private static func drawWrapped(_ text: String, font: UIFont, color: UIColor, in rect: CGRect) -> CGFloat {
         let style = NSMutableParagraphStyle()
         style.alignment = .left
-        (text as NSString).draw(in: rect, withAttributes: [
+        style.lineBreakMode = .byWordWrapping
+        let attrs: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: color,
-            .paragraphStyle: style,
-            .kern: text.count <= 4 ? 0.4 : 0.8
-        ])
+            .paragraphStyle: style
+        ]
+        let bounds = (text as NSString).boundingRect(
+            with: CGSize(width: rect.width, height: rect.height),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: attrs,
+            context: nil
+        )
+        let drawn = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: ceil(bounds.height))
+        (text as NSString).draw(with: drawn, options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: attrs, context: nil)
+        return ceil(bounds.height)
+    }
+
+    private static func drawAlignedRow(label: String, value: String, color: UIColor, in rect: CGRect) {
+        let labelFont = roundedFont(size: 28, weight: .semibold)
+        let valueFont = roundedFont(size: 52, weight: .heavy)
+        let labelColor = UIColor.white.withAlphaComponent(0.78)
+        let style = NSMutableParagraphStyle()
+        style.alignment = .left
+        (label as NSString).draw(
+            in: rect.offsetBy(dx: 0, dy: (rect.height - labelFont.lineHeight) / 2),
+            withAttributes: [
+                .font: labelFont,
+                .foregroundColor: labelColor,
+                .paragraphStyle: style
+            ]
+        )
+
+        let valueStyle = NSMutableParagraphStyle()
+        valueStyle.alignment = .right
+        (value as NSString).draw(
+            in: rect.offsetBy(dx: 0, dy: (rect.height - valueFont.lineHeight) / 2),
+            withAttributes: [
+                .font: valueFont,
+                .foregroundColor: color,
+                .paragraphStyle: valueStyle
+            ]
+        )
     }
 
     private static func roundedFont(size: CGFloat, weight: UIFont.Weight) -> UIFont {
