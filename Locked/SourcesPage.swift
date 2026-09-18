@@ -49,21 +49,22 @@ struct SourcesPage: View {
             guard sources.canRefresh else { return }
             await refreshAll()
         }
-        .sheet(item: $gradescopeLogin) { _ in
-            GradescopeLoginSheet { email, password in
-                let result = try await sources.connectGradescope(
-                    email: email,
-                    password: password,
-                    courses: courses,
-                    keys: keys,
-                    karma: karma
-                )
-                withAnimation {
-                    courses = result.courses
-                    keys = result.keys
-                    karma = result.karma
+        .fullScreenCover(item: $gradescopeLogin) { _ in
+            GradescopeSignInView(
+                onConnect: { auth in
+                    let result = try await sources.connectGradescope(
+                        auth: auth,
+                        courses: courses,
+                        keys: keys,
+                        karma: karma
+                    )
+                    apply(result)
+                    gradescopeLogin = nil
+                },
+                onCancel: {
+                    gradescopeLogin = nil
                 }
-            }
+            )
         }
         .sheet(item: $brightspaceLogin) { _ in
             BrightspaceConnectSheet(lastHost: sources.brightspace.host) { auth in
@@ -180,7 +181,7 @@ struct SourcesPage: View {
     }
 
     private var footnote: some View {
-        Text("Passwords and Brightspace sign-in stay on this iPhone. They’re only sent to Gradescope or your school’s Brightspace when you connect or refresh.")
+        Text("Gradescope and Brightspace sign-in stay on this iPhone. They’re only sent to those school sites when you connect or refresh.")
             .font(.caption)
             .foregroundStyle(.tertiary)
     }
@@ -376,116 +377,4 @@ private struct SourceProviderCard: View {
     }
 }
 
-struct GradescopeLoginSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @FocusState private var focused: Field?
-
-    let onConnect: (String, String) async throws -> Void
-
-    @State private var email = ""
-    @State private var password = ""
-    @State private var isWorking = false
-    @State private var errorMessage: String?
-
-    enum Field { case email, password }
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Sign in to Gradescope")
-                            .font(.lockedTitle(24))
-                        Text("Use the same email and password as gradescope.com. School SSO isn’t supported yet.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    field(title: "Email") {
-                        TextField("you@university.edu", text: $email)
-                            .textContentType(.username)
-                            .keyboardType(.emailAddress)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .focused($focused, equals: .email)
-                    }
-
-                    field(title: "Password") {
-                        SecureField("Password", text: $password)
-                            .textContentType(.password)
-                            .focused($focused, equals: .password)
-                    }
-
-                    if let errorMessage {
-                        Text(errorMessage)
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(Color.lockedRose)
-                    }
-
-                    Button {
-                        Task { await connect() }
-                    } label: {
-                        HStack {
-                            if isWorking {
-                                ProgressView().tint(.white)
-                            }
-                            Text(isWorking ? "Importing…" : "Sign in & import")
-                                .font(.headline)
-                        }
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(canSubmit ? LockedTheme.karmaGradient : LinearGradient(colors: [.gray, .gray], startPoint: .leading, endPoint: .trailing))
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    }
-                    .disabled(!canSubmit || isWorking)
-
-                    Text("Locked stores your password in the iPhone keychain and uses it only to refresh Gradescope.")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(20)
-            }
-            .background(LockedBackground())
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                        .disabled(isWorking)
-                }
-            }
-            .onAppear { focused = .email }
-        }
-        .presentationDetents([.large])
-        .tint(.lockedIndigo)
-        .interactiveDismissDisabled(isWorking)
-    }
-
-    private var canSubmit: Bool {
-        !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !password.isEmpty
-    }
-
-    private func field<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            content()
-                .padding(16)
-                .background(LockedCardBackground(cornerRadius: 16))
-        }
-    }
-
-    private func connect() async {
-        errorMessage = nil
-        isWorking = true
-        defer { isWorking = false }
-        do {
-            try await onConnect(email, password)
-            dismiss()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-}
 
