@@ -130,7 +130,8 @@ struct LockedBackground: View {
     var body: some View {
         ZStack {
             Color(uiColor: .systemGroupedBackground)
-            Color.lockedIndigo.opacity(0.14).gradient
+            Rectangle()
+                .fill(Color.lockedIndigo.opacity(0.14).gradient)
         }
         .ignoresSafeArea()
     }

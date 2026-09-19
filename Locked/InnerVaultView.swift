@@ -654,9 +654,10 @@ private struct ReserveNumberWheel: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay {
-            Color.black.opacity(0.62).gradient
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .allowsHitTesting(false)
+            Rectangle()
+                .fill(Color.black.opacity(0.62).gradient)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .allowsHitTesting(false)
         }
     }
 

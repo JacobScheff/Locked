@@ -380,7 +380,8 @@ struct BreakGlassView: View {
 
     private func glassPane(in size: CGSize) -> some View {
         ZStack {
-            Color(red: 0.10, green: 0.07, blue: 0.04).gradient
+            Rectangle()
+                .fill(Color(red: 0.10, green: 0.07, blue: 0.04).gradient)
 
             sealedPrize
 
@@ -395,10 +396,12 @@ struct BreakGlassView: View {
             } else {
                 Color.white.opacity(0.10)
 
-                Color(red: 0.62, green: 0.74, blue: 0.86).opacity(0.58).gradient
+                Rectangle()
+                    .fill(Color(red: 0.62, green: 0.74, blue: 0.86).opacity(0.58).gradient)
 
-                Color.white.opacity(0.34).gradient
-                .blendMode(.screen)
+                Rectangle()
+                    .fill(Color.white.opacity(0.34).gradient)
+                    .blendMode(.screen)
 
                 paneLettering
                     .padding(18)

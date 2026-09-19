@@ -346,13 +346,11 @@ private struct WidgetBackgroundView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            if overrideActive {
-                WidgetPalette.overrideGradient
-            } else {
-                WidgetPalette.heroGradient
-            }
+            Rectangle()
+                .fill(overrideActive ? WidgetPalette.overrideGradient : WidgetPalette.heroGradient)
 
-            Color.white.opacity(overrideActive ? 0.08 : 0.14).gradient
+            Rectangle()
+                .fill(Color.white.opacity(overrideActive ? 0.08 : 0.14).gradient)
 
             if overrideActive {
                 WidgetHazardStripes()
