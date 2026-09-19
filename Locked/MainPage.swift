@@ -711,7 +711,7 @@ private struct UnlockConfirmSheet: View {
 
                     confirmTitle
                         .font(.title3.weight(.bold))
-                        .multilineTextAlignment(.center))
+                        .multilineTextAlignment(.center)
                     Text(canAfford
                          ? "Spend keys to unlock this app until Sunday."
                          : "Finish assignments to earn more keys.")
