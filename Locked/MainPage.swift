@@ -490,8 +490,8 @@ struct LockedAppsSection: View {
 
 private enum LockedAppGridLayout {
     static let columns = 5
-    static let spacing: CGFloat = 10
-    static let iconSize: CGFloat = 56
+    static let spacing: CGFloat = 6
+    static let iconSize: CGFloat = 64
 }
 
 private struct LockedGridItem: Identifiable {
