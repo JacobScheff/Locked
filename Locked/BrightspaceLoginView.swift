@@ -58,7 +58,7 @@ struct BrightspaceConnectSheet: View {
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(canSubmit ? LockedTheme.karmaGradient : LinearGradient(colors: [.gray, .gray], startPoint: .leading, endPoint: .trailing))
+                        .background(canSubmit ? LockedTheme.karmaGradient : Color.gray.gradient)
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
                     .disabled(!canSubmit || isWorking)

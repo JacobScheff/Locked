@@ -318,12 +318,12 @@ private struct SourceProviderCard: View {
         .opacity(provider.isAvailable ? 1 : 0.88)
     }
 
-    private var iconFill: LinearGradient {
+    private var iconFill: AnyGradient {
         switch provider {
         case .gradescope:
-            return LinearGradient(colors: [Color(red: 0.16, green: 0.38, blue: 0.78), .lockedIndigo], startPoint: .topLeading, endPoint: .bottomTrailing)
+            return Color(red: 0.16, green: 0.38, blue: 0.78).gradient
         case .brightspace:
-            return LinearGradient(colors: [Color(red: 0.92, green: 0.45, blue: 0.18), Color(red: 0.82, green: 0.28, blue: 0.22)], startPoint: .topLeading, endPoint: .bottomTrailing)
+            return Color(red: 0.92, green: 0.45, blue: 0.18).gradient
         }
     }
 

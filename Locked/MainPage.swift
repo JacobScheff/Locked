@@ -199,11 +199,7 @@ struct HomeEconomyCard: View {
                 ProgressRing(
                     progress: progress,
                     lineWidth: 11,
-                    gradient: LinearGradient(
-                        colors: [.white, Color.lockedTeal],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
+                    gradient: Color.lockedTeal.gradient,
                     trackOpacity: 0.22
                 )
                 VStack(spacing: 0) {
@@ -272,16 +268,7 @@ struct UnlockLedgerCard: View {
         .background {
             if showsCardBackground {
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 0.10, green: 0.09, blue: 0.20),
-                                Color(red: 0.07, green: 0.06, blue: 0.14)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                    .fill(Color(red: 0.10, green: 0.09, blue: 0.20).gradient)
             }
         }
         .accessibilityElement(children: .ignore)
@@ -879,13 +866,7 @@ struct AppUsageBar: View {
                     Capsule()
                         .fill(Color.primary.opacity(0.08))
                     Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [Color.lockedIndigo.opacity(0.7), Color.lockedViolet],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
+                        .fill(Color.lockedIndigo.gradient)
                         .frame(width: max(geo.size.width * CGFloat(percentage), 4))
                 }
             }

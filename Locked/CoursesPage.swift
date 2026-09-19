@@ -270,11 +270,7 @@ struct CourseCardView: View {
                     ProgressRing(
                         progress: course.completionPercentage,
                         lineWidth: 6,
-                        gradient: LinearGradient(
-                            colors: [course.accent, course.accent.opacity(0.55)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
+                        gradient: course.accent.gradient
                     )
                     Text("\(Int(course.completionPercentage * 100))")
                         .font(.system(size: 12, weight: .bold, design: .rounded))

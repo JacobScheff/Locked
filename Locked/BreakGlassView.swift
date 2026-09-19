@@ -187,16 +187,7 @@ struct OverrideStatusBanner: View {
 
     private func bannerBackground(cornerRadius: CGFloat) -> some View {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.42, green: 0.07, blue: 0.10),
-                        Color(red: 0.18, green: 0.05, blue: 0.08)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
+            .fill(Color(red: 0.42, green: 0.07, blue: 0.10).gradient)
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .strokeBorder(Color.hazardYellow.opacity(0.35), lineWidth: 1)
@@ -389,14 +380,7 @@ struct BreakGlassView: View {
 
     private func glassPane(in size: CGSize) -> some View {
         ZStack {
-            LinearGradient(
-                colors: [
-                    Color(red: 0.10, green: 0.07, blue: 0.04),
-                    Color.black
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
+            Color(red: 0.10, green: 0.07, blue: 0.04).gradient
 
             sealedPrize
 
@@ -411,21 +395,9 @@ struct BreakGlassView: View {
             } else {
                 Color.white.opacity(0.10)
 
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.62, green: 0.74, blue: 0.86).opacity(0.58),
-                        Color(red: 0.28, green: 0.36, blue: 0.46).opacity(0.62),
-                        Color(red: 0.70, green: 0.80, blue: 0.90).opacity(0.40)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
+                Color(red: 0.62, green: 0.74, blue: 0.86).opacity(0.58).gradient
 
-                LinearGradient(
-                    colors: [.white.opacity(0.34), .clear, .white.opacity(0.16)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
+                Color.white.opacity(0.34).gradient
                 .blendMode(.screen)
 
                 paneLettering
@@ -463,15 +435,7 @@ struct BreakGlassView: View {
 
             Image(systemName: shackleOpen ? "lock.open.fill" : "lock.fill")
                 .font(.system(size: 78, weight: .bold))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(shackleOpen ? 0.55 : 0.14),
-                            Color.white.opacity(shackleOpen ? 0.22 : 0.06)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
+                .foregroundStyle(Color.white.opacity(shackleOpen ? 0.55 : 0.14).gradient)
                 )
                 .blur(radius: shattered ? 0 : 1.8)
                 .opacity(shattered ? 1 : 0.45)
@@ -869,27 +833,11 @@ private struct SculptedKey: View {
 
             Image(systemName: "key.fill")
                 .font(.system(size: 96, weight: .bold))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 1.0, green: 0.97, blue: 0.78),
-                            Color.hazardYellow,
-                            Color(red: 0.86, green: 0.52, blue: 0.10)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+                .foregroundStyle(Color.hazardYellow.gradient)
                 .overlay(alignment: .topLeading) {
                     Image(systemName: "key.fill")
                         .font(.system(size: 96, weight: .bold))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [Color.white.opacity(0.65), Color.clear],
-                                startPoint: .topLeading,
-                                endPoint: .center
-                            )
-                        )
+                        .foregroundStyle(Color.white.opacity(0.65).gradient)
                 }
         }
         .compositingGroup()
@@ -1048,15 +996,8 @@ struct GlassShard: Identifiable {
         )
     }
 
-    var fill: LinearGradient {
-        LinearGradient(
-            colors: [
-                Color.white.opacity(0.34 * opacity),
-                Color(red: 0.55, green: 0.72, blue: 0.88).opacity(0.18 * opacity)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+    var fill: AnyGradient {
+        Color.white.opacity(0.34 * opacity).gradient
     }
 
     func path(in size: CGSize) -> Path {

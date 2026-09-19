@@ -8,35 +8,16 @@ private enum WidgetPalette {
     static let amber = Color(red: 0.97, green: 0.70, blue: 0.22)
     static let hazardYellow = Color(red: 0.98, green: 0.78, blue: 0.12)
 
-    static var heroGradient: LinearGradient {
-        LinearGradient(
-            colors: [
-                Color(red: 0.22, green: 0.18, blue: 0.58),
-                Color(red: 0.33, green: 0.22, blue: 0.72),
-                Color(red: 0.16, green: 0.42, blue: 0.68)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+    static var heroGradient: AnyGradient {
+        Color(red: 0.22, green: 0.18, blue: 0.58).gradient
     }
 
-    static var overrideGradient: LinearGradient {
-        LinearGradient(
-            colors: [
-                Color(red: 0.42, green: 0.07, blue: 0.10),
-                Color(red: 0.18, green: 0.05, blue: 0.08)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+    static var overrideGradient: AnyGradient {
+        Color(red: 0.42, green: 0.07, blue: 0.10).gradient
     }
 
-    static var ringGradient: LinearGradient {
-        LinearGradient(
-            colors: [.white, teal],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+    static var ringGradient: AnyGradient {
+        teal.gradient
     }
 }
 
@@ -371,11 +352,7 @@ private struct WidgetBackgroundView: View {
                 WidgetPalette.heroGradient
             }
 
-            LinearGradient(
-                colors: [Color.white.opacity(overrideActive ? 0.08 : 0.14), .clear],
-                startPoint: .top,
-                endPoint: .center
-            )
+            Color.white.opacity(overrideActive ? 0.08 : 0.14).gradient
 
             if overrideActive {
                 WidgetHazardStripes()

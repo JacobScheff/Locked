@@ -30,33 +30,9 @@ extension ShapeStyle where Self == Color {
 enum LockedTheme {
     static let cardRadius: CGFloat = 22
 
-    static var karmaGradient: LinearGradient {
-        LinearGradient(
-            colors: [.lockedViolet, .lockedIndigo],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-    }
-
-    static var heroGradient: LinearGradient {
-        LinearGradient(
-            colors: [
-                Color(red: 0.22, green: 0.18, blue: 0.58),
-                Color(red: 0.33, green: 0.22, blue: 0.72),
-                Color(red: 0.16, green: 0.42, blue: 0.68)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-    }
-
-    static var keysGradient: LinearGradient {
-        LinearGradient(
-            colors: [.lockedAmber, Color.orange],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-    }
+    static var karmaGradient: AnyGradient { Color.lockedIndigo.gradient }
+    static var heroGradient: AnyGradient { Color(red: 0.22, green: 0.18, blue: 0.58).gradient }
+    static var keysGradient: AnyGradient { Color.lockedAmber.gradient }
 }
 
 // MARK: - Typography
@@ -154,15 +130,7 @@ struct LockedBackground: View {
     var body: some View {
         ZStack {
             Color(uiColor: .systemGroupedBackground)
-            LinearGradient(
-                colors: [
-                    Color.lockedIndigo.opacity(0.14),
-                    Color.clear,
-                    Color.lockedTeal.opacity(0.06)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            Color.lockedIndigo.opacity(0.14).gradient
         }
         .ignoresSafeArea()
     }
@@ -308,7 +276,7 @@ private final class LaunchEmblemView: UIView {
 struct ProgressRing: View {
     var progress: Double
     var lineWidth: CGFloat = 10
-    var gradient: LinearGradient = LockedTheme.karmaGradient
+    var gradient: AnyGradient = LockedTheme.karmaGradient
     var trackOpacity: Double = 0.16
 
     var body: some View {
