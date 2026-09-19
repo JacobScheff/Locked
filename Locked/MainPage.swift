@@ -415,8 +415,8 @@ struct LockedAppsSection: View {
                     }
                 }
                 LazyVGrid(
-                    columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: 4),
-                    spacing: 16
+                    columns: Array(repeating: GridItem(.flexible(), spacing: 20), count: 4),
+                    spacing: 20
                 ) {
                     ForEach(Array(gridItems.enumerated()), id: \.element.id) { index, item in
                         LockedAppIconButton(
@@ -435,9 +435,9 @@ struct LockedAppsSection: View {
                         )
                     }
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 14)
-                .background(LockedCardBackground(cornerRadius: 22))
+                .padding(.horizontal, 2)
+                .padding(.top, 4)
+                .padding(.bottom, 8)
             }
         }
         .sheet(item: $pendingUnlock, onDismiss: {
@@ -571,53 +571,26 @@ private struct LockedAppIconButton: View {
 
     @State private var appeared = false
 
+    private let iconSize: CGFloat = 64
+
     var body: some View {
         Button {
             guard !overrideActive else { return }
             onUnlock()
         } label: {
-            VStack(spacing: 7) {
-                ZStack(alignment: .bottomTrailing) {
-                    icon
-                        .frame(width: 62, height: 62)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .shadow(color: Color.black.opacity(0.16), radius: 7, x: 0, y: 4)
-
-                    Image(systemName: overrideActive ? "lock.open.fill" : "lock.fill")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(overrideActive ? Color.black.opacity(0.8) : .white)
-                        .padding(5)
-                        .background(
-                            overrideActive ? Color.hazardYellow : Color.black.opacity(0.72),
-                            in: Circle()
-                        )
-                        .offset(x: 4, y: 4)
-                }
-
-                if let title = item.title {
-                    Text(title)
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                        .frame(maxWidth: 72)
-                } else {
-                    Color.clear
-                        .frame(width: 72, height: 13)
-                }
+            VStack(spacing: 5) {
+                floatingIcon
+                titleView
             }
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(HomeIconButtonStyle(onPressed: onHighlight))
         .opacity(appeared ? 1 : 0)
-        .offset(y: appeared ? 0 : 14)
-        .scaleEffect(appeared ? 1 : 0.78)
-        .scrollTransition { content, phase in
-            content
-                .scaleEffect(phase.isIdentity ? 1 : 0.9)
-                .opacity(phase.isIdentity ? 1 : 0.72)
-        }
+        .offset(y: appeared ? 0 : 16)
+        .scaleEffect(appeared ? 1 : 0.84)
+        .modifier(HomeIconFloat(phase: Double(index) * 0.85, active: appeared))
         .onAppear {
-            withAnimation(.spring(response: 0.48, dampingFraction: 0.72).delay(Double(index) * 0.04)) {
+            withAnimation(.spring(response: 0.52, dampingFraction: 0.7).delay(Double(index) * 0.045)) {
                 appeared = true
             }
         }
@@ -630,6 +603,45 @@ private struct LockedAppIconButton: View {
         .accessibilityHint(overrideActive ? "Temporarily available" : "Unlocks this app for keys")
     }
 
+    private var floatingIcon: some View {
+        ZStack(alignment: .bottomTrailing) {
+            icon
+                .frame(width: iconSize, height: iconSize)
+                .clipShape(RoundedRectangle(cornerRadius: iconSize * 0.2237, style: .continuous))
+
+            Image(systemName: overrideActive ? "lock.open.fill" : "lock.fill")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(overrideActive ? Color.black.opacity(0.8) : .white)
+                .padding(4)
+                .background(
+                    overrideActive ? Color.hazardYellow : Color.black.opacity(0.7),
+                    in: Circle()
+                )
+                .offset(x: 3, y: 3)
+        }
+        .compositingGroup()
+        .shadow(color: Color.black.opacity(0.22), radius: 10, x: 0, y: 6)
+        .shadow(color: Color.lockedIndigo.opacity(0.12), radius: 16, x: 0, y: 8)
+    }
+
+    @ViewBuilder
+    private var titleView: some View {
+        Group {
+            if let token = item.token {
+                Label(token)
+                    .labelStyle(.titleOnly)
+            } else if let title = item.title {
+                Text(title)
+            }
+        }
+        .font(.system(size: 11, weight: .medium, design: .rounded))
+        .foregroundStyle(.primary)
+        .lineLimit(1)
+        .minimumScaleFactor(0.75)
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: iconSize + 8)
+    }
+
     private var accessibilityName: String {
         let name = item.title ?? "Locked app"
         return overrideActive ? "\(name), released" : "\(name), locked"
@@ -640,16 +652,30 @@ private struct LockedAppIconButton: View {
         if let token = item.token {
             Label(token)
                 .labelStyle(.iconOnly)
-                .scaleEffect(62.0 / 32.0)
+                .scaleEffect(iconSize / 32)
         } else if let name = item.namedApp {
             AppIconView(appName: name)
         } else {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: iconSize * 0.2237, style: .continuous)
                 .fill(Color.lockedIndigo.opacity(0.14))
                 .overlay {
                     Image(systemName: "app.fill")
                         .foregroundStyle(Color.lockedIndigo)
                 }
+        }
+    }
+}
+
+private struct HomeIconFloat: ViewModifier {
+    let phase: Double
+    var active: Bool
+
+    func body(content: Content) -> some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: !active)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            let lift = active ? sin(t * 1.05 + phase) * 2.4 : 0
+            content
+                .offset(y: lift)
         }
     }
 }
