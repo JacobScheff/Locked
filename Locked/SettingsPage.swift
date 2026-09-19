@@ -4,24 +4,11 @@ import WidgetKit
 struct SettingsPage: View {
     @EnvironmentObject private var screenTime: ScreenTimeManager
 
-    @AppStorage("courses", store: .lockedGroup)
-    var courses: [Course] = []
-
-    @AppStorage("keys", store: .lockedGroup) var keys: Double = 0.0
-    @AppStorage("karma", store: .lockedGroup) var karma: Double = 0.0
-
-    @State private var courseToDelete: Course?
-    @State private var confirmDeleteAll = false
-
-    private var archivedCourses: [Course] {
-        courses.filter(\.isHiddenFromApp).sorted { $0.name < $1.name }
-    }
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
-                intro
-                archivedSection
+                header
+                destinations
                 developerSection
             }
             .padding(.horizontal, 20)
@@ -30,133 +17,78 @@ struct SettingsPage: View {
         .background(LockedBackground())
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.large)
-        .confirmationDialog(
-            "Delete \"\(courseToDelete?.name ?? "class")\" forever?",
-            isPresented: Binding(
-                get: { courseToDelete != nil },
-                set: { if !$0 { courseToDelete = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("Delete forever", role: .destructive) {
-                if let course = courseToDelete {
-                    CourseStore.deleteCourse(course.id, courses: &courses)
-                }
-                courseToDelete = nil
-            }
-            Button("Cancel", role: .cancel) {
-                courseToDelete = nil
-            }
-        } message: {
-            Text("This removes it from Locked. Refreshing a linked source will import it again if it’s still in that source.")
-        }
-        .confirmationDialog(
-            "Delete all archived classes forever?",
-            isPresented: $confirmDeleteAll,
-            titleVisibility: .visible
-        ) {
-            Button("Delete all", role: .destructive) {
-                CourseStore.deleteAllHiddenCourses(from: &courses)
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Refreshing a linked source will bring back any class that’s still listed there.")
-        }
     }
 
-    private var intro: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Locked options")
-                .font(.lockedTitle(26))
-            Text("Archive classes to keep them out of the app. Delete them here if you want them gone until the next source refresh.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+    private var header: some View {
+        HStack(alignment: .center, spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(LockedTheme.karmaGradient)
+                Image(systemName: "gearshape.fill")
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 52, height: 52)
+            .shadow(color: Color.lockedIndigo.opacity(0.28), radius: 10, y: 4)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Make Locked yours")
+                    .font(.headline.weight(.bold))
+                Text("Guide, archive, usage, and emergency each open their own page.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(LockedCardBackground(cornerRadius: 20))
         .padding(.top, 4)
     }
 
-    private var archivedSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            LockedSectionLabel(title: "Archived classes", icon: "archivebox.fill")
+    private var destinations: some View {
+        VStack(spacing: 0) {
+            SettingsDestinationLink(
+                title: "Guide",
+                detail: "How Keys, Karma, and weekly lock work",
+                icon: "questionmark.circle.fill",
+                tint: .lockedIndigo,
+                showDivider: true
+            ) {
+                HowToUseView()
+            }
 
-            Text("Hidden courses live here. Deleting is permanent on this iPhone. If the class is still in a linked source’s current term, the next refresh will load it again.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            SettingsDestinationLink(
+                title: "Archive",
+                detail: "View or delete hidden classes and work",
+                icon: "archivebox.fill",
+                tint: .lockedViolet,
+                showDivider: true
+            ) {
+                ArchiveSettingsView()
+            }
 
-            if archivedCourses.isEmpty {
-                LockedCard {
-                    Text("No archived classes.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            } else {
-                VStack(spacing: 10) {
-                    ForEach(archivedCourses) { course in
-                        archivedRow(course)
-                    }
-                }
+            SettingsDestinationLink(
+                title: "App usage",
+                detail: "Time spent in the apps Locked manages",
+                icon: "chart.bar.fill",
+                tint: .lockedTeal,
+                showDivider: true
+            ) {
+                UsageSettingsView()
+            }
 
-                Button {
-                    confirmDeleteAll = true
-                } label: {
-                    Label("Delete all archived", systemImage: "trash")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                }
-                .buttonStyle(.bordered)
-                .tint(.lockedRose)
+            SettingsDestinationLink(
+                title: "Emergency",
+                detail: "Break the glass, then open the vault",
+                icon: "light.beacon.max.fill",
+                tint: .hazardRed,
+                showDivider: false
+            ) {
+                EmergencySettingsView()
             }
         }
-    }
-
-    private func archivedRow(_ course: Course) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                Circle()
-                    .fill(course.accent)
-                    .frame(width: 10, height: 10)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(course.name)
-                        .font(.subheadline.weight(.semibold))
-                    Text("\(course.assignments.count) assignment\(course.assignments.count == 1 ? "" : "s")")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-            }
-
-            HStack(spacing: 10) {
-                Button {
-                    CourseStore.setCourseHidden(
-                        course.id,
-                        hidden: false,
-                        courses: &courses,
-                        keys: &keys,
-                        karma: &karma
-                    )
-                } label: {
-                    Text("Unhide")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                }
-                .buttonStyle(.bordered)
-                .tint(.lockedIndigo)
-
-                Button(role: .destructive) {
-                    courseToDelete = course
-                } label: {
-                    Text("Delete")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                }
-                .buttonStyle(.bordered)
-            }
-        }
-        .padding(14)
-        .background(LockedCardBackground(cornerRadius: 16))
+        .background(LockedCardBackground(cornerRadius: 22))
     }
 
     private var developerSection: some View {
@@ -178,4 +110,189 @@ struct SettingsPage: View {
                 .foregroundStyle(.secondary)
         }
     }
+}
+
+private struct SettingsDestinationLink<Destination: View>: View {
+    let title: String
+    let detail: String
+    let icon: String
+    let tint: Color
+    let showDivider: Bool
+    @ViewBuilder var destination: () -> Destination
+
+    var body: some View {
+        NavigationLink {
+            destination()
+        } label: {
+            VStack(spacing: 0) {
+                HStack(spacing: 14) {
+                    Image(systemName: icon)
+                        .font(.body.weight(.bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 36, height: 36)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(tint)
+                        )
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(title)
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(.primary)
+                        Text(detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.leading)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .contentShape(Rectangle())
+
+                if showDivider {
+                    Divider()
+                        .padding(.leading, 66)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct ArchiveSettingsView: View {
+    @AppStorage("courses", store: .lockedGroup)
+    var courses: [Course] = []
+
+    @AppStorage("keys", store: .lockedGroup) var keys: Double = 0.0
+    @AppStorage("karma", store: .lockedGroup) var karma: Double = 0.0
+
+    var body: some View {
+        HiddenWorkView(courses: $courses, keys: $keys, karma: $karma)
+    }
+}
+
+struct UsageSettingsView: View {
+    @AppStorage("appCounts", store: .lockedGroup)
+    var appCounts: [String: Int] = [:]
+
+    @AppStorage("lockedApps", store: .lockedGroup)
+    var lockedApps: [String] = []
+
+    @AppStorage("emergencyOverrideUntil", store: .lockedGroup)
+    var emergencyOverrideUntil: Double = 0
+
+    @State private var now = Date()
+
+    private var overrideActive: Bool {
+        Date(timeIntervalSince1970: emergencyOverrideUntil) > now
+    }
+
+    var body: some View {
+        ScrollView {
+            AppCountsCard(
+                appCounts: $appCounts,
+                lockedApps: $lockedApps,
+                overrideActive: overrideActive
+            )
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+            .padding(.bottom, 36)
+        }
+        .background(LockedBackground())
+        .navigationTitle("App usage")
+        .navigationBarTitleDisplayMode(.large)
+        .onAppear { now = Date() }
+    }
+}
+
+struct EmergencySettingsView: View {
+    @AppStorage("emergencyOverrideUntil", store: .lockedGroup)
+    var emergencyOverrideUntil: Double = 0
+
+    @AppStorage("innerVaultUnlockedUntil", store: .lockedGroup)
+    var innerVaultUnlockedUntil: Double = 0
+
+    @State private var presentedRitual: EmergencyRitual?
+    @State private var now = Date()
+
+    private var overrideActive: Bool {
+        Date(timeIntervalSince1970: emergencyOverrideUntil) > now
+    }
+
+    private var vaultUnlocked: Bool {
+        overrideActive && innerVaultUnlockedUntil > 0 && abs(innerVaultUnlockedUntil - emergencyOverrideUntil) < 0.5
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Last resort only")
+                        .font(.lockedTitle(26))
+                    Text("Break the glass if you truly cannot wait. Locks lift for one hour, then return on their own. While the seal is broken, you can open the inner vault.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.top, 4)
+
+                if overrideActive {
+                    OverrideStatusBanner(
+                        onRestore: {
+                            now = Date()
+                            reloadWidget()
+                        },
+                        onExpired: {
+                            now = Date()
+                            ScreenTimeShields.sync()
+                            reloadWidget()
+                        }
+                    )
+
+                    VaultSealCard(unlocked: vaultUnlocked) {
+                        presentedRitual = .vault
+                    }
+                } else {
+                    EmergencySealCard {
+                        presentedRitual = .glass
+                    }
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 36)
+        }
+        .background(LockedBackground())
+        .navigationTitle("Emergency")
+        .navigationBarTitleDisplayMode(.large)
+        .fullScreenCover(item: $presentedRitual) { ritual in
+            switch ritual {
+            case .glass:
+                BreakGlassView {
+                    now = Date()
+                    reloadWidget()
+                }
+            case .vault:
+                InnerVaultView {
+                    reloadWidget()
+                }
+            }
+        }
+        .onAppear { now = Date() }
+    }
+
+    private func reloadWidget() {
+        WidgetCenter.shared.reloadTimelines(ofKind: "Locked_Widget")
+    }
+}
+
+private enum EmergencyRitual: String, Identifiable {
+    case glass
+    case vault
+
+    var id: String { rawValue }
 }

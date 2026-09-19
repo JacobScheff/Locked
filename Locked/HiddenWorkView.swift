@@ -5,6 +5,9 @@ struct HiddenWorkView: View {
     @Binding var keys: Double
     @Binding var karma: Double
 
+    @State private var courseToDelete: Course?
+    @State private var confirmDeleteAll = false
+
     private var hiddenCourses: [Course] {
         courses.filter(\.isHiddenFromApp).sorted { $0.name < $1.name }
     }
@@ -23,7 +26,7 @@ struct HiddenWorkView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                Text("Archived work stays out of upcoming lists and doesn’t earn Keys and Karma until you unhide it. Permanently delete archived classes in Settings. Refreshing a linked source will import a deleted class again if it’s still there.")
+                Text("Archived work stays out of upcoming lists and doesn’t earn Keys and Karma until you unhide it. Deleting a class is permanent on this iPhone. Refreshing a linked source will import it again if it’s still listed there.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
 
@@ -33,21 +36,20 @@ struct HiddenWorkView: View {
                     if !hiddenCourses.isEmpty {
                         section(title: "Courses", icon: "book.fill") {
                             ForEach(hiddenCourses) { course in
-                                hiddenRow(
-                                    title: course.name,
-                                    detail: "\(course.assignments.count) assignment\(course.assignments.count == 1 ? "" : "s")",
-                                    accent: course.accent
-                                ) {
-                                    CourseStore.setCourseHidden(
-                                        course.id,
-                                        hidden: false,
-                                        courses: &courses,
-                                        keys: &keys,
-                                        karma: &karma
-                                    )
-                                }
+                                archivedCourseRow(course)
                             }
                         }
+
+                        Button {
+                            confirmDeleteAll = true
+                        } label: {
+                            Label("Delete all archived classes", systemImage: "trash")
+                                .font(.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.lockedRose)
                     }
 
                     if !hiddenAssignments.isEmpty {
@@ -76,18 +78,50 @@ struct HiddenWorkView: View {
             .padding(.bottom, 36)
         }
         .background(LockedBackground())
-        .navigationTitle("Archived")
+        .navigationTitle("Archive")
         .navigationBarTitleDisplayMode(.large)
+        .confirmationDialog(
+            "Delete \"\(courseToDelete?.name ?? "class")\" forever?",
+            isPresented: Binding(
+                get: { courseToDelete != nil },
+                set: { if !$0 { courseToDelete = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete forever", role: .destructive) {
+                if let course = courseToDelete {
+                    CourseStore.deleteCourse(course.id, courses: &courses)
+                }
+                courseToDelete = nil
+            }
+            Button("Cancel", role: .cancel) {
+                courseToDelete = nil
+            }
+        } message: {
+            Text("This removes it from Locked. Refreshing a linked source will import it again if it’s still in that source.")
+        }
+        .confirmationDialog(
+            "Delete all archived classes forever?",
+            isPresented: $confirmDeleteAll,
+            titleVisibility: .visible
+        ) {
+            Button("Delete all", role: .destructive) {
+                CourseStore.deleteAllHiddenCourses(from: &courses)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Refreshing a linked source will bring back any class that’s still listed there.")
+        }
     }
 
     private var emptyState: some View {
         VStack(spacing: 10) {
-            Image(systemName: "eye")
+            Image(systemName: "archivebox")
                 .font(.system(size: 34))
                 .foregroundStyle(Color.lockedIndigo)
-            Text("Nothing hidden")
+            Text("Nothing archived")
                 .font(.headline)
-            Text("Hide a course or assignment from its menu when you don’t want it counted. Delete archived classes forever in Settings.")
+            Text("Hide a course or assignment from its menu when you don’t want it counted.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -103,6 +137,55 @@ struct HiddenWorkView: View {
                 content()
             }
         }
+    }
+
+    private func archivedCourseRow(_ course: Course) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Circle()
+                    .fill(course.accent)
+                    .frame(width: 10, height: 10)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(course.name)
+                        .font(.subheadline.weight(.semibold))
+                    Text("\(course.assignments.count) assignment\(course.assignments.count == 1 ? "" : "s")")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+
+            HStack(spacing: 10) {
+                Button {
+                    CourseStore.setCourseHidden(
+                        course.id,
+                        hidden: false,
+                        courses: &courses,
+                        keys: &keys,
+                        karma: &karma
+                    )
+                } label: {
+                    Text("Unhide")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                }
+                .buttonStyle(.bordered)
+                .tint(.lockedIndigo)
+
+                Button(role: .destructive) {
+                    courseToDelete = course
+                } label: {
+                    Text("Delete")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(14)
+        .background(LockedCardBackground(cornerRadius: 16))
     }
 
     private func hiddenRow(title: String, detail: String, accent: Color, onUnhide: @escaping () -> Void) -> some View {

@@ -68,6 +68,7 @@ struct OverrideStatusBanner: View {
     @AppStorage("emergencyOverrideUntil", store: .lockedGroup)
     var emergencyOverrideUntil: Double = 0
 
+    var compact: Bool = false
     var onRestore: () -> Void
     var onExpired: () -> Void = {}
 
@@ -77,65 +78,12 @@ struct OverrideStatusBanner: View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let remaining = Date(timeIntervalSince1970: emergencyOverrideUntil).timeIntervalSince(context.date)
             if remaining > 0 {
-                VStack(alignment: .leading, spacing: 14) {
-                    HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: "lock.open.fill")
-                            .font(.title2)
-                            .foregroundStyle(Color.hazardYellow)
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Seal broken")
-                                .font(.headline.weight(.heavy))
-                                .foregroundStyle(.white)
-                            Text("Locks are suspended. They return automatically.")
-                                .font(.caption)
-                                .foregroundStyle(.white.opacity(0.75))
-                        }
-                        Spacer()
+                Group {
+                    if compact {
+                        compactBanner(remaining: remaining)
+                    } else {
+                        fullBanner(remaining: remaining)
                     }
-
-                    HStack(alignment: .lastTextBaseline, spacing: 6) {
-                        Text(EmergencyOverride.formatRemaining(remaining))
-                            .font(.lockedNumber(34))
-                            .foregroundStyle(Color.hazardYellow)
-                            .monospacedDigit()
-                            .contentTransition(.numericText())
-                        Text("remaining")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.6))
-                    }
-
-                    Button {
-                        confirmRestore = true
-                    } label: {
-                        Text("Restore locks now")
-                            .font(.subheadline.weight(.bold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(Color.white.opacity(0.12))
-                            .foregroundStyle(.white)
-                            .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(18)
-                .background {
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.42, green: 0.07, blue: 0.10),
-                                    Color(red: 0.18, green: 0.05, blue: 0.08)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                                .strokeBorder(Color.hazardYellow.opacity(0.35), lineWidth: 1)
-                        )
-                        .shadow(color: Color.hazardRed.opacity(0.35), radius: 18, y: 8)
                 }
                 .alert("Restore locks?", isPresented: $confirmRestore) {
                     Button("Keep them released", role: .cancel) { }
@@ -152,6 +100,108 @@ struct OverrideStatusBanner: View {
                     .onAppear(perform: onExpired)
             }
         }
+    }
+
+    private func compactBanner(remaining: TimeInterval) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "lock.open.fill")
+                .font(.body.weight(.bold))
+                .foregroundStyle(Color.hazardYellow)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Seal broken")
+                    .font(.subheadline.weight(.heavy))
+                    .foregroundStyle(.white)
+                Text("\(EmergencyOverride.formatRemaining(remaining)) left")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.hazardYellow)
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+            }
+
+            Spacer(minLength: 8)
+
+            Button {
+                confirmRestore = true
+            } label: {
+                Text("Restore")
+                    .font(.caption.weight(.bold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(Color.white.opacity(0.14))
+                    .foregroundStyle(.white)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(bannerBackground(cornerRadius: 16))
+    }
+
+    private func fullBanner(remaining: TimeInterval) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "lock.open.fill")
+                    .font(.title2)
+                    .foregroundStyle(Color.hazardYellow)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Seal broken")
+                        .font(.headline.weight(.heavy))
+                        .foregroundStyle(.white)
+                    Text("Locks are suspended. They return automatically.")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.75))
+                }
+                Spacer()
+            }
+
+            HStack(alignment: .lastTextBaseline, spacing: 6) {
+                Text(EmergencyOverride.formatRemaining(remaining))
+                    .font(.lockedNumber(34))
+                    .foregroundStyle(Color.hazardYellow)
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                Text("remaining")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.6))
+            }
+
+            Button {
+                confirmRestore = true
+            } label: {
+                Text("Restore locks now")
+                    .font(.subheadline.weight(.bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Color.white.opacity(0.12))
+                    .foregroundStyle(.white)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(18)
+        .background(bannerBackground(cornerRadius: 24))
+    }
+
+    private func bannerBackground(cornerRadius: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.42, green: 0.07, blue: 0.10),
+                        Color(red: 0.18, green: 0.05, blue: 0.08)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(Color.hazardYellow.opacity(0.35), lineWidth: 1)
+            )
+            .shadow(color: Color.hazardRed.opacity(0.35), radius: 18, y: 8)
     }
 }
 
