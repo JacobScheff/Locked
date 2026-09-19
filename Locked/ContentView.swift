@@ -15,6 +15,7 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             if canMountInterface {
+                #if !targetEnvironment(macCatalyst)
                 if canStartUsageReport && screenTime.shouldCollectUsage {
                     UsageReportHost(
                         selection: screenTime.selection,
@@ -22,6 +23,7 @@ struct ContentView: View {
                         nonce: screenTime.usageReportNonce
                     )
                 }
+                #endif
 
                 TabView {
                     NavigationStack {
@@ -63,7 +65,9 @@ struct ContentView: View {
         }
         .tint(.lockedIndigo)
         .fontDesign(.rounded)
+        #if !targetEnvironment(macCatalyst)
         .familyActivityPicker(isPresented: $screenTime.isPickerPresented, selection: $screenTime.selection)
+        #endif
         .animation(.easeOut(duration: 0.28), value: showsLaunchCover)
         .onAppear {
             // Paint the overlay first, then build tabs underneath it.

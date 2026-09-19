@@ -39,9 +39,9 @@
 		4C0DA0012F9B0001000000A6 /* DeviceActivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000001 /* DeviceActivity.framework */; };
 		4C0DA0012F9B000100000070 /* GameplayKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000005 /* GameplayKit.framework */; };
 		4C0DA0012F9B000100000071 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3A8DF99A2F89F2B900279855 /* SwiftUI.framework */; };
-		4C0DA0012F9B000100000080 /* DeviceActivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000001 /* DeviceActivity.framework */; };
-		4C0DA0012F9B000100000081 /* FamilyControls.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000002 /* FamilyControls.framework */; };
-		4C0DA0012F9B000100000082 /* ManagedSettings.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000003 /* ManagedSettings.framework */; };
+		4C0DA0012F9B000100000080 /* DeviceActivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000001 /* DeviceActivity.framework */; platformFilters = (ios, ); };
+		4C0DA0012F9B000100000081 /* FamilyControls.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000002 /* FamilyControls.framework */; platformFilters = (ios, ); };
+		4C0DA0012F9B000100000082 /* ManagedSettings.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000003 /* ManagedSettings.framework */; platformFilters = (ios, ); };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */

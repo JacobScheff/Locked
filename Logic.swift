@@ -152,6 +152,7 @@ func lockAppByKarma<Key: Hashable>(from snapshot: [Key: Int]) -> Key? {
 /// app always has them; report tokens fill in apps that only came from a
 /// category pick. An app with no recorded usage keeps weight 1 so it is
 /// still eligible without outweighing anything that was actually used.
+#if !targetEnvironment(macCatalyst)
 func weeklyLockCandidates(
     selection: FamilyActivitySelection,
     appCounts: [String: Int],
@@ -244,6 +245,14 @@ func checkAndPerformWeeklyLockIfNeeded() {
     let locked = performSundayLocking()
     print("Weekly lock: locked \(locked.count) named app(s): \(locked); \(LockedTokenStore.load().count) token(s) shielded")
 }
+#else
+func performSundayLocking(minimumLockCount: Int = 0) -> [String] {
+    _ = minimumLockCount
+    return []
+}
+
+func checkAndPerformWeeklyLockIfNeeded() {}
+#endif
 
 // MARK: - Sunday Scheduler
 

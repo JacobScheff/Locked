@@ -7,11 +7,31 @@ import SwiftUI
 import UIKit
 import WidgetKit
 
+enum LockedAuthStatus: Equatable {
+    case notDetermined
+    case denied
+    case approved
+
+    #if !targetEnvironment(macCatalyst)
+    init(_ status: FamilyControls.AuthorizationStatus) {
+        switch status {
+        case .approved:
+            self = .approved
+        case .denied:
+            self = .denied
+        @unknown default:
+            self = .notDetermined
+        }
+    }
+    #endif
+}
+
 @MainActor
 final class ScreenTimeManager: ObservableObject {
     static let shared = ScreenTimeManager()
 
-    @Published var authorizationStatus: AuthorizationStatus
+    @Published private(set) var authorizationStatus: LockedAuthStatus = .notDetermined
+    #if !targetEnvironment(macCatalyst)
     @Published var selection: FamilyActivitySelection {
         didSet {
             let expanded = ActivitySelectionStore.expandingCategories(selection)
@@ -21,6 +41,7 @@ final class ScreenTimeManager: ObservableObject {
             ScreenTimeShields.sync()
         }
     }
+    #endif
     @Published var isPickerPresented = false
     @Published private(set) var isReady = false
     @Published private(set) var usageRevision = 0
@@ -32,8 +53,10 @@ final class ScreenTimeManager: ObservableObject {
     private var isFinishingLaunch = false
 
     private init() {
-        authorizationStatus = AuthorizationCenter.shared.authorizationStatus
+        #if !targetEnvironment(macCatalyst)
+        authorizationStatus = LockedAuthStatus(AuthorizationCenter.shared.authorizationStatus)
         selection = ActivitySelectionStore.load()
+        #endif
         observeUsageUpdates()
         Task { await beginLaunch() }
     }
@@ -43,7 +66,11 @@ final class ScreenTimeManager: ObservableObject {
     }
 
     var hasSelection: Bool {
-        !selection.applicationTokens.isEmpty || !selection.categoryTokens.isEmpty
+        #if targetEnvironment(macCatalyst)
+        return false
+        #else
+        return !selection.applicationTokens.isEmpty || !selection.categoryTokens.isEmpty
+        #endif
     }
 
     var needsSetup: Bool {
@@ -94,10 +121,12 @@ final class ScreenTimeManager: ObservableObject {
 
     func refreshStatus() {
         Economy.seedNewInstallIfNeeded()
-        let status = AuthorizationCenter.shared.authorizationStatus
+        #if !targetEnvironment(macCatalyst)
+        let status = LockedAuthStatus(AuthorizationCenter.shared.authorizationStatus)
         if authorizationStatus != status {
             authorizationStatus = status
         }
+        #endif
         guard isAuthorized else { return }
         if !didStartDailyMonitor {
             ScreenTimeMonitor.startDaily()
@@ -125,6 +154,7 @@ final class ScreenTimeManager: ObservableObject {
             return
         }
 
+        #if !targetEnvironment(macCatalyst)
         do {
             try await AuthorizationCenter.shared.requestAuthorization(for: .individual)
         } catch {
@@ -141,18 +171,21 @@ final class ScreenTimeManager: ObservableObject {
                 lastAuthorizationError = "Screen Time access was denied. Enable Locked under Settings → Screen Time."
             case .notDetermined:
                 lastAuthorizationError = "Apple didn’t show a Screen Time prompt. Try again, or check Settings → Screen Time."
-            default:
+            case .approved:
                 break
             }
         }
+        #endif
     }
 
     func presentPicker() {
+        #if !targetEnvironment(macCatalyst)
         let expanded = ActivitySelectionStore.expandingCategories(selection)
         if !selection.includeEntireCategory {
             selection = expanded
         }
         isPickerPresented = true
+        #endif
     }
 
     func reloadUsageReport() {
@@ -160,11 +193,13 @@ final class ScreenTimeManager: ObservableObject {
     }
 
     func simulateWeeklyLock() {
+        #if !targetEnvironment(macCatalyst)
         _ = performSundayLocking(using: selection, minimumLockCount: 1)
         reloadUsageReport()
         didStartDailyMonitor = false
         ScreenTimeMonitor.startDaily()
         didStartDailyMonitor = true
+        #endif
     }
 
     func noteUsageUpdated() {
@@ -236,7 +271,8 @@ enum ScreenTimeAuthorizationAvailability {
     }
 
     static func userMessage(for error: Error) -> String {
-        if let familyError = error as? FamilyControlsError {
+        #if !targetEnvironment(macCatalyst)
+        if let familyError = error as? FamilyControls.FamilyControlsError {
             switch familyError {
             case .unavailable:
                 return "Screen Time authorization isn’t available on this device."
@@ -252,6 +288,7 @@ enum ScreenTimeAuthorizationAvailability {
                 break
             }
         }
+        #endif
 
         let description = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         if !description.isEmpty {
@@ -261,6 +298,7 @@ enum ScreenTimeAuthorizationAvailability {
     }
 }
 
+#if !targetEnvironment(macCatalyst)
 extension DeviceActivityReport.Context {
     static let usage = Self(LockedReportContext.name)
 }
@@ -341,6 +379,7 @@ struct UnnamedLockedAppLabel: View {
             .labelStyle(.titleAndIcon)
     }
 }
+#endif
 
 struct ManagedAppIcon: View {
     let name: String
@@ -348,6 +387,9 @@ struct ManagedAppIcon: View {
 
     var body: some View {
         Group {
+            #if targetEnvironment(macCatalyst)
+            AppIconView(appName: name)
+            #else
             if let token = UsageStore.token(for: name) {
                 Label(token)
                     .labelStyle(.iconOnly)
@@ -355,6 +397,7 @@ struct ManagedAppIcon: View {
             } else {
                 AppIconView(appName: name)
             }
+            #endif
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: size * 0.28, style: .continuous))

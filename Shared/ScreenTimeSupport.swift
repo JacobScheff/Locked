@@ -229,9 +229,11 @@ enum ExcludedApps {
         name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    #if !targetEnvironment(macCatalyst)
     static var tokens: Set<ApplicationToken> {
         Set(bundleIdentifiers.compactMap { Application(bundleIdentifier: $0).token })
     }
+    #endif
 
     static func strippingExcluded(_ counts: [String: Int]) -> [String: Int] {
         counts.filter { !isExcludedName($0.key) && !isBlankName($0.key) && $0.value > 0 }
@@ -309,9 +311,15 @@ enum KeyUnlock {
     }
 
     static func cost(forName name: String) -> Int {
-        cost(usageSeconds: UsageStore.loadAppCounts()[name] ?? 0, lockedCount: LockedTokenStore.load().count)
+        #if targetEnvironment(macCatalyst)
+        let lockedCount = loadLockedNameCount()
+        #else
+        let lockedCount = LockedTokenStore.load().count
+        #endif
+        return cost(usageSeconds: UsageStore.loadAppCounts()[name] ?? 0, lockedCount: lockedCount)
     }
 
+    #if !targetEnvironment(macCatalyst)
     static func cost(for token: ApplicationToken) -> Int {
         let name = UsageStore.loadTokenMap().first { $0.value == token }?.key
         return cost(
@@ -319,6 +327,7 @@ enum KeyUnlock {
             lockedCount: LockedTokenStore.load().count
         )
     }
+    #endif
 
     static func cost(usageSeconds: Int, lockedCount: Int) -> Int {
         let counts = UsageStore.loadAppCounts()
@@ -328,6 +337,7 @@ enum KeyUnlock {
         return max(1, Int(raw.rounded()))
     }
 
+    #if !targetEnvironment(macCatalyst)
     static func canAfford(_ token: ApplicationToken) -> Bool {
         Int(Economy.keys().rounded(.towardZero)) >= cost(for: token)
     }
@@ -346,11 +356,17 @@ enum KeyUnlock {
         UsageStore.pingMainApp()
         return .unlocked
     }
+    #endif
+
+    private static func loadLockedNameCount() -> Int {
+        UsageStore.loadLockedApps().count
+    }
 }
 
 /// Two-step unlock on the system shield. The configuration extension
 /// cannot show an alert, so the first tap only arms a short-lived prompt
 /// and `.defer` redraws the shield as a confirm screen.
+#if !targetEnvironment(macCatalyst)
 enum ShieldUnlockPrompt {
     static let tokenKey = "shieldUnlockPromptToken"
     static let untilKey = "shieldUnlockPromptUntil"
@@ -399,6 +415,7 @@ enum ShieldUnlockPrompt {
         AppGroupStore.setSharedDouble(0, forKey: armedAtKey)
     }
 }
+#endif
 
 enum InstalledApps {
     /// Screen Time still reports deleted apps historically. A current
@@ -411,6 +428,7 @@ enum InstalledApps {
     }
 }
 
+#if !targetEnvironment(macCatalyst)
 extension ManagedSettingsStore.Name {
     static let locked = Self("Locked")
 }
@@ -419,11 +437,13 @@ extension DeviceActivityName {
     static let daily = Self("locked.daily")
     static let emergencyOverride = Self("locked.emergencyOverride")
 }
+#endif
 
 enum LockedReportContext {
     static let name = "LockedUsage"
 }
 
+#if !targetEnvironment(macCatalyst)
 enum ActivitySelectionStore {
     static let key = "familyActivitySelection"
 
@@ -463,6 +483,7 @@ enum ActivitySelectionStore {
         load().applicationTokens.subtracting(ExcludedApps.tokens)
     }
 }
+#endif
 
 enum UsageStore {
     static func loadAppCounts() -> [String: Int] {
@@ -477,13 +498,20 @@ enum UsageStore {
     /// derived from `LockedTokenStore`, never stored on their own, so the
     /// list can't drift from what SpringBoard is enforcing.
     static func loadLockedApps() -> [String] {
+        #if targetEnvironment(macCatalyst)
+        let raw = AppGroupStore.sharedString(forKey: lockedAppsKey)
+        return ExcludedApps.strippingExcluded(AppGroupStore.decodeJSON([String].self, from: raw) ?? [])
+        #else
         lockedNames(for: LockedTokenStore.load(), tokenMap: loadTokenMap())
+        #endif
     }
 
+    #if !targetEnvironment(macCatalyst)
     static func lockedNames(for tokens: Set<ApplicationToken>, tokenMap: [String: ApplicationToken]) -> [String] {
         let names = tokenMap.compactMap { name, token in tokens.contains(token) ? name : nil }
         return ExcludedApps.strippingExcluded(names).sorted()
     }
+    #endif
 
     /// Rewrites the cached `lockedApps` list from the shielded token set and
     /// returns it. Call after any change to `LockedTokenStore` or the token map.
@@ -524,6 +552,7 @@ enum UsageStore {
         }
     }
 
+    #if !targetEnvironment(macCatalyst)
     static func loadTokenMap() -> [String: ApplicationToken] {
         var map: [String: ApplicationToken] = [:]
         for (name, data) in loadTokens() {
@@ -553,6 +582,7 @@ enum UsageStore {
         }
         return nil
     }
+    #endif
 
     static func loadBundleIDs() -> [String: String] {
         AppGroupStore.decodeJSON([String: String].self, from: AppGroupStore.sharedString(forKey: "appBundleIDs")) ?? [:]
@@ -566,6 +596,7 @@ enum UsageStore {
         return !ExcludedApps.isBlankName(name) && !ExcludedApps.isExcludedName(name)
     }
 
+    #if !targetEnvironment(macCatalyst)
     static func saveUsage(
         appCounts: [String: Int],
         tokens: [String: Data],
@@ -610,13 +641,21 @@ enum UsageStore {
         ScreenTimeShields.sync()
         pingMainApp()
     }
+    #endif
 
     static func unlock(name: String) {
+        #if targetEnvironment(macCatalyst)
+        let names = loadLockedApps().filter { $0 != name }
+        if let raw = AppGroupStore.encodeJSON(names) {
+            AppGroupStore.setSharedString(raw, forKey: lockedAppsKey)
+        }
+        #else
         if let token = loadTokenMap()[name] ?? token(for: name) {
             LockedTokenStore.remove(token)
         }
         syncLockedNames()
         ScreenTimeShields.sync()
+        #endif
     }
 
     static func pingMainApp() {
@@ -630,6 +669,7 @@ enum UsageStore {
     }
 }
 
+#if !targetEnvironment(macCatalyst)
 struct UnnamedLockedApp: Identifiable, Hashable {
     let id: String
     let token: ApplicationToken
@@ -686,7 +726,9 @@ enum LockedTokenStore {
             .sorted { $0.id < $1.id }
     }
 }
+#endif
 
+#if !targetEnvironment(macCatalyst)
 enum ScreenTimeShields {
     static let applicationLimit = 50
 
@@ -817,6 +859,23 @@ enum ScreenTimeMonitor {
         DeviceActivityCenter().stopMonitoring([.emergencyOverride])
     }
 }
+#endif
+
+#if targetEnvironment(macCatalyst)
+enum ScreenTimeShields {
+    static func sync() {}
+    static func clear() {}
+}
+
+enum ScreenTimeMonitor {
+    static func startDaily() {}
+    static func startEmergencyOverrideWindow(until expiry: Date) -> Bool {
+        _ = expiry
+        return false
+    }
+    static func stopEmergencyOverrideWindow() {}
+}
+#endif
 
 enum EmergencyOverride {
     static let suiteName = AppGroupStore.suiteName
@@ -868,6 +927,7 @@ enum EmergencyOverride {
     }
 }
 
+#if !targetEnvironment(macCatalyst)
 func usageFilter(for selection: FamilyActivitySelection, days: Int = 7) -> DeviceActivityFilter {
     let calendar = Calendar.current
     let startOfToday = calendar.startOfDay(for: Date())
@@ -892,3 +952,4 @@ func usageFilter(for selection: FamilyActivitySelection, days: Int = 7) -> Devic
         categories: selection.categoryTokens
     )
 }
+#endif

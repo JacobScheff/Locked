@@ -371,7 +371,9 @@ struct LockedAppsSection: View {
 
     @State private var showUnlockAlert = false
     @State private var appToUnlock: String?
+    #if !targetEnvironment(macCatalyst)
     @State private var unnamedAppToUnlock: UnnamedLockedApp?
+    #endif
     @State private var unlockCost: Int = 0
 
     var body: some View {
@@ -381,7 +383,7 @@ struct LockedAppsSection: View {
                 icon: overrideActive ? "lock.open.fill" : "lock.fill"
             )
 
-            if visibleLockedApps.isEmpty && unnamedLockedTokens.isEmpty {
+            if visibleLockedApps.isEmpty && !hasUnnamedLockedTokens {
                 LockedCard {
                     HStack(spacing: 12) {
                         Image(systemName: "checkmark.seal.fill")
@@ -398,6 +400,7 @@ struct LockedAppsSection: View {
                 }
             } else {
                 VStack(spacing: 10) {
+                    #if !targetEnvironment(macCatalyst)
                     ForEach(unnamedLockedTokens) { item in
                         HStack(spacing: 12) {
                             UnnamedLockedAppLabel(app: item)
@@ -432,6 +435,7 @@ struct LockedAppsSection: View {
                         .padding(14)
                         .background(LockedCardBackground(cornerRadius: 18))
                     }
+                    #endif
                     ForEach(visibleLockedApps, id: \.self) { name in
                         HStack(spacing: 12) {
                             ManagedAppIcon(name: name, size: 40)
@@ -461,7 +465,9 @@ struct LockedAppsSection: View {
                                 Button {
                                     appToUnlock = name
                                     unlockCost = KeyUnlock.cost(forName: name)
+                                    #if !targetEnvironment(macCatalyst)
                                     unnamedAppToUnlock = nil
+                                    #endif
                                     showUnlockAlert = true
                                 } label: {
                                     Text("Unlock")
@@ -484,6 +490,7 @@ struct LockedAppsSection: View {
         .alert("Unlock App", isPresented: $showUnlockAlert, presenting: appToUnlock) { app in
             if keys >= Double(unlockCost) {
                 Button("Unlock (\(unlockCost) Keys)") {
+                    #if !targetEnvironment(macCatalyst)
                     if let unnamed = unnamedAppToUnlock {
                         _ = KeyUnlock.unlock(token: unnamed.token)
                         unnamedAppToUnlock = nil
@@ -493,6 +500,10 @@ struct LockedAppsSection: View {
                         Economy.spendKeys(Double(unlockCost))
                         UsageStore.unlock(name: app)
                     }
+                    #else
+                    Economy.spendKeys(Double(unlockCost))
+                    UsageStore.unlock(name: app)
+                    #endif
                     keys = Economy.keys()
                     lockedApps = UsageStore.syncLockedNames()
                     updateWidget()
@@ -510,8 +521,18 @@ struct LockedAppsSection: View {
         }
     }
 
+    #if !targetEnvironment(macCatalyst)
     private var unnamedLockedTokens: [UnnamedLockedApp] {
         LockedTokenStore.unnamedApps(excludingNames: visibleLockedApps)
+    }
+    #endif
+
+    private var hasUnnamedLockedTokens: Bool {
+        #if targetEnvironment(macCatalyst)
+        return false
+        #else
+        return !unnamedLockedTokens.isEmpty
+        #endif
     }
 
     private var visibleLockedApps: [String] {
