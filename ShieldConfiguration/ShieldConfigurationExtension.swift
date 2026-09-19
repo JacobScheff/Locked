@@ -5,11 +5,13 @@ import UIKit
 
 class ShieldConfigurationExtension: ShieldConfigurationDataSource {
     override func configuration(shielding application: Application) -> ManagedSettingsUI.ShieldConfiguration {
-        lockedConfiguration(for: application.token)
+        cacheName(of: application)
+        return lockedConfiguration(for: application.token)
     }
 
     override func configuration(shielding application: Application, in category: ActivityCategory) -> ManagedSettingsUI.ShieldConfiguration {
-        lockedConfiguration(for: application.token)
+        cacheName(of: application)
+        return lockedConfiguration(for: application.token)
     }
 
     override func configuration(shielding webDomain: WebDomain) -> ManagedSettingsUI.ShieldConfiguration {
@@ -18,6 +20,17 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
 
     override func configuration(shielding webDomain: WebDomain, in category: ActivityCategory) -> ManagedSettingsUI.ShieldConfiguration {
         lockedConfiguration(for: nil)
+    }
+
+    /// Shield extensions can read an app's name; the main app cannot. Save it
+    /// so Home and the unlock sheet can draw the name as ordinary text.
+    private func cacheName(of application: Application) {
+        guard let token = application.token,
+              let name = application.localizedDisplayName?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !name.isEmpty
+        else { return }
+        UsageStore.saveToken(token, for: name)
+        UsageStore.syncLockedNames()
     }
 
     private func lockedConfiguration(for token: ApplicationToken?) -> ManagedSettingsUI.ShieldConfiguration {

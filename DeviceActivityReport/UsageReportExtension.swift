@@ -32,21 +32,26 @@ struct UsageReport: DeviceActivityReportScene {
                         let rawName = applicationActivity.application.localizedDisplayName
                         let name = rawName?.trimmingCharacters(in: .whitespacesAndNewlines)
                         let seconds = Int(applicationActivity.totalActivityDuration.rounded())
-                        guard seconds > 0,
-                              InstalledApps.isPresent(bundleIdentifier: bundleID, displayName: name),
+                        guard InstalledApps.isPresent(bundleIdentifier: bundleID, displayName: name),
                               let name,
                               !ExcludedApps.isExcluded(bundleIdentifier: bundleID, displayName: name)
                         else {
                             continue
                         }
 
-                        secondsByApp[name, default: 0] += seconds
-                        if let bundleID {
-                            bundleIDsByApp[name] = bundleID
-                        }
+                        // Only this extension can read a token's name, so keep
+                        // the pairing even with no measurable time. A locked app
+                        // with no usage still has to draw its name.
                         if let token = applicationActivity.application.token,
                            let tokenData = TokenCoding.encode(token) {
                             tokensByApp[name] = tokenData
+                        }
+
+                        guard seconds > 0 else { continue }
+
+                        secondsByApp[name, default: 0] += seconds
+                        if let bundleID {
+                            bundleIDsByApp[name] = bundleID
                         }
                     }
                 }
