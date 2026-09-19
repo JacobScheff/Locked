@@ -72,9 +72,7 @@ struct HomeCoursesSection: View {
 
     private var coursesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            LockedSectionLabel(title: "Your courses", icon: "book.fill") {
-                courseActions
-            }
+            coursesHeader
 
             if visibleCourses.isEmpty {
                 emptyState
@@ -93,35 +91,61 @@ struct HomeCoursesSection: View {
         }
     }
 
-    private var courseActions: some View {
-        HStack(spacing: 2) {
+    private var coursesHeader: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "book.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text("Your courses")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .tracking(0.6)
+
             NavigationLink {
                 SourcesPage(courses: $courses, keys: $keys, karma: $karma)
             } label: {
-                Image(systemName: "link")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(Color.lockedIndigo)
-                    .frame(width: 32, height: 32)
-                    .contentShape(Rectangle())
+                courseHeaderButton {
+                    Image(systemName: "link")
+                        .font(.subheadline.weight(.bold))
+                }
             }
+            .buttonStyle(.plain)
             .accessibilityLabel("Sources")
+
+            Spacer(minLength: 12)
 
             if sources.canRefresh {
                 Button {
                     Task { await refresh() }
                 } label: {
-                    SpinningSyncIcon(
-                        spinning: sources.isRefreshing,
-                        color: .lockedIndigo,
-                        font: .body.weight(.bold)
-                    )
-                    .frame(width: 32, height: 32)
-                    .contentShape(Rectangle())
+                    courseHeaderButton {
+                        SpinningSyncIcon(
+                            spinning: sources.isRefreshing,
+                            color: .lockedIndigo,
+                            font: .subheadline.weight(.bold)
+                        )
+                    }
                 }
+                .buttonStyle(.plain)
                 .accessibilityLabel(sources.isRefreshing ? "Refreshing sources" : "Refresh sources")
                 .allowsHitTesting(!sources.isRefreshing)
             }
         }
+    }
+
+    private func courseHeaderButton<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .foregroundStyle(Color.lockedIndigo)
+            .frame(width: 34, height: 34)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.lockedIndigo.opacity(0.12))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(Color.lockedIndigo.opacity(0.22), lineWidth: 1)
+            )
     }
 
     private var emptyState: some View {
@@ -163,10 +187,18 @@ struct CompactWorkloadBar: View {
     let completed: Int
 
     var body: some View {
-        HStack(spacing: 0) {
-            metric("\(open)", "Open", .white)
-            metric("\(overdue)", "Overdue", overdue > 0 ? Color.lockedRose : .white)
-            metric("\(completed)", "Done", .lockedTeal)
+        VStack(spacing: 6) {
+            Text("Assignments")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.white.opacity(0.7))
+                .textCase(.uppercase)
+                .tracking(0.7)
+
+            HStack(spacing: 0) {
+                metric("\(open)", "Open", .white)
+                metric("\(overdue)", "Overdue", overdue > 0 ? Color.lockedRose : .white)
+                metric("\(completed)", "Done", .lockedTeal)
+            }
         }
         .padding(.vertical, 10)
         .padding(.horizontal, 4)
@@ -180,7 +212,7 @@ struct CompactWorkloadBar: View {
                 .shadow(color: Color.lockedIndigo.opacity(0.22), radius: 12, x: 0, y: 6)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(open) open, \(overdue) overdue, \(completed) done")
+        .accessibilityLabel("\(open) open assignments, \(overdue) overdue, \(completed) done")
     }
 
     private func metric(_ value: String, _ label: String, _ color: Color) -> some View {

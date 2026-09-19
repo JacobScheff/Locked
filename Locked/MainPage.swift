@@ -89,14 +89,20 @@ struct MainPage: View {
                     SettingsPage()
                 } label: {
                     Image(systemName: "gearshape.fill")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 36, height: 36)
-                        .background(Color.primary.opacity(0.06))
-                        .clipShape(Circle())
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.55, green: 0.56, blue: 0.78))
+                        .frame(width: 38, height: 38)
+                        .background {
+                            Circle()
+                                .fill(Color(uiColor: .systemBackground))
+                                .shadow(color: Color.black.opacity(0.10), radius: 5, y: 2)
+                        }
+                        .contentShape(Circle())
                 }
+                .buttonStyle(.plain)
                 .accessibilityLabel("Settings")
             }
+            .sharedBackgroundVisibility(.hidden)
         }
         .lockedRefreshable {
             refreshScreenTime()
@@ -176,12 +182,65 @@ struct MainPage: View {
     }
 }
 
-// MARK: - Unlock ledger
+// MARK: - Karma ring + unlock ledger
+
+struct HomeEconomyCard: View {
+    let karma: Double
+    let keys: Int
+    let cost: Int?
+
+    private var progress: Double {
+        min(max(karma / 100.0, 0.0), 1.0)
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 18) {
+            ZStack {
+                ProgressRing(
+                    progress: progress,
+                    lineWidth: 11,
+                    gradient: LinearGradient(
+                        colors: [.white, Color.lockedTeal],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    trackOpacity: 0.22
+                )
+                VStack(spacing: 0) {
+                    Text("\(Int(karma.rounded(.towardZero)))")
+                        .font(.lockedNumber(30))
+                        .foregroundStyle(.white)
+                        .contentTransition(.numericText())
+                    Text("KARMA")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .tracking(1)
+                }
+            }
+            .frame(width: 104, height: 104)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(Int(karma.rounded(.towardZero))) karma")
+
+            UnlockLedgerCard(keys: keys, cost: cost)
+        }
+        .padding(18)
+        .background {
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .fill(LockedTheme.heroGradient)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.16), lineWidth: 1)
+                )
+                .shadow(color: Color.lockedIndigo.opacity(0.32), radius: 22, x: 0, y: 10)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
 
 struct UnlockLedgerCard: View {
     let keys: Int
-    let karma: Int
     let cost: Int?
+    var showsCardBackground: Bool = false
     var leftover: Int? {
         guard let cost else { return nil }
         return keys - cost
@@ -189,64 +248,73 @@ struct UnlockLedgerCard: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ledgerRow("Keys", value: keys, color: .lockedAmber, signed: false)
-            ledgerRow("Karma", value: karma, color: .lockedViolet, signed: false)
+            ledgerRow("Keys", subtitle: nil, value: keys, color: .lockedAmber, signed: false)
             if let cost {
-                ledgerRow("Cost", value: -cost, color: .lockedRose, signed: true)
-                    .padding(.top, 2)
+                ledgerRow(
+                    "Unlock",
+                    subtitle: "until Sunday",
+                    value: -cost,
+                    color: .lockedRose,
+                    signed: true
+                )
+                .padding(.top, 2)
 
                 Rectangle()
                     .fill(Color.white.opacity(0.16))
                     .frame(height: 1)
-                    .padding(.vertical, 10)
+                    .padding(.vertical, 8)
 
-                ledgerRow("Left", value: leftover ?? 0, color: (leftover ?? 0) >= 0 ? .lockedTeal : .lockedRose, signed: false)
+                ledgerRow("Left", subtitle: nil, value: leftover ?? 0, color: (leftover ?? 0) >= 0 ? .lockedTeal : .lockedRose, signed: false)
             }
         }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(showsCardBackground ? 18 : 0)
         .background {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.10, green: 0.09, blue: 0.20),
-                            Color(red: 0.07, green: 0.06, blue: 0.14)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+            if showsCardBackground {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.10, green: 0.09, blue: 0.20),
+                                Color(red: 0.07, green: 0.06, blue: 0.14)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
                     )
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
-                )
-                .shadow(color: Color.black.opacity(0.22), radius: 18, x: 0, y: 10)
+            }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
     }
 
-    private func ledgerRow(_ label: String, value: Int, color: Color, signed: Bool) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(label)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(Color.white.opacity(0.58))
-            Spacer(minLength: 16)
+    private func ledgerRow(_ label: String, subtitle: String?, value: Int, color: Color, signed: Bool) -> some View {
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(label)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Color.white.opacity(0.62))
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(Color.white.opacity(0.45))
+                }
+            }
+            Spacer(minLength: 10)
             Text(UnlockLedgerCard.format(value, signed: signed))
-                .font(.lockedNumber(26))
+                .font(.lockedNumber(24))
                 .foregroundStyle(color)
                 .monospacedDigit()
                 .contentTransition(.numericText())
         }
-        .padding(.vertical, 5)
+        .padding(.vertical, 3)
     }
 
     private var accessibilityText: String {
         if let cost, let leftover {
-            return "\(keys) keys, \(karma) karma, unlock cost \(cost) keys, \(leftover) left"
+            return "\(keys) keys, \(cost) keys to unlock an app until Sunday, \(leftover) left"
         }
-        return "\(keys) keys, \(karma) karma"
+        return "\(keys) keys"
     }
 
     private static let formatter: NumberFormatter = {
@@ -293,9 +361,9 @@ struct LockedAppsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            UnlockLedgerCard(
+            HomeEconomyCard(
+                karma: karma,
                 keys: Int(keys.rounded(.towardZero)),
-                karma: Int(karma.rounded(.towardZero)),
                 cost: displayedCost
             )
 
@@ -358,7 +426,6 @@ struct LockedAppsSection: View {
             UnlockConfirmSheet(
                 pending: pending,
                 keys: Int(keys.rounded(.towardZero)),
-                karma: Int(karma.rounded(.towardZero)),
                 canAfford: keys >= Double(pending.cost),
                 onUnlock: { confirmUnlock(pending) },
                 onCancel: { pendingUnlock = nil }
@@ -423,10 +490,10 @@ private struct LockedGridItem: Identifiable {
         }
     }
 
-    var title: String {
+    var title: String? {
         switch kind {
         case .named(let name): return name
-        case .unnamed: return "App"
+        case .unnamed: return nil
         }
     }
 
@@ -467,7 +534,7 @@ private struct PendingUnlock: Identifiable {
     let cost: Int
 
     init(item: LockedGridItem) {
-        title = item.title
+        title = item.title ?? "Locked app"
         namedApp = item.namedApp
         unnamedApp = item.unnamedApp
         token = item.token
@@ -507,11 +574,16 @@ private struct LockedAppIconButton: View {
                         .offset(x: 4, y: 4)
                 }
 
-                Text(item.title)
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .frame(maxWidth: 72)
+                if let title = item.title {
+                    Text(title)
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .frame(maxWidth: 72)
+                } else {
+                    Color.clear
+                        .frame(width: 72, height: 13)
+                }
             }
             .frame(maxWidth: .infinity)
         }
@@ -534,8 +606,13 @@ private struct LockedAppIconButton: View {
                 Button("Unlock", systemImage: "key.fill", action: onUnlock)
             }
         }
-        .accessibilityLabel(overrideActive ? "\(item.title), released" : "\(item.title), locked")
+        .accessibilityLabel(accessibilityName)
         .accessibilityHint(overrideActive ? "Temporarily available" : "Unlocks this app for keys")
+    }
+
+    private var accessibilityName: String {
+        let name = item.title ?? "Locked app"
+        return overrideActive ? "\(name), released" : "\(name), locked"
     }
 
     @ViewBuilder
@@ -573,7 +650,6 @@ private struct HomeIconButtonStyle: ButtonStyle {
 private struct UnlockConfirmSheet: View {
     let pending: PendingUnlock
     let keys: Int
-    let karma: Int
     let canAfford: Bool
     var onUnlock: () -> Void
     var onCancel: () -> Void
@@ -602,7 +678,7 @@ private struct UnlockConfirmSheet: View {
                         .multilineTextAlignment(.center)
                 }
 
-                UnlockLedgerCard(keys: keys, karma: karma, cost: pending.cost)
+                UnlockLedgerCard(keys: keys, cost: pending.cost, showsCardBackground: true)
 
                 HStack(spacing: 10) {
                     Button(action: onCancel) {

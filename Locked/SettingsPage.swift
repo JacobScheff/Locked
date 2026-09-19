@@ -2,48 +2,18 @@ import SwiftUI
 import WidgetKit
 
 struct SettingsPage: View {
-    @EnvironmentObject private var screenTime: ScreenTimeManager
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
-                header
                 destinations
-                developerSection
             }
             .padding(.horizontal, 20)
+            .padding(.top, 8)
             .padding(.bottom, 36)
         }
         .background(LockedBackground())
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.large)
-    }
-
-    private var header: some View {
-        HStack(alignment: .center, spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(LockedTheme.karmaGradient)
-                Image(systemName: "gearshape.fill")
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(.white)
-            }
-            .frame(width: 52, height: 52)
-            .shadow(color: Color.lockedIndigo.opacity(0.28), radius: 10, y: 4)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Make Locked yours")
-                    .font(.headline.weight(.bold))
-                Text("Guide, archive, usage, and emergency each open their own page.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(LockedCardBackground(cornerRadius: 20))
-        .padding(.top, 4)
     }
 
     private var destinations: some View {
@@ -89,26 +59,6 @@ struct SettingsPage: View {
             }
         }
         .background(LockedCardBackground(cornerRadius: 22))
-    }
-
-    private var developerSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            LockedSectionLabel(title: "Developer", icon: "hammer.fill")
-            Button {
-                screenTime.simulateWeeklyLock()
-                WidgetCenter.shared.reloadTimelines(ofKind: "Locked_Widget")
-            } label: {
-                Label("Simulate weekly lock", systemImage: "lock.rotation")
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-            }
-            .buttonStyle(.bordered)
-            .tint(.lockedRose)
-            Text("Locks at least one managed app using Screen Time tokens, then refreshes usage so remaining names get their shields.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
     }
 }
 
@@ -188,30 +138,50 @@ struct UsageSettingsView: View {
     var emergencyOverrideUntil: Double = 0
 
     @State private var now = Date()
+    @State private var showUsage = false
 
     private var overrideActive: Bool {
         Date(timeIntervalSince1970: emergencyOverrideUntil) > now
     }
 
     var body: some View {
-        ScrollView {
-            AppCountsCard(
-                appCounts: $appCounts,
-                lockedApps: $lockedApps,
-                overrideActive: overrideActive
-            )
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
-            .padding(.bottom, 36)
+        Group {
+            if showUsage {
+                ScrollView {
+                    AppCountsCard(
+                        appCounts: $appCounts,
+                        lockedApps: $lockedApps,
+                        overrideActive: overrideActive
+                    )
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 36)
+                }
+            } else {
+                VStack(spacing: 12) {
+                    ProgressView()
+                    Text("Loading usage")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
         .background(LockedBackground())
         .navigationTitle("App usage")
         .navigationBarTitleDisplayMode(.large)
-        .onAppear { now = Date() }
+        .task {
+            now = Date()
+            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(160))
+            showUsage = true
+        }
     }
 }
 
 struct EmergencySettingsView: View {
+    @EnvironmentObject private var screenTime: ScreenTimeManager
+
     @AppStorage("emergencyOverrideUntil", store: .lockedGroup)
     var emergencyOverrideUntil: Double = 0
 
@@ -262,6 +232,8 @@ struct EmergencySettingsView: View {
                         presentedRitual = .glass
                     }
                 }
+
+                weeklyLockSection
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 36)
@@ -283,6 +255,26 @@ struct EmergencySettingsView: View {
             }
         }
         .onAppear { now = Date() }
+    }
+
+    private var weeklyLockSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            LockedSectionLabel(title: "Weekly lock", icon: "lock.rotation")
+            Button {
+                screenTime.simulateWeeklyLock()
+                reloadWidget()
+            } label: {
+                Label("Refresh weekly lock now", systemImage: "lock.rotation")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+            }
+            .buttonStyle(.bordered)
+            .tint(.lockedRose)
+            Text("Applies this week’s lock immediately and refreshes usage so remaining names get their shields.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 
     private func reloadWidget() {
