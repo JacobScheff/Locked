@@ -23,6 +23,7 @@ final class ScreenTimeManager: ObservableObject {
     @Published private(set) var isReady = false
     @Published private(set) var usageRevision = 0
     @Published private(set) var usageReportNonce = 0
+    @Published private(set) var lastAuthorizationError: String?
 
     private var didStartDailyMonitor = false
     private var launchedAt = Date()
@@ -51,6 +52,35 @@ final class ScreenTimeManager: ObservableObject {
         isAuthorized && hasSelection
     }
 
+    var canUseFamilyControls: Bool {
+        ScreenTimeAuthorizationAvailability.canRequest
+    }
+
+    var showsAuthorizationAction: Bool {
+        isAuthorized || canUseFamilyControls
+    }
+
+    var setupCardTitle: String {
+        if isAuthorized || canUseFamilyControls {
+            return "Finish setup"
+        }
+        return "Screen Time needs iPhone or iPad"
+    }
+
+    var setupCardDetail: String {
+        if isAuthorized {
+            return "Choose the apps Locked is allowed to track and lock. Settings, Phone, and other safety apps stay out automatically."
+        }
+        if let blocked = ScreenTimeAuthorizationAvailability.blockedReason {
+            return blocked
+        }
+        return "Allow Screen Time so Locked can track usage and lock apps for you."
+    }
+
+    var setupActionTitle: String {
+        isAuthorized ? "Choose Apps" : "Allow Screen Time"
+    }
+
     var reportDayKey: String {
         ISO8601DateFormatter().string(from: Calendar.current.startOfDay(for: Date()))
     }
@@ -71,13 +101,43 @@ final class ScreenTimeManager: ObservableObject {
         ScreenTimeShields.sync()
     }
 
+    func handleSetupAction() async {
+        if isAuthorized {
+            presentPicker()
+        } else {
+            await requestAuthorization()
+        }
+    }
+
     func requestAuthorization() async {
+        lastAuthorizationError = nil
+
+        guard ScreenTimeAuthorizationAvailability.canRequest else {
+            lastAuthorizationError = ScreenTimeAuthorizationAvailability.blockedReason
+            refreshStatus()
+            return
+        }
+
         do {
             try await AuthorizationCenter.shared.requestAuthorization(for: .individual)
         } catch {
-            print("Screen Time authorization failed: \(error)")
+            lastAuthorizationError = ScreenTimeAuthorizationAvailability.userMessage(for: error)
+            refreshStatus()
+            return
         }
+
         refreshStatus()
+
+        if !isAuthorized, lastAuthorizationError == nil {
+            switch authorizationStatus {
+            case .denied:
+                lastAuthorizationError = "Screen Time access was denied. Enable Locked under Settings → Screen Time."
+            case .notDetermined:
+                lastAuthorizationError = "Apple didn’t show a Screen Time prompt. Try again on an iPhone or iPad."
+            default:
+                break
+            }
+        }
     }
 
     func presentPicker() {
@@ -144,6 +204,55 @@ final class ScreenTimeManager: ObservableObject {
             nil,
             .deliverImmediately
         )
+    }
+}
+
+/// Family Controls individual authorization only works on a physical iPhone or iPad.
+/// Designed-for-iPad on a Mac and the Simulator never show the Screen Time prompt,
+/// so `requestAuthorization(for: .individual)` looks like a dead button.
+enum ScreenTimeAuthorizationAvailability {
+    static var canRequest: Bool {
+        #if targetEnvironment(simulator)
+        return false
+        #elseif os(macOS) || targetEnvironment(macCatalyst)
+        return false
+        #else
+        return !ProcessInfo.processInfo.isiOSAppOnMac
+        #endif
+    }
+
+    static var blockedReason: String? {
+        guard !canRequest else { return nil }
+        #if targetEnvironment(simulator)
+        return "Screen Time permission can’t be granted in the Simulator. Run Locked on an iPhone or iPad."
+        #else
+        return "Apple doesn’t let iPhone and iPad apps request Screen Time on a Mac. Open Locked on an iPhone or iPad and tap Allow Screen Time there."
+        #endif
+    }
+
+    static func userMessage(for error: Error) -> String {
+        if let familyError = error as? FamilyControlsError {
+            switch familyError {
+            case .unavailable:
+                return blockedReason ?? "Screen Time authorization isn’t available on this device. Use an iPhone or iPad."
+            case .restricted:
+                return "Screen Time is restricted on this device, so Locked can’t be authorized."
+            case .invalidAccountType:
+                return "This Apple Account can’t authorize Screen Time for Locked."
+            case .authorizationCanceled:
+                return "Screen Time permission was canceled. Tap Allow Screen Time to try again."
+            case .authorizationConflict:
+                return "Another Screen Time controller is already active on this device."
+            default:
+                break
+            }
+        }
+
+        let description = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !description.isEmpty {
+            return description
+        }
+        return blockedReason ?? "Screen Time authorization failed. Try again on an iPhone or iPad."
     }
 }
 

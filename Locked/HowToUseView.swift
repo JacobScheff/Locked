@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct HowToUseView: View {
+    @EnvironmentObject private var screenTime: ScreenTimeManager
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
@@ -40,11 +42,16 @@ struct HowToUseView: View {
 
                     StepCard(
                         stepNumber: 1,
-                        title: "Allow Screen Time",
-                        instructions: [
-                            "On Home, tap **Allow Screen Time** and approve Locked.",
-                            "This lets Locked read app usage and place a system lock screen on apps you haven’t earned back."
-                        ]
+                        title: screenTime.canUseFamilyControls ? "Allow Screen Time" : "Use iPhone or iPad",
+                        instructions: screenTime.canUseFamilyControls
+                            ? [
+                                "On Home, tap **Allow Screen Time** and approve Locked.",
+                                "This lets Locked read app usage and place a system lock screen on apps you haven’t earned back."
+                            ]
+                            : [
+                                "Apple doesn’t let this iOS app request Screen Time on a Mac or in the Simulator.",
+                                "Open Locked on an iPhone or iPad, tap **Allow Screen Time**, and approve it there. Usage and locks stay on that device."
+                            ]
                     )
 
                     StepCard(
@@ -195,28 +202,32 @@ private struct ScreenTimeGuideActions: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            Button {
-                if screenTime.isAuthorized {
-                    screenTime.presentPicker()
-                } else {
-                    Task { await screenTime.requestAuthorization() }
+            if screenTime.showsAuthorizationAction {
+                Button {
+                    Task { await screenTime.handleSetupAction() }
+                } label: {
+                    Label(
+                        screenTime.setupActionTitle,
+                        systemImage: screenTime.isAuthorized ? "apps.iphone" : "checkmark.shield.fill"
+                    )
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .contentShape(Rectangle())
                 }
-            } label: {
-                Label(
-                    screenTime.isAuthorized ? "Choose apps" : "Allow Screen Time",
-                    systemImage: screenTime.isAuthorized ? "apps.iphone" : "checkmark.shield.fill"
-                )
-                .font(.subheadline.weight(.semibold))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
+                .buttonStyle(.borderedProminent)
+                .tint(.lockedIndigo)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.lockedIndigo)
 
             if screenTime.isAuthorized && screenTime.hasSelection {
                 Text("Screen Time is connected. You can change the app list any time.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            } else if let error = screenTime.lastAuthorizationError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             }
         }
     }

@@ -325,33 +325,37 @@ private struct ScreenTimeSetupCard: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Finish setup")
+                    Text(manager.setupCardTitle)
                         .font(.headline)
-                    Text(manager.isAuthorized
-                         ? "Choose the apps Locked is allowed to track and lock. Settings, Phone, and other safety apps stay out automatically."
-                         : "Allow Screen Time so Locked can track usage and lock apps for you.")
+                    Text(manager.setupCardDetail)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
-            Button {
-                if manager.isAuthorized {
-                    manager.presentPicker()
-                } else {
-                    Task { await manager.requestAuthorization() }
+            if manager.showsAuthorizationAction {
+                Button {
+                    Task { await manager.handleSetupAction() }
+                } label: {
+                    Text(manager.setupActionTitle)
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(LockedTheme.karmaGradient)
+                        .foregroundStyle(.white)
+                        .clipShape(Capsule())
+                        .contentShape(Capsule())
                 }
-            } label: {
-                Text(manager.isAuthorized ? "Choose Apps" : "Allow Screen Time")
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(LockedTheme.karmaGradient)
-                    .foregroundStyle(.white)
-                    .clipShape(Capsule())
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
+
+            if let error = manager.lastAuthorizationError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(16)
         .background(LockedCardBackground())
