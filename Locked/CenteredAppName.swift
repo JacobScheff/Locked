@@ -2,9 +2,13 @@ import FamilyControls
 import ManagedSettings
 import SwiftUI
 
-/// Screen Time `Label` is a remote view. It ignores font and alignment, and
-/// `fixedSize` collapses it to a sliver that clips the name. Give it a real
-/// width so the full name can draw, then center that box.
+/// Names we know are drawn as ordinary centered text.
+///
+/// Screen Time's `Label` is the fallback for a token whose name we have never
+/// been told. It draws out of process: it ignores font and alignment, reports
+/// a placeholder size to `fixedSize`, and always starts its text at the
+/// leading edge of whatever box it gets. It cannot be centered, so the box is
+/// sized close to a typical app name to keep it near the middle.
 struct CenteredAppName: View {
     enum Style {
         case grid
@@ -28,12 +32,9 @@ struct CenteredAppName: View {
         }
     }
 
-    private var nameBoxWidth: CGFloat {
-        switch style {
-        case .grid: return 80
-        case .sheet: return 120
-        }
-    }
+    /// The remote label draws at body size whatever font it is given, so both
+    /// places need the same box.
+    private let fallbackBoxWidth: CGFloat = 64
 
     var body: some View {
         Group {
@@ -46,8 +47,7 @@ struct CenteredAppName: View {
             } else if let token {
                 Label(token)
                     .labelStyle(.titleOnly)
-                    .font(font)
-                    .frame(width: nameBoxWidth)
+                    .frame(width: fallbackBoxWidth)
             } else {
                 Text("Locked app")
                     .font(font)
