@@ -423,14 +423,14 @@ struct LockedAppsSection: View {
                             item: item,
                             index: index,
                             overrideActive: overrideActive,
-                            onHighlight: { highlighted in
+                            onHighlight: { selected, highlighted in
                                 withAnimation(.snappy(duration: 0.22)) {
-                                    previewCost = highlighted ? item.cost : nil
+                                    previewCost = highlighted ? selected.cost : nil
                                 }
                             },
-                            onUnlock: {
-                                previewCost = item.cost
-                                pendingUnlock = PendingUnlock(item: item)
+                            onUnlock: { selected in
+                                previewCost = selected.cost
+                                pendingUnlock = PendingUnlock(item: selected)
                             }
                         )
                     }
@@ -450,6 +450,7 @@ struct LockedAppsSection: View {
                 onUnlock: { confirmUnlock(pending) },
                 onCancel: { pendingUnlock = nil }
             )
+            .id(pending.id)
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
             .presentationCornerRadius(28)
@@ -546,7 +547,7 @@ private struct LockedGridItem: Identifiable {
 }
 
 private struct PendingUnlock: Identifiable {
-    let id = UUID()
+    let id: String
     let title: String
     let namedApp: String?
     let unnamedApp: UnnamedLockedApp?
@@ -554,18 +555,31 @@ private struct PendingUnlock: Identifiable {
     let cost: Int
 
     init(item: LockedGridItem) {
-        if let name = item.title {
-            title = name
-        } else if let token = item.token,
-                  let mapped = UsageStore.loadTokenMap().first(where: { $0.value == token })?.key {
-            title = mapped
-        } else {
-            title = item.namedApp ?? "Locked app"
-        }
+        // A fresh id each presentation so the sheet cannot reuse the previous
+        // Screen Time Label / remote view for a different app.
+        id = "\(item.id)-\(UUID().uuidString)"
+        title = Self.resolvedTitle(for: item)
         namedApp = item.namedApp
         unnamedApp = item.unnamedApp
         token = item.token
         cost = item.cost
+    }
+
+    var hasResolvedName: Bool {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !trimmed.isEmpty && trimmed != "Locked app"
+    }
+
+    static func resolvedTitle(for item: LockedGridItem) -> String {
+        let candidates = [item.namedApp, item.title, item.token.flatMap(UsageStore.displayName(for:))]
+        for name in candidates {
+            guard let name else { continue }
+            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty && trimmed != "Locked app" {
+                return trimmed
+            }
+        }
+        return "Locked app"
     }
 }
 
@@ -573,8 +587,8 @@ private struct LockedAppIconButton: View {
     let item: LockedGridItem
     let index: Int
     var overrideActive: Bool
-    var onHighlight: (Bool) -> Void
-    var onUnlock: () -> Void
+    var onHighlight: (LockedGridItem, Bool) -> Void
+    var onUnlock: (LockedGridItem) -> Void
 
     @State private var appeared = false
     @State private var lift: CGFloat = 0
@@ -584,16 +598,16 @@ private struct LockedAppIconButton: View {
     var body: some View {
         Button {
             guard !overrideActive else { return }
-            onUnlock()
+            onUnlock(item)
         } label: {
-            VStack(alignment: .center, spacing: 2) {
-                floatingIcon
-                    .offset(y: lift)
-                CenteredAppName(token: item.token, title: item.title, style: .grid)
-            }
-            .frame(maxWidth: .infinity)
+            floatingIcon
+                .offset(y: lift)
+                .frame(maxWidth: .infinity)
         }
-        .buttonStyle(HomeIconButtonStyle(onPressed: onHighlight))
+        .buttonStyle(HomeIconButtonStyle(onPressed: { pressed in
+            onHighlight(item, pressed)
+        }))
+        .id(item.id)
         .opacity(appeared ? 1 : 0)
         .offset(y: appeared ? 0 : 16)
         .scaleEffect(appeared ? 1 : 0.84)
@@ -634,7 +648,7 @@ private struct LockedAppIconButton: View {
     }
 
     private var accessibilityName: String {
-        let name = item.title ?? "Locked app"
+        let name = PendingUnlock.resolvedTitle(for: item)
         return overrideActive ? "\(name), released" : "\(name), locked"
     }
 
@@ -644,6 +658,7 @@ private struct LockedAppIconButton: View {
             Label(token)
                 .labelStyle(.iconOnly)
                 .scaleEffect(iconSize / 32)
+                .id(TokenCoding.id(for: token))
         } else if let name = item.namedApp {
             AppIconView(appName: name)
         } else {
@@ -691,7 +706,7 @@ private struct UnlockConfirmSheet: View {
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .shadow(color: Color.black.opacity(0.16), radius: 8, y: 4)
 
-                    CenteredAppName(token: pending.token, title: pending.title, style: .sheet)
+                    confirmTitle
                     Text(canAfford
                          ? "Spend keys to unlock this app until Sunday."
                          : "Finish assignments to earn more keys.")
@@ -733,11 +748,32 @@ private struct UnlockConfirmSheet: View {
     }
 
     @ViewBuilder
+    private var confirmTitle: some View {
+        if pending.hasResolvedName {
+            Text(pending.title)
+                .font(.title3.weight(.bold))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity)
+        } else if let token = pending.token {
+            Label(token)
+                .labelStyle(.titleOnly)
+                .multilineTextAlignment(.center)
+                .id(TokenCoding.id(for: token))
+                .frame(maxWidth: .infinity)
+        } else {
+            Text("Locked app")
+                .font(.title3.weight(.bold))
+        }
+    }
+
+    @ViewBuilder
     private var confirmIcon: some View {
         if let token = pending.token {
             Label(token)
                 .labelStyle(.iconOnly)
                 .scaleEffect(72.0 / 32.0)
+                .id(TokenCoding.id(for: token))
         } else if let name = pending.namedApp {
             AppIconView(appName: name)
         } else {

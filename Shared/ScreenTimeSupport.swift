@@ -311,7 +311,7 @@ enum KeyUnlock {
     }
 
     static func cost(for token: ApplicationToken) -> Int {
-        let name = UsageStore.loadTokenMap().first { $0.value == token }?.key
+        let name = UsageStore.displayName(for: token)
         return cost(
             usageSeconds: name.flatMap { UsageStore.loadAppCounts()[$0] } ?? 0,
             lockedCount: LockedTokenStore.load().count
@@ -550,6 +550,12 @@ enum UsageStore {
             return token
         }
         return nil
+    }
+
+    /// Full display name cached by Screen Time extensions. The main app cannot
+    /// read a token's name itself.
+    static func displayName(for token: ApplicationToken) -> String? {
+        loadTokenMap().first { $0.value == token }?.key
     }
 
     static func loadBundleIDs() -> [String: String] {
