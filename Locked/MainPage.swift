@@ -577,6 +577,7 @@ private struct LockedAppIconButton: View {
     var onUnlock: () -> Void
 
     @State private var appeared = false
+    @State private var lift: CGFloat = 0
 
     private let iconSize: CGFloat = 64
 
@@ -587,6 +588,7 @@ private struct LockedAppIconButton: View {
         } label: {
             VStack(spacing: 5) {
                 floatingIcon
+                    .offset(y: lift)
                 titleView
             }
             .frame(maxWidth: .infinity)
@@ -595,10 +597,16 @@ private struct LockedAppIconButton: View {
         .opacity(appeared ? 1 : 0)
         .offset(y: appeared ? 0 : 16)
         .scaleEffect(appeared ? 1 : 0.84)
-        .modifier(HomeIconFloat(phase: Double(index) * 0.85, active: appeared))
         .onAppear {
             withAnimation(.spring(response: 0.52, dampingFraction: 0.7).delay(Double(index) * 0.045)) {
                 appeared = true
+            }
+            withAnimation(
+                .easeInOut(duration: 2.8)
+                .repeatForever(autoreverses: true)
+                .delay(0.35 + Double(index) * 0.16)
+            ) {
+                lift = -3
             }
         }
         .accessibilityLabel(accessibilityName)
@@ -622,8 +630,7 @@ private struct LockedAppIconButton: View {
                 .offset(x: 3, y: 3)
         }
         .compositingGroup()
-        .shadow(color: Color.black.opacity(0.22), radius: 10, x: 0, y: 6)
-        .shadow(color: Color.lockedIndigo.opacity(0.12), radius: 16, x: 0, y: 8)
+        .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 6)
     }
 
     @ViewBuilder
@@ -664,20 +671,6 @@ private struct LockedAppIconButton: View {
                     Image(systemName: "app.fill")
                         .foregroundStyle(Color.lockedIndigo)
                 }
-        }
-    }
-}
-
-private struct HomeIconFloat: ViewModifier {
-    let phase: Double
-    var active: Bool
-
-    func body(content: Content) -> some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: !active)) { context in
-            let t = context.date.timeIntervalSinceReferenceDate
-            let lift = active ? sin(t * 1.05 + phase) * 2.4 : 0
-            content
-                .offset(y: lift)
         }
     }
 }
