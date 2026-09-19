@@ -9,6 +9,19 @@ final class UsagePrefetch: ObservableObject {
     @Published private(set) var isReady = false
     @Published private(set) var shouldMount = false
 
+    private var didSchedule = false
+
+    /// Starts after Home has settled so Settings and the first paint stay light.
+    func schedule(after delay: Duration = .milliseconds(900)) {
+        guard !didSchedule else { return }
+        didSchedule = true
+        Task { @MainActor in
+            try? await Task.sleep(for: delay)
+            await Task.yield()
+            start()
+        }
+    }
+
     func start() {
         if !shouldMount {
             shouldMount = true
@@ -22,8 +35,10 @@ final class UsagePrefetch: ObservableObject {
     }
 }
 
-struct SettingsPage: View {
-    @ObservedObject private var usagePrefetch = UsagePrefetch.shared
+/// Hidden host that warms FamilyControls labels for App usage.
+/// Keep this off Settings so the hub push stays instant.
+struct UsagePrefetchHost: View {
+    @ObservedObject private var prefetch = UsagePrefetch.shared
 
     @AppStorage("appCounts", store: .lockedGroup)
     var appCounts: [String: Int] = [:]
@@ -41,6 +56,29 @@ struct SettingsPage: View {
     }
 
     var body: some View {
+        Group {
+            if prefetch.shouldMount {
+                AppCountsCard(
+                    appCounts: $appCounts,
+                    lockedApps: $lockedApps,
+                    overrideActive: overrideActive
+                )
+                .frame(width: 320)
+                .opacity(0.001)
+                .offset(x: -1200)
+                .onAppear {
+                    prefetch.markReady()
+                }
+            }
+        }
+        .frame(width: 0, height: 0)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+struct SettingsPage: View {
+    var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
                 destinations
@@ -50,32 +88,8 @@ struct SettingsPage: View {
             .padding(.bottom, 36)
         }
         .background(LockedBackground())
-        .overlay {
-            if usagePrefetch.shouldMount {
-                AppCountsCard(
-                    appCounts: $appCounts,
-                    lockedApps: $lockedApps,
-                    overrideActive: overrideActive
-                )
-                .padding(.horizontal, 20)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .opacity(0.001)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-                .onAppear {
-                    usagePrefetch.markReady()
-                }
-            }
-        }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.large)
-        .onAppear {
-            now = Date()
-        }
-        .task {
-            await Task.yield()
-            usagePrefetch.start()
-        }
     }
 
     private var destinations: some View {

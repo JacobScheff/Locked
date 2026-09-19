@@ -21,6 +21,8 @@ struct ContentView: View {
                     )
                 }
 
+                UsagePrefetchHost()
+
                 NavigationStack {
                     MainPage()
                 }
@@ -43,11 +45,14 @@ struct ContentView: View {
                 canMountInterface = true
                 if screenTime.isReady {
                     canStartUsageReport = true
+                    UsagePrefetch.shared.schedule()
                 }
             }
         }
         .onChange(of: screenTime.isReady) { _, ready in
-            guard ready, !canStartUsageReport else { return }
+            guard ready else { return }
+            UsagePrefetch.shared.schedule()
+            guard !canStartUsageReport else { return }
             // Start the hidden Screen Time report after the first screen is up
             // so its remote view does not hitch the opening fade.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
