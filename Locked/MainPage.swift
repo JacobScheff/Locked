@@ -5,13 +5,11 @@ import WidgetKit
 
 struct MainPage: View {
     @EnvironmentObject private var screenTime: ScreenTimeManager
+    @EnvironmentObject private var sources: ExternalSourceController
     @Environment(\.scenePhase) private var scenePhase
 
     @AppStorage("screentime", store: .lockedGroup)
     var screentime: Int = 0
-    var days: Int { screentime / 86400 }
-    var hours: Int { (screentime % 86400) / 3600 }
-    var minutes: Int { (screentime % 3600) / 60 }
 
     @AppStorage("appCounts", store: .lockedGroup)
     var appCounts: [String: Int] = [:]
@@ -31,27 +29,19 @@ struct MainPage: View {
     @AppStorage("emergencyOverrideUntil", store: .lockedGroup)
     var emergencyOverrideUntil: Double = 0
 
-    @AppStorage("innerVaultUnlockedUntil", store: .lockedGroup)
-    var innerVaultUnlockedUntil: Double = 0
-
-    @State private var presentedRitual: HomeRitual?
     @State private var now = Date()
+    @State private var sourceError: String?
 
     private var overrideActive: Bool {
         Date(timeIntervalSince1970: emergencyOverrideUntil) > now
     }
 
-    private var vaultUnlocked: Bool {
-        overrideActive && innerVaultUnlockedUntil > 0 && abs(innerVaultUnlockedUntil - emergencyOverrideUntil) < 0.5
-    }
-
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                header
-
+            VStack(alignment: .leading, spacing: 22) {
                 if overrideActive {
                     OverrideStatusBanner(
+                        compact: true,
                         onRestore: {
                             now = Date()
                             updateWidget()
@@ -64,15 +54,6 @@ struct MainPage: View {
                     )
                 }
 
-                StatusHero(
-                    karma: karma,
-                    keys: keys,
-                    days: days,
-                    hours: hours,
-                    minutes: minutes,
-                    appCount: visibleAppCounts.count
-                )
-
                 if screenTime.isReady && screenTime.needsSetup {
                     ScreenTimeSetupCard(manager: screenTime)
                 }
@@ -80,46 +61,61 @@ struct MainPage: View {
                 LockedAppsSection(
                     lockedApps: $lockedApps,
                     keys: $keys,
+                    karma: $karma,
                     appCounts: $appCounts,
                     overrideActive: overrideActive,
                     updateWidget: updateWidget
                 )
 
-                UpcomingPreviewSection(courses: $courses, limit: 3)
-
-                AppCountsCard(
-                    appCounts: $appCounts,
-                    lockedApps: $lockedApps,
-                    overrideActive: overrideActive
+                HomeCoursesSection(
+                    courses: $courses,
+                    keys: $keys,
+                    karma: $karma,
+                    refresh: refreshSources
                 )
-
-                if overrideActive {
-                    VaultSealCard(unlocked: vaultUnlocked) {
-                        presentedRitual = .vault
-                    }
-                } else {
-                    EmergencySealCard {
-                        presentedRitual = .glass
-                    }
-                }
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 36)
         }
         .background(LockedBackground())
-        .toolbar(.hidden, for: .navigationBar)
-        .fullScreenCover(item: $presentedRitual) { ritual in
-            switch ritual {
-            case .glass:
-                BreakGlassView {
-                    now = Date()
-                    updateWidget()
-                }
-            case .vault:
-                InnerVaultView {
-                    updateWidget()
-                }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text("Locked")
+                    .font(.headline.weight(.bold))
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink {
+                    SettingsPage()
+                } label: {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.50, green: 0.40, blue: 0.86))
+                        .frame(width: 38, height: 38)
+                        .background {
+                            Circle()
+                                .fill(Color(uiColor: .systemBackground))
+                                .shadow(color: Color.black.opacity(0.10), radius: 5, y: 2)
+                        }
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Settings")
+            }
+            .sharedBackgroundVisibility(.hidden)
+        }
+        .lockedRefreshable {
+            refreshScreenTime()
+            guard sources.canRefresh, !sources.isRefreshing else { return }
+            await refreshSources()
+        }
+        .alert("Couldn’t refresh", isPresented: Binding(
+            get: { sourceError != nil },
+            set: { if !$0 { sourceError = nil } }
+        )) {
+            Button("OK", role: .cancel) { sourceError = nil }
+        } message: {
+            Text(sourceError ?? "")
         }
         .onAppear {
             now = Date()
@@ -141,8 +137,18 @@ struct MainPage: View {
         }
     }
 
-    private var visibleAppCounts: [String: Int] {
-        ExcludedApps.strippingExcluded(appCounts)
+    private func refreshSources() async {
+        do {
+            let result = try await sources.refreshConnectedSources(courses: courses, keys: keys, karma: karma)
+            withAnimation {
+                courses = result.courses
+                keys = result.keys
+                karma = result.karma
+            }
+        } catch {
+            if ExternalSourceController.isCancellation(error) { return }
+            sourceError = error.localizedDescription
+        }
     }
 
     private func refreshScreenTime() {
@@ -171,145 +177,582 @@ struct MainPage: View {
         }
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(Greeting.current)
-                .font(.lockedTitle(32))
-                .foregroundStyle(.primary)
-            Text(overrideActive ? "Emergency override is active" : WeeklyLock.subtitle)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(overrideActive ? Color.hazardRed : Color.secondary)
-        }
-    }
-
     func updateWidget() {
         WidgetCenter.shared.reloadTimelines(ofKind: "Locked_Widget")
     }
 }
 
-private enum HomeRitual: String, Identifiable {
-    case glass
-    case vault
+// MARK: - Karma ring + unlock ledger
 
-    var id: String { rawValue }
-}
-
-// MARK: - Header / Hero
-
-private struct StatusHero: View {
+struct HomeEconomyCard: View {
     let karma: Double
-    let keys: Double
-    let days: Int
-    let hours: Int
-    let minutes: Int
-    let appCount: Int
+    let keys: Int
+    let cost: Int?
+    var overrideActive: Bool = false
+    var appCount: Int = 0
 
     private var progress: Double {
         min(max(karma / 100.0, 0.0), 1.0)
     }
 
     private var copy: (headline: String, detail: String) {
-        karmaStatusCopy(karma: karma, appCount: appCount)
+        if overrideActive {
+            return ("Temporarily open", "Locks return when the seal repairs.")
+        }
+        return karmaStatusCopy(karma: karma, appCount: appCount)
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack(alignment: .center, spacing: 20) {
-                ZStack {
-                    ProgressRing(
-                        progress: progress,
-                        lineWidth: 11,
-                        gradient: LinearGradient(
-                            colors: [.white, Color.lockedTeal],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        trackOpacity: 0.22
-                    )
-                    VStack(spacing: 0) {
-                        Text("\(Int(karma))")
-                            .font(.lockedNumber(34))
-                            .foregroundStyle(.white)
-                            .contentTransition(.numericText())
-                        Text("KARMA")
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.7))
-                            .tracking(1)
-                    }
-                }
-                .frame(width: 112, height: 112)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(copy.headline)
-                        .font(.title3.weight(.bold))
+        HStack(alignment: .center, spacing: 18) {
+            ZStack {
+                ProgressRing(
+                    progress: progress,
+                    lineWidth: 11,
+                    gradient: Color.lockedTeal.gradient,
+                    trackOpacity: 0.22
+                )
+                VStack(spacing: 0) {
+                    Text("\(Int(karma.rounded(.towardZero)))")
+                        .font(.lockedNumber(30))
                         .foregroundStyle(.white)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(copy.detail)
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.78))
-                        .fixedSize(horizontal: false, vertical: true)
+                        .contentTransition(.numericText())
+                    Text("KARMA")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .tracking(1)
                 }
             }
+            .frame(width: 104, height: 104)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(Int(karma.rounded(.towardZero))) karma")
 
-            HStack(spacing: 10) {
-                HeroMetric(
-                    icon: "key.fill",
-                    value: "\(Int(keys))",
-                    label: "Keys",
-                    iconColor: .lockedAmber
-                )
-                HeroMetric(
-                    icon: "hourglass",
-                    value: formatScreenTime(days: days, hours: hours, minutes: minutes),
-                    label: "Screen time",
-                    iconColor: .lockedTeal
-                )
+            if cost != nil {
+                UnlockLedgerCard(keys: keys, cost: cost)
+            } else {
+                clearStatus
             }
         }
-        .padding(22)
+        .padding(18)
         .background {
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
                 .fill(LockedTheme.heroGradient)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
                         .strokeBorder(Color.white.opacity(0.16), lineWidth: 1)
                 )
-                .shadow(color: Color.lockedIndigo.opacity(0.35), radius: 24, x: 0, y: 12)
+                .shadow(color: Color.lockedIndigo.opacity(0.32), radius: 22, x: 0, y: 10)
         }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var clearStatus: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(copy.headline)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(copy.detail)
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.75))
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 8) {
+                Image(systemName: "key.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.lockedAmber)
+                Text(UnlockLedgerCard.format(keys, signed: false))
+                    .font(.lockedNumber(20))
+                    .foregroundStyle(.white)
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                Text("Keys")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.65))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.white.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(copy.headline). \(copy.detail). \(keys) keys")
     }
 }
 
-private struct HeroMetric: View {
-    let icon: String
-    let value: String
-    let label: String
-    let iconColor: Color
+struct UnlockLedgerCard: View {
+    let keys: Int
+    let cost: Int?
+    var showsCardBackground: Bool = false
+    var leftover: Int? {
+        guard let cost else { return nil }
+        return keys - cost
+    }
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(iconColor)
-                .frame(width: 32, height: 32)
-                .background(Color.white.opacity(0.14))
-                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-            VStack(alignment: .leading, spacing: 1) {
-                Text(value)
-                    .font(.lockedNumber(18))
-                    .foregroundStyle(.white)
-                    .contentTransition(.numericText())
-                Text(label)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.white.opacity(0.7))
+        VStack(spacing: 0) {
+            ledgerRow("Keys", subtitle: nil, value: keys, color: .lockedAmber, signed: false)
+            if let cost {
+                ledgerRow(
+                    "Unlock",
+                    subtitle: "until Sunday",
+                    value: -cost,
+                    color: .lockedRose,
+                    signed: true
+                )
+                .padding(.top, 2)
+
+                Rectangle()
+                    .fill(Color.white.opacity(0.16))
+                    .frame(height: 1)
+                    .padding(.vertical, 8)
+
+                ledgerRow("Left", subtitle: nil, value: leftover ?? 0, color: (leftover ?? 0) >= 0 ? .lockedTeal : .lockedRose, signed: false)
             }
-            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(Color.white.opacity(0.12))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(showsCardBackground ? 18 : 0)
+        .background {
+            if showsCardBackground {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color(red: 0.10, green: 0.09, blue: 0.20).gradient)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText)
+    }
+
+    private func ledgerRow(_ label: String, subtitle: String?, value: Int, color: Color, signed: Bool) -> some View {
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(label)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Color.white.opacity(0.62))
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(Color.white.opacity(0.45))
+                }
+            }
+            Spacer(minLength: 10)
+            Text(UnlockLedgerCard.format(value, signed: signed))
+                .font(.lockedNumber(24))
+                .foregroundStyle(color)
+                .monospacedDigit()
+                .contentTransition(.numericText())
+        }
+        .padding(.vertical, 3)
+    }
+
+    private var accessibilityText: String {
+        if let cost, let leftover {
+            return "\(keys) keys, \(cost) keys to unlock an app until Sunday, \(leftover) left"
+        }
+        return "\(keys) keys"
+    }
+
+    private static let formatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.groupingSeparator = ","
+        return formatter
+    }()
+
+    static func format(_ value: Int, signed: Bool) -> String {
+        let formatted = formatter.string(from: NSNumber(value: abs(value))) ?? "\(abs(value))"
+        if signed {
+            return value < 0 ? "−\(formatted)" : value > 0 ? "+\(formatted)" : formatted
+        }
+        return value < 0 ? "−\(formatted)" : formatted
     }
 }
+
+// MARK: - Locked apps
+
+struct LockedAppsSection: View {
+    @Binding var lockedApps: [String]
+    @Binding var keys: Double
+    @Binding var karma: Double
+    @Binding var appCounts: [String: Int]
+    var overrideActive: Bool
+    var updateWidget: () -> Void
+
+    @State private var pendingUnlock: PendingUnlock?
+    @State private var previewCost: Int?
+
+    private var gridItems: [LockedGridItem] {
+        let named = visibleLockedApps.map { LockedGridItem.named($0) }
+        let unnamed = unnamedLockedTokens.map { LockedGridItem.unnamed($0) }
+        return named + unnamed
+    }
+
+    private var displayedCost: Int? {
+        if overrideActive || gridItems.isEmpty { return nil }
+        if let pendingUnlock { return pendingUnlock.cost }
+        if let previewCost { return previewCost }
+        return gridItems.first?.cost
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HomeEconomyCard(
+                karma: karma,
+                keys: Int(keys.rounded(.towardZero)),
+                cost: displayedCost,
+                overrideActive: overrideActive,
+                appCount: ExcludedApps.strippingExcluded(appCounts).count
+            )
+
+            if !gridItems.isEmpty {
+                LockedSectionLabel(
+                    title: overrideActive ? "Temporarily released" : "Locked apps",
+                    icon: overrideActive ? "lock.open.fill" : "lock.fill"
+                ) {
+                    if !overrideActive {
+                        Text("Tap to unlock")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(), spacing: 20), count: 4),
+                    spacing: 20
+                ) {
+                    ForEach(Array(gridItems.enumerated()), id: \.element.id) { index, item in
+                        LockedAppIconButton(
+                            item: item,
+                            index: index,
+                            overrideActive: overrideActive,
+                            onHighlight: { highlighted in
+                                withAnimation(.snappy(duration: 0.22)) {
+                                    previewCost = highlighted ? item.cost : nil
+                                }
+                            },
+                            onUnlock: {
+                                previewCost = item.cost
+                                pendingUnlock = PendingUnlock(item: item)
+                            }
+                        )
+                    }
+                }
+                .padding(.horizontal, 2)
+                .padding(.top, 4)
+                .padding(.bottom, 8)
+            }
+        }
+        .sheet(item: $pendingUnlock, onDismiss: {
+            previewCost = nil
+        }) { pending in
+            UnlockConfirmSheet(
+                pending: pending,
+                keys: Int(keys.rounded(.towardZero)),
+                canAfford: keys >= Double(pending.cost),
+                onUnlock: { confirmUnlock(pending) },
+                onCancel: { pendingUnlock = nil }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .presentationCornerRadius(28)
+        }
+        .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.8), trigger: pendingUnlock?.id)
+    }
+
+    private func confirmUnlock(_ pending: PendingUnlock) {
+        if let unnamed = pending.unnamedApp {
+            _ = KeyUnlock.unlock(token: unnamed.token)
+        } else if let name = pending.namedApp, let token = UsageStore.token(for: name) {
+            _ = KeyUnlock.unlock(token: token)
+        } else if let name = pending.namedApp {
+            Economy.spendKeys(Double(pending.cost))
+            UsageStore.unlock(name: name)
+        }
+        keys = Economy.keys()
+        karma = Economy.karma()
+        lockedApps = UsageStore.syncLockedNames()
+        pendingUnlock = nil
+        previewCost = nil
+        updateWidget()
+    }
+
+    private var unnamedLockedTokens: [UnnamedLockedApp] {
+        LockedTokenStore.unnamedApps(excludingNames: visibleLockedApps)
+    }
+
+    private var visibleLockedApps: [String] {
+        ExcludedApps.strippingExcluded(lockedApps).sorted { lhs, rhs in
+            let left = appCounts[lhs] ?? 0
+            let right = appCounts[rhs] ?? 0
+            return left == right ? lhs < rhs : left > right
+        }
+    }
+}
+
+private struct LockedGridItem: Identifiable {
+    enum Kind {
+        case named(String)
+        case unnamed(UnnamedLockedApp)
+    }
+
+    let kind: Kind
+
+    static func named(_ name: String) -> LockedGridItem {
+        LockedGridItem(kind: .named(name))
+    }
+
+    static func unnamed(_ app: UnnamedLockedApp) -> LockedGridItem {
+        LockedGridItem(kind: .unnamed(app))
+    }
+
+    var id: String {
+        switch kind {
+        case .named(let name): return "named:\(name)"
+        case .unnamed(let app): return "unnamed:\(app.id)"
+        }
+    }
+
+    var title: String? {
+        switch kind {
+        case .named(let name): return name
+        case .unnamed: return nil
+        }
+    }
+
+    var namedApp: String? {
+        if case .named(let name) = kind { return name }
+        return nil
+    }
+
+    var unnamedApp: UnnamedLockedApp? {
+        if case .unnamed(let app) = kind { return app }
+        return nil
+    }
+
+    var token: ApplicationToken? {
+        switch kind {
+        case .named(let name): return UsageStore.token(for: name)
+        case .unnamed(let app): return app.token
+        }
+    }
+
+    var cost: Int {
+        if let token {
+            return KeyUnlock.cost(for: token)
+        }
+        if let namedApp {
+            return KeyUnlock.cost(forName: namedApp)
+        }
+        return KeyUnlock.cost(usageSeconds: 0, lockedCount: LockedTokenStore.load().count)
+    }
+}
+
+private struct PendingUnlock: Identifiable {
+    let id = UUID()
+    let title: String
+    let namedApp: String?
+    let unnamedApp: UnnamedLockedApp?
+    let token: ApplicationToken?
+    let cost: Int
+
+    init(item: LockedGridItem) {
+        if let name = item.title {
+            title = name
+        } else if let token = item.token,
+                  let mapped = UsageStore.loadTokenMap().first(where: { $0.value == token })?.key {
+            title = mapped
+        } else {
+            title = item.namedApp ?? "Locked app"
+        }
+        namedApp = item.namedApp
+        unnamedApp = item.unnamedApp
+        token = item.token
+        cost = item.cost
+    }
+}
+
+private struct LockedAppIconButton: View {
+    let item: LockedGridItem
+    let index: Int
+    var overrideActive: Bool
+    var onHighlight: (Bool) -> Void
+    var onUnlock: () -> Void
+
+    @State private var appeared = false
+    @State private var lift: CGFloat = 0
+
+    private let iconSize: CGFloat = 64
+
+    var body: some View {
+        Button {
+            guard !overrideActive else { return }
+            onUnlock()
+        } label: {
+            VStack(alignment: .center, spacing: 2) {
+                floatingIcon
+                    .offset(y: lift)
+                CenteredAppName(token: item.token, title: item.title, style: .grid)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(HomeIconButtonStyle(onPressed: onHighlight))
+        .opacity(appeared ? 1 : 0)
+        .offset(y: appeared ? 0 : 16)
+        .scaleEffect(appeared ? 1 : 0.84)
+        .onAppear {
+            withAnimation(.spring(response: 0.52, dampingFraction: 0.7).delay(Double(index) * 0.045)) {
+                appeared = true
+            }
+            withAnimation(
+                .easeInOut(duration: 2.8)
+                .repeatForever(autoreverses: true)
+                .delay(0.35 + Double(index) * 0.16)
+            ) {
+                lift = -3
+            }
+        }
+        .accessibilityLabel(accessibilityName)
+        .accessibilityHint(overrideActive ? "Temporarily available" : "Unlocks this app for keys")
+    }
+
+    private var floatingIcon: some View {
+        ZStack(alignment: .bottomTrailing) {
+            icon
+                .frame(width: iconSize, height: iconSize)
+                .clipShape(RoundedRectangle(cornerRadius: iconSize * 0.2237, style: .continuous))
+
+            Image(systemName: overrideActive ? "lock.open.fill" : "lock.fill")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(overrideActive ? Color.black.opacity(0.8) : .white)
+                .padding(4)
+                .background(
+                    overrideActive ? Color.hazardYellow : Color.black.opacity(0.7),
+                    in: Circle()
+                )
+                .offset(x: 3, y: 3)
+        }
+        .compositingGroup()
+        .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 6)
+    }
+
+    private var accessibilityName: String {
+        let name = item.title ?? "Locked app"
+        return overrideActive ? "\(name), released" : "\(name), locked"
+    }
+
+    @ViewBuilder
+    private var icon: some View {
+        if let token = item.token {
+            Label(token)
+                .labelStyle(.iconOnly)
+                .scaleEffect(iconSize / 32)
+        } else if let name = item.namedApp {
+            AppIconView(appName: name)
+        } else {
+            RoundedRectangle(cornerRadius: iconSize * 0.2237, style: .continuous)
+                .fill(Color.lockedIndigo.opacity(0.14))
+                .overlay {
+                    Image(systemName: "app.fill")
+                        .foregroundStyle(Color.lockedIndigo)
+                }
+        }
+    }
+}
+
+private struct HomeIconButtonStyle: ButtonStyle {
+    var onPressed: (Bool) -> Void
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.86 : 1)
+            .animation(.spring(response: 0.26, dampingFraction: 0.56), value: configuration.isPressed)
+            .onChange(of: configuration.isPressed) { _, pressed in
+                onPressed(pressed)
+            }
+    }
+}
+
+private struct UnlockConfirmSheet: View {
+    let pending: PendingUnlock
+    let keys: Int
+    let canAfford: Bool
+    var onUnlock: () -> Void
+    var onCancel: () -> Void
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .center, spacing: 18) {
+                Capsule()
+                    .fill(Color.primary.opacity(0.12))
+                    .frame(width: 36, height: 4)
+                    .padding(.top, 8)
+
+                VStack(alignment: .center, spacing: 10) {
+                    confirmIcon
+                        .frame(width: 72, height: 72)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .shadow(color: Color.black.opacity(0.16), radius: 8, y: 4)
+
+                    CenteredAppName(token: pending.token, title: pending.title, style: .sheet)
+                    Text(canAfford
+                         ? "Spend keys to unlock this app until Sunday."
+                         : "Finish assignments to earn more keys.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                }
+                .frame(maxWidth: .infinity)
+
+                UnlockLedgerCard(keys: keys, cost: pending.cost, showsCardBackground: true)
+
+                HStack(spacing: 10) {
+                    Button(action: onCancel) {
+                        Text("Cancel")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 13)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.secondary)
+
+                    Button(action: onUnlock) {
+                        Text(canAfford ? "Unlock" : "Not enough")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 13)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.lockedAmber)
+                    .disabled(!canAfford)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 20)
+        }
+        .background(LockedBackground())
+    }
+
+    @ViewBuilder
+    private var confirmIcon: some View {
+        if let token = pending.token {
+            Label(token)
+                .labelStyle(.iconOnly)
+                .scaleEffect(72.0 / 32.0)
+        } else if let name = pending.namedApp {
+            AppIconView(appName: name)
+        } else {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.lockedIndigo.opacity(0.14))
+                .overlay {
+                    Image(systemName: "app.fill")
+                        .font(.title)
+                        .foregroundStyle(Color.lockedIndigo)
+                }
+        }
+    }
+}
+
+// MARK: - Screen Time setup
 
 private struct ScreenTimeSetupCard: View {
     @ObservedObject var manager: ScreenTimeManager
@@ -355,169 +798,6 @@ private struct ScreenTimeSetupCard: View {
         }
         .padding(16)
         .background(LockedCardBackground())
-    }
-}
-
-// MARK: - Locked apps
-
-struct LockedAppsSection: View {
-    @Binding var lockedApps: [String]
-    @Binding var keys: Double
-    @Binding var appCounts: [String: Int]
-    var overrideActive: Bool
-    var updateWidget: () -> Void
-
-    @State private var showUnlockAlert = false
-    @State private var appToUnlock: String?
-    @State private var unnamedAppToUnlock: UnnamedLockedApp?
-    @State private var unlockCost: Int = 0
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            LockedSectionLabel(
-                title: overrideActive ? "Temporarily released" : "Locked apps",
-                icon: overrideActive ? "lock.open.fill" : "lock.fill"
-            )
-
-            if visibleLockedApps.isEmpty && unnamedLockedTokens.isEmpty {
-                LockedCard {
-                    HStack(spacing: 12) {
-                        Image(systemName: "checkmark.seal.fill")
-                            .font(.title2)
-                            .foregroundStyle(Color.lockedTeal)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Nothing is locked")
-                                .font(.headline)
-                            Text("Keep karma high and assignments on time to stay clear.")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            } else {
-                VStack(spacing: 10) {
-                    ForEach(unnamedLockedTokens) { item in
-                        HStack(spacing: 12) {
-                            UnnamedLockedAppLabel(app: item)
-                                .font(.body.weight(.semibold))
-                            Spacer()
-                            if overrideActive {
-                                Text("Open")
-                                    .font(.caption.weight(.bold))
-                                    .foregroundStyle(Color.hazardYellow)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(Color.hazardYellow.opacity(0.15))
-                                    .clipShape(Capsule())
-                            } else {
-                                Button {
-                                    appToUnlock = "this app"
-                                    unlockCost = KeyUnlock.cost(for: item.token)
-                                    unnamedAppToUnlock = item
-                                    showUnlockAlert = true
-                                } label: {
-                                    Text("Unlock")
-                                        .font(.subheadline.weight(.semibold))
-                                        .padding(.horizontal, 14)
-                                        .padding(.vertical, 8)
-                                        .background(LockedTheme.keysGradient)
-                                        .foregroundStyle(.white)
-                                        .clipShape(Capsule())
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(14)
-                        .background(LockedCardBackground(cornerRadius: 18))
-                    }
-                    ForEach(visibleLockedApps, id: \.self) { name in
-                        HStack(spacing: 12) {
-                            ManagedAppIcon(name: name, size: 40)
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(name)
-                                    .font(.body.weight(.semibold))
-                                Text(formatAppDuration(appCounts[name] ?? 0))
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                Text(overrideActive ? "Accessible until the seal repairs" : "\(KeyUnlock.cost(forName: name)) keys to unlock")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            Spacer()
-
-                            if overrideActive {
-                                Text("Open")
-                                    .font(.caption.weight(.bold))
-                                    .foregroundStyle(Color.hazardYellow)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(Color.hazardYellow.opacity(0.15))
-                                    .clipShape(Capsule())
-                            } else {
-                                Button {
-                                    appToUnlock = name
-                                    unlockCost = KeyUnlock.cost(forName: name)
-                                    unnamedAppToUnlock = nil
-                                    showUnlockAlert = true
-                                } label: {
-                                    Text("Unlock")
-                                        .font(.subheadline.weight(.semibold))
-                                        .padding(.horizontal, 14)
-                                        .padding(.vertical, 8)
-                                        .background(LockedTheme.keysGradient)
-                                        .foregroundStyle(.white)
-                                        .clipShape(Capsule())
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(14)
-                        .background(LockedCardBackground(cornerRadius: 18))
-                    }
-                }
-            }
-        }
-        .alert("Unlock App", isPresented: $showUnlockAlert, presenting: appToUnlock) { app in
-            if keys >= Double(unlockCost) {
-                Button("Unlock (\(unlockCost) Keys)") {
-                    if let unnamed = unnamedAppToUnlock {
-                        _ = KeyUnlock.unlock(token: unnamed.token)
-                        unnamedAppToUnlock = nil
-                    } else if let token = UsageStore.token(for: app) {
-                        _ = KeyUnlock.unlock(token: token)
-                    } else {
-                        Economy.spendKeys(Double(unlockCost))
-                        UsageStore.unlock(name: app)
-                    }
-                    keys = Economy.keys()
-                    lockedApps = UsageStore.syncLockedNames()
-                    updateWidget()
-                }
-                Button("Cancel", role: .cancel) { }
-            } else {
-                Button("OK", role: .cancel) { }
-            }
-        } message: { app in
-            if keys >= Double(unlockCost) {
-                Text("Unlocking \(app) will cost \(unlockCost) keys.")
-            } else {
-                Text("Unlocking \(app) needs \(unlockCost) keys, but you only have \(Int(keys)). Finish assignments to earn more.")
-            }
-        }
-    }
-
-    private var unnamedLockedTokens: [UnnamedLockedApp] {
-        LockedTokenStore.unnamedApps(excludingNames: visibleLockedApps)
-    }
-
-    private var visibleLockedApps: [String] {
-        ExcludedApps.strippingExcluded(lockedApps).sorted { lhs, rhs in
-            let left = appCounts[lhs] ?? 0
-            let right = appCounts[rhs] ?? 0
-            return left == right ? lhs < rhs : left > right
-        }
     }
 }
 
@@ -624,13 +904,7 @@ struct AppUsageBar: View {
                     Capsule()
                         .fill(Color.primary.opacity(0.08))
                     Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [Color.lockedIndigo.opacity(0.7), Color.lockedViolet],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
+                        .fill(Color.lockedIndigo.gradient)
                         .frame(width: max(geo.size.width * CGFloat(percentage), 4))
                 }
             }

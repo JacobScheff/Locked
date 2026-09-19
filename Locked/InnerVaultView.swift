@@ -250,14 +250,7 @@ struct InnerVaultView: View {
                     .shadow(color: Color.lockedTeal.opacity(glow * (irisOpen ? 0.7 : 0.22)), radius: 26, y: 8)
 
                 Circle()
-                    .stroke(
-                        LinearGradient(
-                            colors: [Color.vaultBrass, Color.vaultBrass.opacity(0.35), Color.vaultBrass],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 8
-                    )
+                    .stroke(Color.vaultBrass.gradient, lineWidth: 8)
                     .padding(10)
 
                 dialFace
@@ -325,17 +318,7 @@ struct InnerVaultView: View {
 
     private func bolt(retracted: Bool) -> some View {
         Capsule()
-            .fill(
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.95, green: 0.84, blue: 0.52),
-                        Color.vaultBrass,
-                        Color(red: 0.52, green: 0.38, blue: 0.14)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
+            .fill(Color.vaultBrass.gradient)
             .frame(width: 14, height: 32)
             .overlay(Capsule().stroke(Color.white.opacity(0.25), lineWidth: 1))
             .offset(y: retracted ? -70 : -118)
@@ -348,16 +331,7 @@ struct InnerVaultView: View {
         ZStack {
             ForEach(0..<8, id: \.self) { index in
                 IrisPetal(count: 8, index: index)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 0.28, green: 0.32, blue: 0.36),
-                                Color(red: 0.10, green: 0.12, blue: 0.14)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
+                    .fill(Color(red: 0.28, green: 0.32, blue: 0.36).gradient)
                     .overlay(
                         IrisPetal(count: 8, index: index)
                             .stroke(Color.white.opacity(0.12), lineWidth: 1)
@@ -680,18 +654,10 @@ private struct ReserveNumberWheel: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay {
-            LinearGradient(
-                colors: [
-                    Color.black.opacity(0.62),
-                    Color.clear,
-                    Color.clear,
-                    Color.black.opacity(0.62)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .allowsHitTesting(false)
+            Rectangle()
+                .fill(Color.black.opacity(0.62).gradient)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .allowsHitTesting(false)
         }
     }
 

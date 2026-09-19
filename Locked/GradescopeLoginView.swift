@@ -68,7 +68,7 @@ struct GradescopeSignInView: View {
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(isWorking ? LinearGradient(colors: [.gray, .gray], startPoint: .leading, endPoint: .trailing) : LockedTheme.karmaGradient)
+                        .background(isWorking ? Color.gray.gradient : LockedTheme.karmaGradient)
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
                 .disabled(isWorking)
