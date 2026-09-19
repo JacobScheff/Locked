@@ -90,7 +90,7 @@ struct MainPage: View {
                 } label: {
                     Image(systemName: "gearshape.fill")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(Color(red: 0.55, green: 0.56, blue: 0.78))
+                        .foregroundStyle(Color(red: 0.50, green: 0.40, blue: 0.86))
                         .frame(width: 38, height: 38)
                         .background {
                             Circle()
@@ -586,7 +586,7 @@ private struct LockedAppIconButton: View {
             guard !overrideActive else { return }
             onUnlock()
         } label: {
-            VStack(spacing: 5) {
+            VStack(spacing: 2) {
                 floatingIcon
                     .offset(y: lift)
                 titleView
@@ -636,11 +636,12 @@ private struct LockedAppIconButton: View {
     @ViewBuilder
     private var titleView: some View {
         Group {
-            if let token = item.token {
+            if let title = item.title {
+                Text(title)
+            } else if let token = item.token {
                 Label(token)
                     .labelStyle(.titleOnly)
-            } else if let title = item.title {
-                Text(title)
+                    .frame(maxWidth: .infinity, alignment: .center)
             }
         }
         .font(.system(size: 11, weight: .medium, design: .rounded))
@@ -648,7 +649,7 @@ private struct LockedAppIconButton: View {
         .lineLimit(1)
         .minimumScaleFactor(0.75)
         .multilineTextAlignment(.center)
-        .frame(maxWidth: iconSize + 8)
+        .frame(width: iconSize + 12, alignment: .center)
     }
 
     private var accessibilityName: String {
@@ -712,6 +713,7 @@ private struct UnlockConfirmSheet: View {
                     confirmTitle
                         .font(.title3.weight(.bold))
                         .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity, alignment: .center)
                     Text(canAfford
                          ? "Spend keys to unlock this app until Sunday."
                          : "Finish assignments to earn more keys.")
@@ -719,6 +721,7 @@ private struct UnlockConfirmSheet: View {
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
+                .frame(maxWidth: .infinity)
 
                 UnlockLedgerCard(keys: keys, cost: pending.cost, showsCardBackground: true)
 
@@ -751,9 +754,12 @@ private struct UnlockConfirmSheet: View {
 
     @ViewBuilder
     private var confirmTitle: some View {
-        if let token = pending.token {
+        if pending.title != "Locked app" {
+            Text(pending.title)
+        } else if let token = pending.token {
             Label(token)
                 .labelStyle(.titleOnly)
+                .frame(maxWidth: .infinity, alignment: .center)
         } else {
             Text(pending.title)
         }
