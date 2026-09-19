@@ -586,10 +586,10 @@ private struct LockedAppIconButton: View {
             guard !overrideActive else { return }
             onUnlock()
         } label: {
-            VStack(spacing: 2) {
+            VStack(alignment: .center, spacing: 2) {
                 floatingIcon
                     .offset(y: lift)
-                titleView
+                CenteredAppName(token: item.token, title: item.title, style: .grid)
             }
             .frame(maxWidth: .infinity)
         }
@@ -631,25 +631,6 @@ private struct LockedAppIconButton: View {
         }
         .compositingGroup()
         .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 6)
-    }
-
-    @ViewBuilder
-    private var titleView: some View {
-        Group {
-            if let title = item.title {
-                Text(title)
-            } else if let token = item.token {
-                Label(token)
-                    .labelStyle(.titleOnly)
-                    .frame(maxWidth: .infinity, alignment: .center)
-            }
-        }
-        .font(.system(size: 11, weight: .medium, design: .rounded))
-        .foregroundStyle(.primary)
-        .lineLimit(1)
-        .minimumScaleFactor(0.75)
-        .multilineTextAlignment(.center)
-        .frame(width: iconSize + 12, alignment: .center)
     }
 
     private var accessibilityName: String {
@@ -698,28 +679,26 @@ private struct UnlockConfirmSheet: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 18) {
+            VStack(alignment: .center, spacing: 18) {
                 Capsule()
                     .fill(Color.primary.opacity(0.12))
                     .frame(width: 36, height: 4)
                     .padding(.top, 8)
 
-                VStack(spacing: 10) {
+                VStack(alignment: .center, spacing: 10) {
                     confirmIcon
                         .frame(width: 72, height: 72)
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .shadow(color: Color.black.opacity(0.16), radius: 8, y: 4)
 
-                    confirmTitle
-                        .font(.title3.weight(.bold))
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity, alignment: .center)
+                    CenteredAppName(token: pending.token, title: pending.title, style: .sheet)
                     Text(canAfford
                          ? "Spend keys to unlock this app until Sunday."
                          : "Finish assignments to earn more keys.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
                 }
                 .frame(maxWidth: .infinity)
 
@@ -746,23 +725,11 @@ private struct UnlockConfirmSheet: View {
                     .disabled(!canAfford)
                 }
             }
+            .frame(maxWidth: .infinity)
             .padding(.horizontal, 20)
             .padding(.bottom, 20)
         }
         .background(LockedBackground())
-    }
-
-    @ViewBuilder
-    private var confirmTitle: some View {
-        if pending.title != "Locked app" {
-            Text(pending.title)
-        } else if let token = pending.token {
-            Label(token)
-                .labelStyle(.titleOnly)
-                .frame(maxWidth: .infinity, alignment: .center)
-        } else {
-            Text(pending.title)
-        }
     }
 
     @ViewBuilder
