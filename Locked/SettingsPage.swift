@@ -1,7 +1,45 @@
+import Combine
 import SwiftUI
 import WidgetKit
 
+@MainActor
+final class UsagePrefetch: ObservableObject {
+    static let shared = UsagePrefetch()
+
+    @Published private(set) var isReady = false
+    @Published private(set) var shouldMount = false
+
+    func start() {
+        if !shouldMount {
+            shouldMount = true
+        }
+    }
+
+    func markReady() {
+        if !isReady {
+            isReady = true
+        }
+    }
+}
+
 struct SettingsPage: View {
+    @ObservedObject private var usagePrefetch = UsagePrefetch.shared
+
+    @AppStorage("appCounts", store: .lockedGroup)
+    var appCounts: [String: Int] = [:]
+
+    @AppStorage("lockedApps", store: .lockedGroup)
+    var lockedApps: [String] = []
+
+    @AppStorage("emergencyOverrideUntil", store: .lockedGroup)
+    var emergencyOverrideUntil: Double = 0
+
+    @State private var now = Date()
+
+    private var overrideActive: Bool {
+        Date(timeIntervalSince1970: emergencyOverrideUntil) > now
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
@@ -12,8 +50,32 @@ struct SettingsPage: View {
             .padding(.bottom, 36)
         }
         .background(LockedBackground())
+        .overlay {
+            if usagePrefetch.shouldMount {
+                AppCountsCard(
+                    appCounts: $appCounts,
+                    lockedApps: $lockedApps,
+                    overrideActive: overrideActive
+                )
+                .padding(.horizontal, 20)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .opacity(0.001)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+                .onAppear {
+                    usagePrefetch.markReady()
+                }
+            }
+        }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.large)
+        .onAppear {
+            now = Date()
+        }
+        .task {
+            await Task.yield()
+            usagePrefetch.start()
+        }
     }
 
     private var destinations: some View {
@@ -128,6 +190,8 @@ struct ArchiveSettingsView: View {
 }
 
 struct UsageSettingsView: View {
+    @ObservedObject private var prefetch = UsagePrefetch.shared
+
     @AppStorage("appCounts", store: .lockedGroup)
     var appCounts: [String: Int] = [:]
 
@@ -138,7 +202,6 @@ struct UsageSettingsView: View {
     var emergencyOverrideUntil: Double = 0
 
     @State private var now = Date()
-    @State private var showUsage = false
 
     private var overrideActive: Bool {
         Date(timeIntervalSince1970: emergencyOverrideUntil) > now
@@ -146,7 +209,7 @@ struct UsageSettingsView: View {
 
     var body: some View {
         Group {
-            if showUsage {
+            if prefetch.isReady {
                 ScrollView {
                     AppCountsCard(
                         appCounts: $appCounts,
@@ -170,11 +233,9 @@ struct UsageSettingsView: View {
         .background(LockedBackground())
         .navigationTitle("App usage")
         .navigationBarTitleDisplayMode(.large)
-        .task {
+        .onAppear {
             now = Date()
-            await Task.yield()
-            try? await Task.sleep(for: .milliseconds(160))
-            showUsage = true
+            prefetch.start()
         }
     }
 }
