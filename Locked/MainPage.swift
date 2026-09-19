@@ -430,7 +430,11 @@ struct LockedAppsSection: View {
                             },
                             onUnlock: { selected in
                                 previewCost = selected.cost
-                                pendingUnlock = PendingUnlock(item: selected)
+                                let pending = PendingUnlock(item: selected)
+                                pendingUnlock = pending
+                                if pending.title != "Locked app" {
+                                    UnlockAppNamePrinter.log(pending.title)
+                                }
                             }
                         )
                     }
@@ -438,6 +442,12 @@ struct LockedAppsSection: View {
                 .padding(.horizontal, 2)
                 .padding(.top, 4)
                 .padding(.bottom, 8)
+            }
+        }
+        .background {
+            if let pending = pendingUnlock {
+                UnlockAppNamePrinter(knownName: pending.title, token: pending.token)
+                    .offset(x: -2000, y: -2000)
             }
         }
         .sheet(item: $pendingUnlock, onDismiss: {
@@ -701,7 +711,7 @@ private struct UnlockConfirmSheet: View {
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .shadow(color: Color.black.opacity(0.16), radius: 8, y: 4)
 
-                    UnlockSheetAppName(title: pending.title, token: pending.token)
+                    UnlockSheetAppName()
                         .frame(maxWidth: .infinity)
                     Text(canAfford
                          ? "Spend keys to unlock this app until Sunday."
