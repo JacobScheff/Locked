@@ -51,6 +51,11 @@ final class ScreenTimeManager: ObservableObject {
         isAuthorized && hasSelection
     }
 
+    /// The hidden Device Activity report has written a snapshot this launch.
+    var hasLoadedUsageThisSession: Bool {
+        usageRevision > 0
+    }
+
     var reportDayKey: String {
         ISO8601DateFormatter().string(from: Calendar.current.startOfDay(for: Date()))
     }
