@@ -439,7 +439,6 @@ struct BreakGlassView: View {
             Image(systemName: shackleOpen ? "lock.open.fill" : "lock.fill")
                 .font(.system(size: 78, weight: .bold))
                 .foregroundStyle(Color.white.opacity(shackleOpen ? 0.55 : 0.14).gradient)
-                )
                 .blur(radius: shattered ? 0 : 1.8)
                 .opacity(shattered ? 1 : 0.45)
                 .shadow(color: .black.opacity(0.55), radius: 8, y: 6)
