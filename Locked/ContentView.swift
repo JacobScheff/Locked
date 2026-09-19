@@ -21,34 +21,10 @@ struct ContentView: View {
                     )
                 }
 
-                TabView {
-                    NavigationStack {
-                        MainPage()
-                    }
-                    .tabItem {
-                        Label("Home", systemImage: "house.fill")
-                    }
+                UsagePrefetchHost()
 
-                    NavigationStack {
-                        CoursesPage()
-                    }
-                    .tabItem {
-                        Label("Courses", systemImage: "book.fill")
-                    }
-
-                    NavigationStack {
-                        HowToUseView()
-                    }
-                    .tabItem {
-                        Label("Guide", systemImage: "questionmark.circle.fill")
-                    }
-
-                    NavigationStack {
-                        SettingsPage()
-                    }
-                    .tabItem {
-                        Label("Settings", systemImage: "gearshape.fill")
-                    }
+                NavigationStack {
+                    MainPage()
                 }
                 .opacity(screenTime.isReady ? 1 : 0)
                 .allowsHitTesting(screenTime.isReady)
@@ -64,16 +40,19 @@ struct ContentView: View {
         .familyActivityPicker(isPresented: $screenTime.isPickerPresented, selection: $screenTime.selection)
         .animation(.easeOut(duration: 0.28), value: showsLaunchCover)
         .onAppear {
-            // Paint the overlay first, then build tabs underneath it.
+            // Paint the overlay first, then build the home stack underneath it.
             DispatchQueue.main.async {
                 canMountInterface = true
                 if screenTime.isReady {
                     canStartUsageReport = true
+                    UsagePrefetch.shared.schedule()
                 }
             }
         }
         .onChange(of: screenTime.isReady) { _, ready in
-            guard ready, !canStartUsageReport else { return }
+            guard ready else { return }
+            UsagePrefetch.shared.schedule()
+            guard !canStartUsageReport else { return }
             // Start the hidden Screen Time report after the first screen is up
             // so its remote view does not hitch the opening fade.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {

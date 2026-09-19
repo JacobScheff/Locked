@@ -394,11 +394,7 @@ struct CourseProgressHeader: View {
                     ProgressRing(
                         progress: course.completionPercentage,
                         lineWidth: 8,
-                        gradient: LinearGradient(
-                            colors: [course.accent, .lockedIndigo],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
+                        gradient: course.accent.gradient
                     )
                     VStack(spacing: -2) {
                         Text("\(Int(course.completionPercentage * 100))")

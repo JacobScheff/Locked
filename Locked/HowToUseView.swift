@@ -26,7 +26,7 @@ struct HowToUseView: View {
                             icon: "key.fill",
                             color: .lockedAmber,
                             title: "Keys buy your time back",
-                            detail: "If something important gets locked, spend Keys on Home or on the system lock screen over the app itself. Earn more by staying on top of coursework."
+                            detail: "If something important gets locked, tap or hold its icon on Home to spend Keys, or use the system lock screen over the app itself. Earn more by staying on top of coursework."
                         )
                     }
                 }
@@ -67,7 +67,7 @@ struct HowToUseView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Import from school sites")
                                 .font(.headline)
-                            Text("On Courses, tap the link icon to connect Gradescope or Brightspace. Gradescope opens gradescope.com so you can sign in there — including school SSO. For Brightspace, search your school’s name or paste the website you already use in a browser. Locked loads this term’s courses only. Hide a class to archive it. Permanently delete archived classes in Settings — a source refresh will import them again if they’re still listed there.")
+                            Text("Next to Your courses, tap the link icon to connect Gradescope or Brightspace. Gradescope opens gradescope.com so you can sign in there — including school SSO. For Brightspace, search your school’s name or paste the website you already use in a browser. Locked loads this term’s courses only. Hide a class to archive it. Permanently delete archived classes in Settings → Archive — a source refresh will import them again if they’re still listed there.")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -79,7 +79,7 @@ struct HowToUseView: View {
                     LockedSectionLabel(title: "Rankings", icon: "chart.bar.fill")
 
                     LockedCard {
-                        Text("App usage is always sorted from most time to least time. Deleted apps drop off the list and no longer count toward the totals.")
+                        Text("Open Settings → App usage to see time spent in managed apps. The list is always sorted from most time to least time. Deleted apps drop off and no longer count toward the totals.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -93,7 +93,7 @@ struct HowToUseView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Break glass")
                                 .font(.headline)
-                            Text("If you truly cannot wait — a ride, a family call, a real emergency — break the glass on Home. Strike it three times. Every lock lifts for one hour, then snaps back on its own. While the seal is broken, an inner vault card appears at the bottom of Home in place of the glass. Spin the 3-number combination to add or remove Keys and Karma one step at a time. Keys stay at 0 or above; Karma stays between 0 and 100. This is a last resort.")
+                            Text("If you truly cannot wait — a ride, a family call, a real emergency — open Settings → Emergency and break the glass. Strike it three times. Every lock lifts for one hour, then snaps back on its own. While the seal is broken, the inner vault appears on that same Emergency page. Spin the 3-number combination to add or remove Keys and Karma one step at a time. Keys stay at 0 or above; Karma stays between 0 and 100. This is a last resort.")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)

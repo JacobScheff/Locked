@@ -1,24 +1,19 @@
 import SwiftUI
 import UIKit
 
-struct CoursesPage: View {
-    @AppStorage("courses", store: .lockedGroup)
-    var courses: [Course] = []
+struct HomeCoursesSection: View {
+    @Binding var courses: [Course]
+    @Binding var keys: Double
+    @Binding var karma: Double
 
-    @AppStorage("keys", store: .lockedGroup) var keys: Double = 0.0
-    @AppStorage("karma", store: .lockedGroup) var karma: Double = 0.0
+    var refresh: () async -> Void
 
     @EnvironmentObject private var sources: ExternalSourceController
     @State private var editingCourse: Course?
     @State private var courseToHide: Course?
-    @State private var sourceError: String?
 
     private var visibleCourses: [Course] {
         CourseStore.visibleCourses(from: courses)
-    }
-
-    private var hiddenCount: Int {
-        CourseStore.hiddenCourseCount(in: courses) + CourseStore.hiddenAssignmentCount(in: courses)
     }
 
     private var totals: (open: Int, overdue: Int, completed: Int) {
@@ -26,58 +21,17 @@ struct CoursesPage: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                if visibleCourses.isEmpty {
-                    emptyState
-                    if hiddenCount > 0 {
-                        hiddenSection
-                    }
-                } else {
-                    workloadHero
-                    UpcomingPreviewSection(courses: $courses, limit: 4)
-                    coursesSection
-                    if hiddenCount > 0 {
-                        hiddenSection
-                    }
-                }
+        VStack(alignment: .leading, spacing: 22) {
+            if !visibleCourses.isEmpty {
+                CompactWorkloadBar(
+                    open: totals.open,
+                    overdue: totals.overdue,
+                    completed: totals.completed
+                )
+                UpcomingPreviewSection(courses: $courses, limit: 3)
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 36)
-        }
-        .background(LockedBackground())
-        .navigationTitle("Courses")
-        .navigationBarTitleDisplayMode(.large)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                NavigationLink {
-                    SourcesPage(courses: $courses, keys: $keys, karma: $karma)
-                } label: {
-                    Image(systemName: "link")
-                        .font(.body.weight(.semibold))
-                }
-                .accessibilityLabel("Sources")
-            }
-            ToolbarItem(placement: .primaryAction) {
-                if sources.canRefresh {
-                    Button {
-                        Task { await refreshSources() }
-                    } label: {
-                        SpinningSyncIcon(
-                            spinning: sources.isRefreshing,
-                            color: .lockedIndigo,
-                            font: .body.weight(.bold)
-                        )
-                        .frame(width: 32, height: 32)
-                    }
-                    .accessibilityLabel(sources.isRefreshing ? "Refreshing sources" : "Refresh sources")
-                    .allowsHitTesting(!sources.isRefreshing)
-                }
-            }
-        }
-        .lockedRefreshable {
-            guard sources.canRefresh, !sources.isRefreshing else { return }
-            await refreshSources()
+
+            coursesSection
         }
         .sheet(item: $editingCourse) { course in
             CourseEditorView(course: course) { savedCourse in
@@ -114,176 +68,164 @@ struct CoursesPage: View {
         } message: {
             Text("It won’t show in Locked or count toward Keys and Karma until you unhide it.")
         }
-        .alert("Couldn’t refresh", isPresented: Binding(
-            get: { sourceError != nil },
-            set: { if !$0 { sourceError = nil } }
-        )) {
-            Button("OK", role: .cancel) { sourceError = nil }
-        } message: {
-            Text(sourceError ?? "")
+    }
+
+    private var coursesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            coursesHeader
+
+            if visibleCourses.isEmpty {
+                emptyState
+            } else {
+                VStack(spacing: 12) {
+                    ForEach(visibleCourses) { course in
+                        CourseCardView(
+                            courses: $courses,
+                            course: course,
+                            onRename: { editingCourse = course },
+                            onHide: { courseToHide = course }
+                        )
+                    }
+                }
+            }
         }
     }
 
+    private var coursesHeader: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "book.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text("Your courses")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .tracking(0.6)
+
+            NavigationLink {
+                SourcesPage(courses: $courses, keys: $keys, karma: $karma)
+            } label: {
+                courseHeaderButton {
+                    Image(systemName: "link")
+                        .font(.subheadline.weight(.bold))
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Sources")
+
+            Spacer(minLength: 12)
+
+            if sources.canRefresh {
+                Button {
+                    Task { await refresh() }
+                } label: {
+                    courseHeaderButton {
+                        SpinningSyncIcon(
+                            spinning: sources.isRefreshing,
+                            color: .lockedIndigo,
+                            font: .subheadline.weight(.bold)
+                        )
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(sources.isRefreshing ? "Refreshing sources" : "Refresh sources")
+                .allowsHitTesting(!sources.isRefreshing)
+            }
+        }
+    }
+
+    private func courseHeaderButton<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .foregroundStyle(Color.lockedIndigo)
+            .frame(width: 34, height: 34)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.lockedIndigo.opacity(0.12))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(Color.lockedIndigo.opacity(0.22), lineWidth: 1)
+            )
+    }
+
     private var emptyState: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: 14) {
             Image(systemName: "books.vertical.fill")
-                .font(.system(size: 44))
+                .font(.system(size: 34))
                 .foregroundStyle(LockedTheme.karmaGradient)
-                .padding(.top, 48)
 
             Text("Connect your semester")
-                .font(.lockedTitle(24))
+                .font(.lockedTitle(20))
 
-            Text("Load classes from Gradescope or Brightspace. Finishing early earns Keys and Karma — that’s what keeps your apps unlocked.")
+            Text("Load classes from Gradescope or Brightspace. Finishing early earns Keys and Karma.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 12)
 
             NavigationLink {
                 SourcesPage(courses: $courses, keys: $keys, karma: $karma)
             } label: {
                 Label(sources.canRefresh ? "Open sources" : "Connect a source", systemImage: "link")
-                    .font(.headline)
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 22)
-                    .padding(.vertical, 12)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
                     .background(LockedTheme.karmaGradient)
                     .clipShape(Capsule())
             }
-            .padding(.top, 4)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
-    }
-
-    private var workloadHero: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(workloadHeadline)
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(.white)
-                Text(workloadDetail)
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.78))
-            }
-
-            HStack(spacing: 10) {
-                WorkloadMetric(value: "\(totals.open)", label: "Open", color: .white)
-                WorkloadMetric(value: "\(totals.overdue)", label: "Overdue", color: totals.overdue > 0 ? .lockedRose : .white)
-                WorkloadMetric(value: "\(totals.completed)", label: "Done", color: .lockedTeal)
-            }
-        }
-        .padding(20)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .fill(LockedTheme.heroGradient)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 26, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.16), lineWidth: 1)
-                )
-                .shadow(color: Color.lockedIndigo.opacity(0.28), radius: 20, x: 0, y: 10)
-        }
-    }
-
-    private var workloadHeadline: String {
-        if totals.open == 0 { return "You're all caught up" }
-        if totals.overdue > 0 { return "Catch up, then get ahead" }
-        if let next = CourseStore.upcoming(from: courses).first {
-            return "Next: \(next.assignment.name)"
-        }
-        return "\(totals.open) still open"
-    }
-
-    private var workloadDetail: String {
-        if totals.open == 0 {
-            return "No open assignments. Refresh a source to load more work."
-        }
-        if totals.overdue > 0 {
-            return "\(totals.overdue) overdue · \(totals.open) still open"
-        }
-        return "\(totals.open) open · finishing early earns more Karma"
-    }
-
-    private var coursesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            LockedSectionLabel(title: "Your courses", icon: "book.fill")
-
-            VStack(spacing: 12) {
-                ForEach(visibleCourses) { course in
-                    CourseCardView(
-                        courses: $courses,
-                        course: course,
-                        onRename: { editingCourse = course },
-                        onHide: { courseToHide = course }
-                    )
-                }
-            }
-        }
-    }
-
-    private var hiddenSection: some View {
-        NavigationLink {
-            HiddenWorkView(courses: $courses, keys: $keys, karma: $karma)
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "eye.slash.fill")
-                    .font(.body.weight(.bold))
-                    .foregroundStyle(.secondary)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Archived")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                    Text("\(hiddenCount) archived")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(14)
-            .background(LockedCardBackground(cornerRadius: 18))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func refreshSources() async {
-        do {
-            let result = try await sources.refreshConnectedSources(courses: courses, keys: keys, karma: karma)
-            withAnimation {
-                courses = result.courses
-                keys = result.keys
-                karma = result.karma
-            }
-        } catch {
-            if ExternalSourceController.isCancellation(error) { return }
-            sourceError = error.localizedDescription
-        }
+        .padding(.vertical, 20)
+        .padding(.horizontal, 12)
+        .background(LockedCardBackground())
     }
 }
 
-private struct WorkloadMetric: View {
-    let value: String
-    let label: String
-    let color: Color
+struct CompactWorkloadBar: View {
+    let open: Int
+    let overdue: Int
+    let completed: Int
 
     var body: some View {
-        VStack(spacing: 2) {
+        VStack(spacing: 6) {
+            Text("Assignments")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.white.opacity(0.7))
+                .textCase(.uppercase)
+                .tracking(0.7)
+
+            HStack(spacing: 0) {
+                metric("\(open)", "Open", .white)
+                metric("\(overdue)", "Overdue", overdue > 0 ? Color.lockedRose : .white)
+                metric("\(completed)", "Done", .lockedTeal)
+            }
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 4)
+        .background {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(LockedTheme.heroGradient)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+                )
+                .shadow(color: Color.lockedIndigo.opacity(0.22), radius: 12, x: 0, y: 6)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(open) open assignments, \(overdue) overdue, \(completed) done")
+    }
+
+    private func metric(_ value: String, _ label: String, _ color: Color) -> some View {
+        VStack(spacing: 1) {
             Text(value)
-                .font(.lockedNumber(22))
+                .font(.lockedNumber(18))
                 .foregroundStyle(color)
                 .contentTransition(.numericText())
             Text(label)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.white.opacity(0.7))
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.68))
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 10)
-        .background(Color.white.opacity(0.12))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 
@@ -328,11 +270,7 @@ struct CourseCardView: View {
                     ProgressRing(
                         progress: course.completionPercentage,
                         lineWidth: 6,
-                        gradient: LinearGradient(
-                            colors: [course.accent, course.accent.opacity(0.55)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
+                        gradient: course.accent.gradient
                     )
                     Text("\(Int(course.completionPercentage * 100))")
                         .font(.system(size: 12, weight: .bold, design: .rounded))
@@ -371,19 +309,7 @@ struct CourseCardView: View {
             }
         }
         .padding(16)
-        .padding(.leading, 6)
         .background(LockedCardBackground())
-        .overlay(alignment: .leading) {
-            UnevenRoundedRectangle(
-                topLeadingRadius: LockedTheme.cardRadius,
-                bottomLeadingRadius: LockedTheme.cardRadius,
-                bottomTrailingRadius: 0,
-                topTrailingRadius: 0,
-                style: .continuous
-            )
-            .fill(course.accent)
-            .frame(width: 6)
-        }
     }
 
     private var subtitle: String {

@@ -311,7 +311,7 @@ enum KeyUnlock {
     }
 
     static func cost(for token: ApplicationToken) -> Int {
-        let name = UsageStore.loadTokenMap().first { $0.value == token }?.key
+        let name = UsageStore.displayName(for: token)
         return cost(
             usageSeconds: name.flatMap { UsageStore.loadAppCounts()[$0] } ?? 0,
             lockedCount: LockedTokenStore.load().count
@@ -479,7 +479,10 @@ enum UsageStore {
     }
 
     static func lockedNames(for tokens: Set<ApplicationToken>, tokenMap: [String: ApplicationToken]) -> [String] {
-        let names = tokenMap.compactMap { name, token in tokens.contains(token) ? name : nil }
+        let ids = Set(tokens.map { TokenCoding.id(for: $0) })
+        let names = tokenMap.compactMap { name, token in
+            ids.contains(TokenCoding.id(for: token)) ? name : nil
+        }
         return ExcludedApps.strippingExcluded(names).sorted()
     }
 
@@ -550,6 +553,13 @@ enum UsageStore {
             return token
         }
         return nil
+    }
+
+    /// Full display name cached by Screen Time extensions. The main app cannot
+    /// read a token's name itself.
+    static func displayName(for token: ApplicationToken) -> String? {
+        let wanted = TokenCoding.id(for: token)
+        return loadTokenMap().first { TokenCoding.id(for: $0.value) == wanted }?.key
     }
 
     static func loadBundleIDs() -> [String: String] {
@@ -677,9 +687,9 @@ enum LockedTokenStore {
 
     static func unnamedApps(excludingNames names: [String]) -> [UnnamedLockedApp] {
         let map = UsageStore.loadTokenMap()
-        let named = Set(names.compactMap { map[$0] })
+        let namedIDs = Set(names.compactMap { map[$0] }.map { TokenCoding.id(for: $0) })
         return load()
-            .subtracting(named)
+            .filter { !namedIDs.contains(TokenCoding.id(for: $0)) }
             .map { UnnamedLockedApp(id: TokenCoding.id(for: $0), token: $0) }
             .sorted { $0.id < $1.id }
     }
