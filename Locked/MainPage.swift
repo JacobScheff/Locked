@@ -188,9 +188,18 @@ struct HomeEconomyCard: View {
     let karma: Double
     let keys: Int
     let cost: Int?
+    var overrideActive: Bool = false
+    var appCount: Int = 0
 
     private var progress: Double {
         min(max(karma / 100.0, 0.0), 1.0)
+    }
+
+    private var copy: (headline: String, detail: String) {
+        if overrideActive {
+            return ("Temporarily open", "Locks return when the seal repairs.")
+        }
+        return karmaStatusCopy(karma: karma, appCount: appCount)
     }
 
     var body: some View {
@@ -217,7 +226,11 @@ struct HomeEconomyCard: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(Int(karma.rounded(.towardZero))) karma")
 
-            UnlockLedgerCard(keys: keys, cost: cost)
+            if cost != nil {
+                UnlockLedgerCard(keys: keys, cost: cost)
+            } else {
+                clearStatus
+            }
         }
         .padding(18)
         .background {
@@ -230,6 +243,40 @@ struct HomeEconomyCard: View {
                 .shadow(color: Color.lockedIndigo.opacity(0.32), radius: 22, x: 0, y: 10)
         }
         .accessibilityElement(children: .combine)
+    }
+
+    private var clearStatus: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(copy.headline)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(copy.detail)
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.75))
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 8) {
+                Image(systemName: "key.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.lockedAmber)
+                Text(UnlockLedgerCard.format(keys, signed: false))
+                    .font(.lockedNumber(20))
+                    .foregroundStyle(.white)
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                Text("Keys")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.65))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.white.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(copy.headline). \(copy.detail). \(keys) keys")
     }
 }
 
@@ -351,36 +398,22 @@ struct LockedAppsSection: View {
             HomeEconomyCard(
                 karma: karma,
                 keys: Int(keys.rounded(.towardZero)),
-                cost: displayedCost
+                cost: displayedCost,
+                overrideActive: overrideActive,
+                appCount: ExcludedApps.strippingExcluded(appCounts).count
             )
 
-            LockedSectionLabel(
-                title: overrideActive ? "Temporarily released" : "Locked apps",
-                icon: overrideActive ? "lock.open.fill" : "lock.fill"
-            ) {
-                if !overrideActive && !gridItems.isEmpty {
-                    Text("Tap to unlock")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                }
-            }
-
-            if gridItems.isEmpty {
-                LockedCard {
-                    HStack(spacing: 12) {
-                        Image(systemName: "checkmark.seal.fill")
-                            .font(.title2)
-                            .foregroundStyle(Color.lockedTeal)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Nothing is locked")
-                                .font(.headline)
-                            Text("Keep karma high and assignments on time to stay clear.")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
+            if !gridItems.isEmpty {
+                LockedSectionLabel(
+                    title: overrideActive ? "Temporarily released" : "Locked apps",
+                    icon: overrideActive ? "lock.open.fill" : "lock.fill"
+                ) {
+                    if !overrideActive {
+                        Text("Tap to unlock")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
                     }
                 }
-            } else {
                 LazyVGrid(
                     columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: 4),
                     spacing: 16
