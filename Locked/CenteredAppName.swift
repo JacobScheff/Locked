@@ -4,7 +4,7 @@ import SwiftUI
 import UIKit
 
 /// Screen Time `Label` always leading-aligns its title. Resolve the name,
-/// then draw it with a real centered `UILabel`.
+/// then draw it with a normal SwiftUI `Text`.
 struct CenteredAppName: View {
     enum Style {
         case grid
@@ -34,8 +34,9 @@ struct CenteredAppName: View {
     }
 
     var body: some View {
-        CenteredNameLabel(text: displayName, style: style)
-            .frame(maxWidth: .infinity)
+        nameText
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity, alignment: .center)
             .background {
                 if let token, shouldReadTokenName {
                     TokenNameReader(token: token, name: $resolvedName)
@@ -51,6 +52,22 @@ struct CenteredAppName: View {
                     resolvedName = cached
                 }
             }
+    }
+
+    @ViewBuilder
+    private var nameText: some View {
+        switch style {
+        case .grid:
+            Text(displayName)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        case .sheet:
+            Text(displayName)
+                .font(.title3.weight(.bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+        }
     }
 
     private var shouldReadTokenName: Bool {
@@ -80,75 +97,6 @@ private enum TokenNameCache {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         names[token] = trimmed
-    }
-}
-
-private struct CenteredNameLabel: UIViewRepresentable {
-    let text: String
-    let style: CenteredAppName.Style
-
-    func makeUIView(context: Context) -> CenteredNameView {
-        CenteredNameView(style: style)
-    }
-
-    func updateUIView(_ view: CenteredNameView, context: Context) {
-        view.apply(text: text, style: style)
-    }
-}
-
-private final class CenteredNameView: UIView {
-    private let label = UILabel()
-
-    init(style: CenteredAppName.Style) {
-        super.init(frame: .zero)
-        label.textAlignment = .center
-        label.adjustsFontSizeToFitWidth = true
-        label.numberOfLines = 1
-        label.lineBreakMode = .byTruncatingTail
-        label.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(label)
-        NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: leadingAnchor),
-            label.trailingAnchor.constraint(equalTo: trailingAnchor),
-            label.topAnchor.constraint(equalTo: topAnchor),
-            label.bottomAnchor.constraint(equalTo: bottomAnchor)
-        ])
-        setContentHuggingPriority(.defaultLow, for: .horizontal)
-        setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        apply(text: "", style: style)
-    }
-
-    required init?(coder: NSCoder) { nil }
-
-    override var intrinsicContentSize: CGSize {
-        let lineHeight = label.font?.lineHeight ?? 13
-        return CGSize(width: UIView.noIntrinsicMetric, height: max(label.intrinsicContentSize.height, lineHeight))
-    }
-
-    func apply(text: String, style: CenteredAppName.Style) {
-        switch style {
-        case .grid:
-            label.font = Self.roundedFont(size: 11, weight: .medium)
-            label.adjustsFontForContentSizeCategory = false
-            label.minimumScaleFactor = 0.75
-        case .sheet:
-            label.font = Self.roundedFont(
-                size: UIFont.preferredFont(forTextStyle: .title3).pointSize,
-                weight: .bold
-            )
-            label.adjustsFontForContentSizeCategory = true
-            label.minimumScaleFactor = 0.85
-        }
-        label.textColor = .label
-        label.text = text
-        label.textAlignment = .center
-        invalidateIntrinsicContentSize()
-    }
-
-    private static func roundedFont(size: CGFloat, weight: UIFont.Weight) -> UIFont {
-        let base = UIFont.systemFont(ofSize: size, weight: weight)
-        guard let descriptor = base.fontDescriptor.withDesign(.rounded) else { return base }
-        return UIFont(descriptor: descriptor, size: size)
     }
 }
 
