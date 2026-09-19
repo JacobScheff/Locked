@@ -9,22 +9,36 @@ final class UsagePrefetch: ObservableObject {
     @Published private(set) var isReady = false
     @Published private(set) var shouldMount = false
 
-    private var didSchedule = false
+    private var isWaitingToMarkReady = false
+    private var didScheduleFromSettings = false
 
-    /// Starts after Home has settled so Settings and the first paint stay light.
-    func schedule(after delay: Duration = .milliseconds(900)) {
-        guard !didSchedule else { return }
-        didSchedule = true
+    /// Starts warming after Settings finishes pushing so the hub stays instant.
+    func startAfterSettingsPresented() {
+        guard !isReady, !didScheduleFromSettings else { return }
+        didScheduleFromSettings = true
         Task { @MainActor in
-            try? await Task.sleep(for: delay)
             await Task.yield()
+            try? await Task.sleep(for: .milliseconds(400))
             start()
         }
     }
 
     func start() {
+        if !ScreenTimeManager.shared.shouldCollectUsage {
+            markReady()
+            return
+        }
         if !shouldMount {
             shouldMount = true
+        }
+    }
+
+    func noteHostAppeared() {
+        guard !isReady, !isWaitingToMarkReady else { return }
+        isWaitingToMarkReady = true
+        Task { @MainActor in
+            await waitUntilLoaded()
+            markReady()
         }
     }
 
@@ -32,6 +46,24 @@ final class UsagePrefetch: ObservableObject {
         if !isReady {
             isReady = true
         }
+    }
+
+    private func waitUntilLoaded() async {
+        let deadline = Date().addingTimeInterval(8)
+        while ScreenTimeManager.shared.shouldCollectUsage
+                && !UsageStore.hasSnapshot
+                && Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(120))
+        }
+        await Task.yield()
+        if UsageStore.loadAppCounts().isEmpty {
+            return
+        }
+        // Let AppCountsCard rebuild rows from the snapshot, then give
+        // FamilyControls labels time to resolve before App usage is shown.
+        try? await Task.sleep(for: .milliseconds(80))
+        await Task.yield()
+        try? await Task.sleep(for: .milliseconds(520))
     }
 }
 
@@ -56,24 +88,28 @@ struct UsagePrefetchHost: View {
     }
 
     var body: some View {
-        Group {
-            if prefetch.shouldMount {
-                AppCountsCard(
-                    appCounts: $appCounts,
-                    lockedApps: $lockedApps,
-                    overrideActive: overrideActive
-                )
-                .frame(width: 320)
-                .opacity(0.001)
-                .offset(x: -1200)
-                .onAppear {
-                    prefetch.markReady()
+        Color.clear
+            .frame(width: 0, height: 0)
+            .background(alignment: .topLeading) {
+                if prefetch.shouldMount {
+                    AppCountsCard(
+                        appCounts: $appCounts,
+                        lockedApps: $lockedApps,
+                        overrideActive: overrideActive
+                    )
+                    .frame(width: 360)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .opacity(0.01)
+                    .offset(x: -2400)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                    .onAppear {
+                        prefetch.noteHostAppeared()
+                    }
                 }
             }
-        }
-        .frame(width: 0, height: 0)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 
@@ -90,6 +126,9 @@ struct SettingsPage: View {
         .background(LockedBackground())
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.large)
+        .onAppear {
+            UsagePrefetch.shared.startAfterSettingsPresented()
+        }
     }
 
     private var destinations: some View {
@@ -216,14 +255,15 @@ struct UsageSettingsView: View {
     var emergencyOverrideUntil: Double = 0
 
     @State private var now = Date()
+    @State private var canMountCard = false
 
     private var overrideActive: Bool {
         Date(timeIntervalSince1970: emergencyOverrideUntil) > now
     }
 
     var body: some View {
-        Group {
-            if prefetch.isReady {
+        ZStack {
+            if prefetch.isReady || canMountCard {
                 ScrollView {
                     AppCountsCard(
                         appCounts: $appCounts,
@@ -233,23 +273,35 @@ struct UsageSettingsView: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
                     .padding(.bottom, 36)
+                    .onAppear {
+                        prefetch.noteHostAppeared()
+                    }
                 }
-            } else {
-                VStack(spacing: 12) {
-                    ProgressView()
-                    Text("Loading usage")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .opacity(prefetch.isReady ? 1 : 0)
+                .allowsHitTesting(prefetch.isReady)
+            }
+
+            if !prefetch.isReady {
+                LockedLaunchOverlay()
+                    .transition(.opacity)
             }
         }
         .background(LockedBackground())
         .navigationTitle("App usage")
         .navigationBarTitleDisplayMode(.large)
+        .animation(.easeOut(duration: 0.28), value: prefetch.isReady)
         .onAppear {
             now = Date()
-            prefetch.start()
+            if prefetch.isReady {
+                canMountCard = true
+                return
+            }
+            Task { @MainActor in
+                await Task.yield()
+                try? await Task.sleep(for: .milliseconds(360))
+                prefetch.start()
+                canMountCard = true
+            }
         }
     }
 }
