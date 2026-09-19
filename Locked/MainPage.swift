@@ -554,7 +554,14 @@ private struct PendingUnlock: Identifiable {
     let cost: Int
 
     init(item: LockedGridItem) {
-        title = item.title ?? "Locked app"
+        if let name = item.title {
+            title = name
+        } else if let token = item.token,
+                  let mapped = UsageStore.loadTokenMap().first(where: { $0.value == token })?.key {
+            title = mapped
+        } else {
+            title = item.namedApp ?? "Locked app"
+        }
         namedApp = item.namedApp
         unnamedApp = item.unnamedApp
         token = item.token
@@ -592,11 +599,6 @@ private struct LockedAppIconButton: View {
         .onAppear {
             withAnimation(.spring(response: 0.52, dampingFraction: 0.7).delay(Double(index) * 0.045)) {
                 appeared = true
-            }
-        }
-        .contextMenu {
-            if !overrideActive {
-                Button("Unlock", systemImage: "key.fill", action: onUnlock)
             }
         }
         .accessibilityLabel(accessibilityName)
@@ -714,8 +716,9 @@ private struct UnlockConfirmSheet: View {
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .shadow(color: Color.black.opacity(0.16), radius: 8, y: 4)
 
-                    Text(pending.title)
+                    confirmTitle
                         .font(.title3.weight(.bold))
+                        .multilineTextAlignment(.center))
                     Text(canAfford
                          ? "Spend keys to unlock this app until Sunday."
                          : "Finish assignments to earn more keys.")
@@ -751,6 +754,16 @@ private struct UnlockConfirmSheet: View {
             .padding(.bottom, 20)
         }
         .background(LockedBackground())
+    }
+
+    @ViewBuilder
+    private var confirmTitle: some View {
+        if let token = pending.token {
+            Label(token)
+                .labelStyle(.titleOnly)
+        } else {
+            Text(pending.title)
+        }
     }
 
     @ViewBuilder
