@@ -178,7 +178,7 @@ struct LockedLaunchSpinner: View {
 
 /// Core Animation drives the launch mark so the ring keeps moving even if
 /// the main thread is busy building the first real screen.
-struct LaunchEmblem: UIViewRepresentable {
+private struct LaunchEmblem: UIViewRepresentable {
     func makeUIView(context: Context) -> LaunchEmblemView {
         LaunchEmblemView()
     }
