@@ -90,7 +90,7 @@ struct BrightspaceConnectSheet: View {
         .presentationDetents([.large])
         .tint(.lockedIndigo)
         .interactiveDismissDisabled(isWorking)
-        .fullScreenCover(isPresented: $showBrowser) {
+        .lockedImmersiveCover(isPresented: $showBrowser) {
             BrightspaceSignInView(
                 host: resolvedHost ?? "",
                 onSignedIn: { auth in

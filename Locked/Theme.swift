@@ -27,6 +27,26 @@ extension ShapeStyle where Self == Color {
     static var vaultSteel: Color { Color.vaultSteel }
 }
 
+enum LockedPlatform {
+    static var prefersWindowedCovers: Bool {
+        #if targetEnvironment(macCatalyst)
+        return true
+        #else
+        return ProcessInfo.processInfo.isiOSAppOnMac
+        #endif
+    }
+
+    static func configureMacWindow() {
+        #if targetEnvironment(macCatalyst)
+        for scene in UIApplication.shared.connectedScenes {
+            guard let windowScene = scene as? UIWindowScene else { continue }
+            windowScene.sizeRestrictions?.minimumSize = CGSize(width: 840, height: 620)
+            windowScene.sizeRestrictions?.maximumSize = CGSize(width: 10_000, height: 10_000)
+        }
+        #endif
+    }
+}
+
 enum LockedTheme {
     static let cardRadius: CGFloat = 22
 
@@ -72,6 +92,32 @@ extension Font {
 }
 
 // MARK: - Card chrome
+
+extension View {
+    @ViewBuilder
+    func lockedImmersiveCover<Item: Identifiable, Content: View>(
+        item: Binding<Item?>,
+        @ViewBuilder content: @escaping (Item) -> Content
+    ) -> some View {
+        if LockedPlatform.prefersWindowedCovers {
+            sheet(item: item, content: content)
+        } else {
+            fullScreenCover(item: item, content: content)
+        }
+    }
+
+    @ViewBuilder
+    func lockedImmersiveCover<Content: View>(
+        isPresented: Binding<Bool>,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        if LockedPlatform.prefersWindowedCovers {
+            sheet(isPresented: isPresented, content: content)
+        } else {
+            fullScreenCover(isPresented: isPresented, content: content)
+        }
+    }
+}
 
 struct LockedCard<Content: View>: View {
     var padding: CGFloat = 20

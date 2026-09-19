@@ -26,11 +26,13 @@ struct LockedApp: App {
                 .environmentObject(ExternalSourceController.shared)
                 .onAppear {
                     DispatchQueue.main.async {
+                        LockedPlatform.configureMacWindow()
                         lockScheduler.start()
                         ScreenTimeManager.shared.refreshStatus()
                     }
                 }
                 .onDisappear { lockScheduler.stop() }
         }
+        .defaultSize(width: 1100, height: 760)
     }
 }

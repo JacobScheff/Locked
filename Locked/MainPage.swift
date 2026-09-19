@@ -108,7 +108,7 @@ struct MainPage: View {
         }
         .background(LockedBackground())
         .toolbar(.hidden, for: .navigationBar)
-        .fullScreenCover(item: $presentedRitual) { ritual in
+        .lockedImmersiveCover(item: $presentedRitual) { ritual in
             switch ritual {
             case .glass:
                 BreakGlassView {

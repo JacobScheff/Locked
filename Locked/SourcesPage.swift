@@ -49,7 +49,7 @@ struct SourcesPage: View {
             guard sources.canRefresh, !sources.isRefreshing else { return }
             await refreshAll()
         }
-        .fullScreenCover(item: $gradescopeLogin) { _ in
+        .lockedImmersiveCover(item: $gradescopeLogin) { _ in
             GradescopeSignInView(
                 onConnect: { auth in
                     let result = try await sources.connectGradescope(

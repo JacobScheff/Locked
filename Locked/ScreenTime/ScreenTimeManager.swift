@@ -61,10 +61,7 @@ final class ScreenTimeManager: ObservableObject {
     }
 
     var setupCardTitle: String {
-        if isAuthorized || canUseFamilyControls {
-            return "Finish setup"
-        }
-        return "Screen Time needs iPhone or iPad"
+        "Finish setup"
     }
 
     var setupCardDetail: String {
@@ -133,7 +130,7 @@ final class ScreenTimeManager: ObservableObject {
             case .denied:
                 lastAuthorizationError = "Screen Time access was denied. Enable Locked under Settings → Screen Time."
             case .notDetermined:
-                lastAuthorizationError = "Apple didn’t show a Screen Time prompt. Try again on an iPhone or iPad."
+                lastAuthorizationError = "Apple didn’t show a Screen Time prompt. Try again, or check Settings → Screen Time."
             default:
                 break
             }
@@ -207,34 +204,26 @@ final class ScreenTimeManager: ObservableObject {
     }
 }
 
-/// Family Controls individual authorization only works on a physical iPhone or iPad.
-/// Designed-for-iPad on a Mac and the Simulator never show the Screen Time prompt,
-/// so `requestAuthorization(for: .individual)` looks like a dead button.
+/// Family Controls prompts on real devices. The Simulator never presents one.
+/// Mac uses the Catalyst destination so this is a Mac app, not Designed for iPad.
 enum ScreenTimeAuthorizationAvailability {
     static var canRequest: Bool {
         #if targetEnvironment(simulator)
         return false
-        #elseif os(macOS) || targetEnvironment(macCatalyst)
-        return false
         #else
-        return !ProcessInfo.processInfo.isiOSAppOnMac
+        return true
         #endif
     }
 
     static var blockedReason: String? {
-        guard !canRequest else { return nil }
-        #if targetEnvironment(simulator)
-        return "Screen Time permission can’t be granted in the Simulator. Run Locked on an iPhone or iPad."
-        #else
-        return "Apple doesn’t let iPhone and iPad apps request Screen Time on a Mac. Open Locked on an iPhone or iPad and tap Allow Screen Time there."
-        #endif
+        canRequest ? nil : "Screen Time permission can’t be granted in the Simulator. Run Locked on iPhone, iPad, Mac, or Vision Pro."
     }
 
     static func userMessage(for error: Error) -> String {
         if let familyError = error as? FamilyControlsError {
             switch familyError {
             case .unavailable:
-                return blockedReason ?? "Screen Time authorization isn’t available on this device. Use an iPhone or iPad."
+                return "Screen Time authorization isn’t available on this device."
             case .restricted:
                 return "Screen Time is restricted on this device, so Locked can’t be authorized."
             case .invalidAccountType:
@@ -252,7 +241,7 @@ enum ScreenTimeAuthorizationAvailability {
         if !description.isEmpty {
             return description
         }
-        return blockedReason ?? "Screen Time authorization failed. Try again on an iPhone or iPad."
+        return blockedReason ?? "Screen Time authorization failed. Try Allow Screen Time again."
     }
 }
 
