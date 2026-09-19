@@ -565,11 +565,6 @@ private struct PendingUnlock: Identifiable {
         cost = item.cost
     }
 
-    var hasResolvedName: Bool {
-        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        return !trimmed.isEmpty && trimmed != "Locked app"
-    }
-
     static func resolvedTitle(for item: LockedGridItem) -> String {
         let candidates = [item.namedApp, item.title, item.token.flatMap(UsageStore.displayName(for:))]
         for name in candidates {
@@ -706,7 +701,8 @@ private struct UnlockConfirmSheet: View {
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .shadow(color: Color.black.opacity(0.16), radius: 8, y: 4)
 
-                    confirmTitle
+                    UnlockSheetAppName(title: pending.title, token: pending.token)
+                        .frame(maxWidth: .infinity)
                     Text(canAfford
                          ? "Spend keys to unlock this app until Sunday."
                          : "Finish assignments to earn more keys.")
@@ -745,26 +741,6 @@ private struct UnlockConfirmSheet: View {
             .padding(.bottom, 20)
         }
         .background(LockedBackground())
-    }
-
-    @ViewBuilder
-    private var confirmTitle: some View {
-        if pending.hasResolvedName {
-            Text(pending.title)
-                .font(.title3.weight(.bold))
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity)
-        } else if let token = pending.token {
-            Label(token)
-                .labelStyle(.titleOnly)
-                .multilineTextAlignment(.center)
-                .id(TokenCoding.id(for: token))
-                .frame(maxWidth: .infinity)
-        } else {
-            Text("Locked app")
-                .font(.title3.weight(.bold))
-        }
     }
 
     @ViewBuilder
