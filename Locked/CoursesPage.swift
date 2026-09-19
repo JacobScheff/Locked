@@ -309,19 +309,7 @@ struct CourseCardView: View {
             }
         }
         .padding(16)
-        .padding(.leading, 6)
         .background(LockedCardBackground())
-        .overlay(alignment: .leading) {
-            UnevenRoundedRectangle(
-                topLeadingRadius: LockedTheme.cardRadius,
-                bottomLeadingRadius: LockedTheme.cardRadius,
-                bottomTrailingRadius: 0,
-                topTrailingRadius: 0,
-                style: .continuous
-            )
-            .fill(course.accent)
-            .frame(width: 6)
-        }
     }
 
     private var subtitle: String {
