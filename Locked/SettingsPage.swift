@@ -67,7 +67,12 @@ struct UsagePrefetchHost: View {
                 .opacity(0.001)
                 .offset(x: -1200)
                 .onAppear {
-                    prefetch.markReady()
+                    Task { @MainActor in
+                        // The card is on screen, but remote app icons still
+                        // need a beat to resolve before we treat it as ready.
+                        try? await Task.sleep(for: .milliseconds(350))
+                        prefetch.markReady()
+                    }
                 }
             }
         }
@@ -204,6 +209,7 @@ struct ArchiveSettingsView: View {
 }
 
 struct UsageSettingsView: View {
+    @EnvironmentObject private var screenTime: ScreenTimeManager
     @ObservedObject private var prefetch = UsagePrefetch.shared
 
     @AppStorage("appCounts", store: .lockedGroup)
@@ -216,14 +222,25 @@ struct UsageSettingsView: View {
     var emergencyOverrideUntil: Double = 0
 
     @State private var now = Date()
+    @State private var loadTimedOut = false
 
     private var overrideActive: Bool {
         Date(timeIntervalSince1970: emergencyOverrideUntil) > now
     }
 
+    /// Keep the launch spinner up until this session's usage snapshot is in
+    /// and FamilyControls labels have been warmed — not just until the
+    /// hidden prefetch card appears.
+    private var showsLoadingCover: Bool {
+        if loadTimedOut { return false }
+        guard screenTime.shouldCollectUsage else { return false }
+        if !screenTime.hasLoadedUsageThisSession { return true }
+        return !prefetch.isReady
+    }
+
     var body: some View {
-        Group {
-            if prefetch.isReady {
+        ZStack {
+            if !showsLoadingCover {
                 ScrollView {
                     AppCountsCard(
                         appCounts: $appCounts,
@@ -234,22 +251,25 @@ struct UsageSettingsView: View {
                     .padding(.top, 8)
                     .padding(.bottom, 36)
                 }
-            } else {
-                VStack(spacing: 12) {
-                    ProgressView()
-                    Text("Loading usage")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+
+            if showsLoadingCover {
+                LockedLaunchOverlay()
+                    .transition(.opacity)
             }
         }
         .background(LockedBackground())
         .navigationTitle("App usage")
         .navigationBarTitleDisplayMode(.large)
+        .animation(.easeOut(duration: 0.28), value: showsLoadingCover)
         .onAppear {
             now = Date()
             prefetch.start()
+        }
+        .task(id: showsLoadingCover) {
+            guard showsLoadingCover else { return }
+            try? await Task.sleep(for: .seconds(12))
+            loadTimedOut = true
         }
     }
 }
