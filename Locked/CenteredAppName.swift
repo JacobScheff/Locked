@@ -2,10 +2,9 @@ import FamilyControls
 import ManagedSettings
 import SwiftUI
 
-/// Screen Time `Label` is a remote view: it ignores `.font` and
-/// `.multilineTextAlignment`, and it fills whatever width it is offered.
-/// `fixedSize` shrinks it to the name so a normal frame can center it, and
-/// `scaleEffect` stands in for the font size it will not accept.
+/// Screen Time `Label` is a remote view. It ignores font and alignment, and
+/// `fixedSize` collapses it to a sliver that clips the name. Give it a real
+/// width so the full name can draw, then center that box.
 struct CenteredAppName: View {
     enum Style {
         case grid
@@ -29,18 +28,10 @@ struct CenteredAppName: View {
         }
     }
 
-    /// The remote label draws at body size (17pt) no matter what.
-    private var scale: CGFloat {
+    private var nameBoxWidth: CGFloat {
         switch style {
-        case .grid: return 11 / 17
-        case .sheet: return 20 / 17
-        }
-    }
-
-    private var lineHeight: CGFloat {
-        switch style {
-        case .grid: return 14
-        case .sheet: return 26
+        case .grid: return 80
+        case .sheet: return 120
         }
     }
 
@@ -51,18 +42,17 @@ struct CenteredAppName: View {
                     .font(font)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
+                    .multilineTextAlignment(.center)
             } else if let token {
                 Label(token)
                     .labelStyle(.titleOnly)
-                    .fixedSize()
-                    .scaleEffect(scale, anchor: .center)
-                    .frame(height: lineHeight)
+                    .font(font)
+                    .frame(width: nameBoxWidth)
             } else {
                 Text("Locked app")
                     .font(font)
             }
         }
         .frame(maxWidth: .infinity, alignment: .center)
-        .clipped()
     }
 }
