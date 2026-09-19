@@ -430,11 +430,7 @@ struct LockedAppsSection: View {
                             },
                             onUnlock: { selected in
                                 previewCost = selected.cost
-                                let pending = PendingUnlock(item: selected)
-                                pendingUnlock = pending
-                                if pending.title != "Locked app" {
-                                    UnlockAppNamePrinter.log(pending.title)
-                                }
+                                pendingUnlock = PendingUnlock(item: selected)
                             }
                         )
                     }
@@ -442,12 +438,6 @@ struct LockedAppsSection: View {
                 .padding(.horizontal, 2)
                 .padding(.top, 4)
                 .padding(.bottom, 8)
-            }
-        }
-        .background {
-            if let pending = pendingUnlock {
-                UnlockAppNamePrinter(knownName: pending.title, token: pending.token)
-                    .offset(x: -2000, y: -2000)
             }
         }
         .sheet(item: $pendingUnlock, onDismiss: {
@@ -558,7 +548,6 @@ private struct LockedGridItem: Identifiable {
 
 private struct PendingUnlock: Identifiable {
     let id: String
-    let title: String
     let namedApp: String?
     let unnamedApp: UnnamedLockedApp?
     let token: ApplicationToken?
@@ -568,23 +557,10 @@ private struct PendingUnlock: Identifiable {
         // A fresh id each presentation so the sheet cannot reuse the previous
         // Screen Time Label / remote view for a different app.
         id = "\(item.id)-\(UUID().uuidString)"
-        title = Self.resolvedTitle(for: item)
         namedApp = item.namedApp
         unnamedApp = item.unnamedApp
         token = item.token
         cost = item.cost
-    }
-
-    static func resolvedTitle(for item: LockedGridItem) -> String {
-        let candidates = [item.namedApp, item.title, item.token.flatMap(UsageStore.displayName(for:))]
-        for name in candidates {
-            guard let name else { continue }
-            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty && trimmed != "Locked app" {
-                return trimmed
-            }
-        }
-        return "Locked app"
     }
 }
 
@@ -653,7 +629,7 @@ private struct LockedAppIconButton: View {
     }
 
     private var accessibilityName: String {
-        let name = PendingUnlock.resolvedTitle(for: item)
+        let name = item.namedApp ?? item.title ?? "Locked app"
         return overrideActive ? "\(name), released" : "\(name), locked"
     }
 
@@ -711,13 +687,10 @@ private struct UnlockConfirmSheet: View {
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .shadow(color: Color.black.opacity(0.16), radius: 8, y: 4)
 
-                    UnlockSheetAppName()
-                        .frame(maxWidth: .infinity)
                     Text(canAfford
                          ? "Spend keys to unlock this app until Sunday."
                          : "Finish assignments to earn more keys.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .font(.title3.weight(.bold))
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity)
                 }
