@@ -11,16 +11,29 @@ final class UsagePrefetch: ObservableObject {
 
     private var isWaitingToMarkReady = false
     private var didScheduleFromSettings = false
+    private var didOpenUsagePage = false
 
-    /// Starts warming after Settings finishes pushing so the hub stays instant.
+    /// Cheap data check after the hub push, then a delayed off-screen warm
+    /// only if the user stays on Settings. Mounting FamilyControls views
+    /// immediately would freeze the next tap.
     func startAfterSettingsPresented() {
         guard !isReady, !didScheduleFromSettings else { return }
         didScheduleFromSettings = true
         Task { @MainActor in
             await Task.yield()
             try? await Task.sleep(for: .milliseconds(400))
+            if !ScreenTimeManager.shared.shouldCollectUsage {
+                markReady()
+                return
+            }
+            try? await Task.sleep(for: .seconds(2))
+            guard !isReady, !didOpenUsagePage else { return }
             start()
         }
+    }
+
+    func noteUsagePageOpened() {
+        didOpenUsagePage = true
     }
 
     func start() {
@@ -56,14 +69,6 @@ final class UsagePrefetch: ObservableObject {
             try? await Task.sleep(for: .milliseconds(120))
         }
         await Task.yield()
-        if UsageStore.loadAppCounts().isEmpty {
-            return
-        }
-        // Let AppCountsCard rebuild rows from the snapshot, then give
-        // FamilyControls labels time to resolve before App usage is shown.
-        try? await Task.sleep(for: .milliseconds(80))
-        await Task.yield()
-        try? await Task.sleep(for: .milliseconds(520))
     }
 }
 
@@ -126,6 +131,18 @@ struct SettingsPage: View {
         .background(LockedBackground())
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.large)
+        .navigationDestination(for: SettingsDestination.self) { destination in
+            switch destination {
+            case .guide:
+                HowToUseView()
+            case .archive:
+                ArchiveSettingsView()
+            case .usage:
+                UsageSettingsView()
+            case .emergency:
+                EmergencySettingsView()
+            }
+        }
         .onAppear {
             UsagePrefetch.shared.startAfterSettingsPresented()
         }
@@ -138,57 +155,55 @@ struct SettingsPage: View {
                 detail: "How Keys, Karma, and weekly lock work",
                 icon: "questionmark.circle.fill",
                 tint: .lockedIndigo,
+                destination: .guide,
                 showDivider: true
-            ) {
-                HowToUseView()
-            }
+            )
 
             SettingsDestinationLink(
                 title: "Archive",
                 detail: "View or delete hidden classes and work",
                 icon: "archivebox.fill",
                 tint: .lockedViolet,
+                destination: .archive,
                 showDivider: true
-            ) {
-                ArchiveSettingsView()
-            }
+            )
 
             SettingsDestinationLink(
                 title: "App usage",
                 detail: "Time spent in the apps Locked manages",
                 icon: "chart.bar.fill",
                 tint: .lockedTeal,
+                destination: .usage,
                 showDivider: true
-            ) {
-                UsageSettingsView()
-            }
+            )
 
             SettingsDestinationLink(
                 title: "Emergency",
                 detail: "Break the glass, then open the vault",
                 icon: "light.beacon.max.fill",
                 tint: .hazardRed,
+                destination: .emergency,
                 showDivider: false
-            ) {
-                EmergencySettingsView()
-            }
+            )
         }
         .background(LockedCardBackground(cornerRadius: 22))
     }
 }
 
-private struct SettingsDestinationLink<Destination: View>: View {
+private enum SettingsDestination: Hashable {
+    case guide, archive, usage, emergency
+}
+
+private struct SettingsDestinationLink: View {
     let title: String
     let detail: String
     let icon: String
     let tint: Color
+    let destination: SettingsDestination
     let showDivider: Bool
-    @ViewBuilder var destination: () -> Destination
 
     var body: some View {
-        NavigationLink {
-            destination()
-        } label: {
+        NavigationLink(value: destination) {
             VStack(spacing: 0) {
                 HStack(spacing: 14) {
                     Image(systemName: icon)
@@ -256,6 +271,7 @@ struct UsageSettingsView: View {
 
     @State private var now = Date()
     @State private var canMountCard = false
+    @State private var showList = false
 
     private var overrideActive: Bool {
         Date(timeIntervalSince1970: emergencyOverrideUntil) > now
@@ -263,7 +279,7 @@ struct UsageSettingsView: View {
 
     var body: some View {
         ZStack {
-            if prefetch.isReady || canMountCard {
+            if canMountCard {
                 ScrollView {
                     AppCountsCard(
                         appCounts: $appCounts,
@@ -275,31 +291,43 @@ struct UsageSettingsView: View {
                     .padding(.bottom, 36)
                     .onAppear {
                         prefetch.noteHostAppeared()
+                        if prefetch.isReady {
+                            showList = true
+                        }
                     }
                 }
-                .opacity(prefetch.isReady ? 1 : 0)
-                .allowsHitTesting(prefetch.isReady)
+                .opacity(showList ? 1 : 0)
+                .allowsHitTesting(showList)
             }
 
-            if !prefetch.isReady {
-                LockedLaunchOverlay()
+            if !showList {
+                LockedLaunchSpinner()
+                    .frame(width: 118, height: 118)
                     .transition(.opacity)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(LockedBackground())
         .navigationTitle("App usage")
         .navigationBarTitleDisplayMode(.large)
-        .animation(.easeOut(duration: 0.28), value: prefetch.isReady)
+        .animation(.easeOut(duration: 0.28), value: showList)
+        .onChange(of: prefetch.isReady) { _, ready in
+            if ready, canMountCard {
+                showList = true
+            }
+        }
         .onAppear {
             now = Date()
-            if prefetch.isReady {
-                canMountCard = true
-                return
-            }
+            prefetch.noteUsagePageOpened()
+            // Keep this destination light so the push is instant. Build the
+            // FamilyControls list only after the page is on screen.
             Task { @MainActor in
                 await Task.yield()
-                try? await Task.sleep(for: .milliseconds(360))
-                prefetch.start()
+                try? await Task.sleep(for: .milliseconds(350))
+                if !ScreenTimeManager.shared.shouldCollectUsage {
+                    prefetch.markReady()
+                    showList = true
+                }
                 canMountCard = true
             }
         }

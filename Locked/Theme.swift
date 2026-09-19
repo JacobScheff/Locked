@@ -143,16 +143,8 @@ struct LockedLaunchOverlay: View {
             LockedBackground()
 
             VStack(spacing: 26) {
-                ZStack {
-                    LaunchEmblem()
-                        .frame(width: 118, height: 118)
-
-                    Image(systemName: "lock.fill")
-                        .font(.title2.weight(.bold))
-                        .foregroundStyle(Color.lockedIndigo)
-                        .shadow(color: Color.lockedIndigo.opacity(0.25), radius: 8, y: 1)
-                }
-                .accessibilityHidden(true)
+                LockedLaunchSpinner()
+                    .frame(width: 118, height: 118)
 
                 VStack(spacing: 7) {
                     Text("Locked")
@@ -169,9 +161,24 @@ struct LockedLaunchOverlay: View {
     }
 }
 
+/// The launch ring, without the full-screen cover, so a pushed page can
+/// stay visible while usage finishes loading.
+struct LockedLaunchSpinner: View {
+    var body: some View {
+        ZStack {
+            LaunchEmblem()
+            Image(systemName: "lock.fill")
+                .font(.title2.weight(.bold))
+                .foregroundStyle(Color.lockedIndigo)
+                .shadow(color: Color.lockedIndigo.opacity(0.25), radius: 8, y: 1)
+        }
+        .accessibilityHidden(true)
+    }
+}
+
 /// Core Animation drives the launch mark so the ring keeps moving even if
 /// the main thread is busy building the first real screen.
-private struct LaunchEmblem: UIViewRepresentable {
+struct LaunchEmblem: UIViewRepresentable {
     func makeUIView(context: Context) -> LaunchEmblemView {
         LaunchEmblemView()
     }
