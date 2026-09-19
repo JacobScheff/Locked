@@ -42,15 +42,15 @@ struct HowToUseView: View {
 
                     StepCard(
                         stepNumber: 1,
-                        title: screenTime.canUseFamilyControls ? "Allow Screen Time" : "Use a real device",
+                        title: screenTime.canUseFamilyControls ? "Allow Screen Time" : "Use iPhone or iPad",
                         instructions: screenTime.canUseFamilyControls
                             ? [
                                 "On Home, tap **Allow Screen Time** and approve Locked.",
                                 "This lets Locked read app usage and place a system lock screen on apps you haven’t earned back."
                             ]
                             : [
-                                "Screen Time permission can’t be granted in the Simulator.",
-                                "Run Locked on iPhone, iPad, Mac, or Vision Pro, then tap **Allow Screen Time**."
+                                screenTime.unavailableSetupDetail,
+                                "You can still add courses here. Allow Screen Time on an iPhone or iPad to lock apps."
                             ]
                     )
 

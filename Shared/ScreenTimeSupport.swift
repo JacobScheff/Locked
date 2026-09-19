@@ -5,10 +5,12 @@
 //  Shared Screen Time helpers used by the app and its extensions.
 //
 
+#if !targetEnvironment(macCatalyst)
 import DeviceActivity
 import FamilyControls
-import Foundation
 import ManagedSettings
+#endif
+import Foundation
 
 extension Array: @retroactive RawRepresentable where Element: Codable {
     public init?(rawValue: String) {

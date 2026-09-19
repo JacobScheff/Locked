@@ -7,8 +7,10 @@ import Foundation
 import SwiftUI
 import GameplayKit
 import Combine
+#if !targetEnvironment(macCatalyst)
 import FamilyControls
 import ManagedSettings
+#endif
 
 // MARK: - Shared Storage
 final class LogicStore {

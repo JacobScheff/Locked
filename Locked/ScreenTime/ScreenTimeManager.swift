@@ -1,6 +1,8 @@
 import Combine
+#if !targetEnvironment(macCatalyst)
 import DeviceActivity
 import FamilyControls
+#endif
 import SwiftUI
 import UIKit
 import WidgetKit
@@ -61,7 +63,10 @@ final class ScreenTimeManager: ObservableObject {
     }
 
     var setupCardTitle: String {
-        "Finish setup"
+        if isAuthorized || canUseFamilyControls {
+            return "Finish setup"
+        }
+        return "Screen Time needs iPhone or iPad"
     }
 
     var setupCardDetail: String {
@@ -76,6 +81,11 @@ final class ScreenTimeManager: ObservableObject {
 
     var setupActionTitle: String {
         isAuthorized ? "Choose Apps" : "Allow Screen Time"
+    }
+
+    var unavailableSetupDetail: String {
+        ScreenTimeAuthorizationAvailability.blockedReason
+            ?? "Screen Time isn’t available on this device."
     }
 
     var reportDayKey: String {
@@ -204,11 +214,11 @@ final class ScreenTimeManager: ObservableObject {
     }
 }
 
-/// Family Controls prompts on real devices. The Simulator never presents one.
-/// Mac uses the Catalyst destination so this is a Mac app, not Designed for iPad.
+/// Family Controls authorization types are unavailable in Mac Catalyst and
+/// never prompt in the Simulator. iPhone and iPad use the real API.
 enum ScreenTimeAuthorizationAvailability {
     static var canRequest: Bool {
-        #if targetEnvironment(simulator)
+        #if targetEnvironment(macCatalyst) || targetEnvironment(simulator)
         return false
         #else
         return true
@@ -216,7 +226,13 @@ enum ScreenTimeAuthorizationAvailability {
     }
 
     static var blockedReason: String? {
-        canRequest ? nil : "Screen Time permission can’t be granted in the Simulator. Run Locked on iPhone, iPad, Mac, or Vision Pro."
+        #if targetEnvironment(macCatalyst)
+        return "Apple doesn’t expose Screen Time authorization in Mac Catalyst. Use Locked on an iPhone or iPad to allow Screen Time and lock apps."
+        #elseif targetEnvironment(simulator)
+        return "Screen Time permission can’t be granted in the Simulator. Run Locked on an iPhone or iPad."
+        #else
+        return nil
+        #endif
     }
 
     static func userMessage(for error: Error) -> String {

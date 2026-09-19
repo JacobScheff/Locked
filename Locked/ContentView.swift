@@ -1,4 +1,6 @@
+#if !targetEnvironment(macCatalyst)
 import FamilyControls
+#endif
 import SwiftUI
 
 struct ContentView: View {
