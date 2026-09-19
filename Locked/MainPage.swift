@@ -415,8 +415,8 @@ struct LockedAppsSection: View {
                     }
                 }
                 LazyVGrid(
-                    columns: Array(repeating: GridItem(.flexible(), spacing: 20), count: 4),
-                    spacing: 20
+                    columns: Array(repeating: GridItem(.flexible(), spacing: LockedAppGridLayout.spacing), count: LockedAppGridLayout.columns),
+                    spacing: LockedAppGridLayout.spacing
                 ) {
                     ForEach(Array(gridItems.enumerated()), id: \.element.id) { index, item in
                         LockedAppIconButton(
@@ -435,9 +435,9 @@ struct LockedAppsSection: View {
                         )
                     }
                 }
-                .padding(.horizontal, 2)
-                .padding(.top, 4)
-                .padding(.bottom, 8)
+                .padding(.horizontal, 0)
+                .padding(.top, 2)
+                .padding(.bottom, 4)
             }
         }
         .sheet(item: $pendingUnlock, onDismiss: {
@@ -486,6 +486,12 @@ struct LockedAppsSection: View {
             return left == right ? lhs < rhs : left > right
         }
     }
+}
+
+private enum LockedAppGridLayout {
+    static let columns = 5
+    static let spacing: CGFloat = 10
+    static let iconSize: CGFloat = 56
 }
 
 private struct LockedGridItem: Identifiable {
@@ -574,7 +580,7 @@ private struct LockedAppIconButton: View {
     @State private var appeared = false
     @State private var lift: CGFloat = 0
 
-    private let iconSize: CGFloat = 64
+    private let iconSize: CGFloat = LockedAppGridLayout.iconSize
 
     var body: some View {
         Button {
@@ -625,7 +631,7 @@ private struct LockedAppIconButton: View {
                 .offset(x: 3, y: 3)
         }
         .compositingGroup()
-        .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 6)
+        .shadow(color: Color.black.opacity(0.16), radius: 6, x: 0, y: 4)
     }
 
     private var accessibilityName: String {
