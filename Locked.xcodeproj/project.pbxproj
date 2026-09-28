@@ -15,33 +15,33 @@
 		4C0DA0012F9B000100000013 /* FamilyControls.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000002 /* FamilyControls.framework */; };
 		4C0DA0012F9B000100000014 /* ManagedSettings.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000003 /* ManagedSettings.framework */; };
 		4C0DA0012F9B000100000015 /* Logic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AB6FF5F2F96CC9D00606D95 /* Logic.swift */; };
-		4C0DA0012F9B000100000016 /* ScreenTimeSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000017 /* ScreenTimeSupport.swift */; };
+		4C0DA0012F9B000100000016 /* Shared/ScreenTimeSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000017 /* Shared/ScreenTimeSupport.swift */; };
 		4C0DA0012F9B000100000018 /* DeviceActivityMonitor.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000010 /* DeviceActivityMonitor.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		4C0DA0012F9B000100000024 /* ScreenTimeSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000017 /* ScreenTimeSupport.swift */; };
+		4C0DA0012F9B000100000024 /* Shared/ScreenTimeSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000017 /* Shared/ScreenTimeSupport.swift */; };
 		4C0DA0012F9B000100000032 /* DeviceActivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000001 /* DeviceActivity.framework */; };
 		4C0DA0012F9B000100000033 /* FamilyControls.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000002 /* FamilyControls.framework */; };
 		4C0DA0012F9B000100000034 /* ManagedSettings.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000003 /* ManagedSettings.framework */; };
 		4C0DA0012F9B000100000035 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3A8DF99A2F89F2B900279855 /* SwiftUI.framework */; };
-		4C0DA0012F9B000100000072 /* ExtensionKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000006 /* ExtensionKit.framework */; };
-		4C0DA0012F9B000100000073 /* ExtensionFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000007 /* ExtensionFoundation.framework */; };
-		4C0DA0012F9B000100000036 /* ScreenTimeSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000017 /* ScreenTimeSupport.swift */; };
+		4C0DA0012F9B000100000036 /* Shared/ScreenTimeSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000017 /* Shared/ScreenTimeSupport.swift */; };
 		4C0DA0012F9B000100000038 /* DeviceActivityReport.appex in Embed ExtensionKit Extensions */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000030 /* DeviceActivityReport.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		4C0DA0012F9B000100000052 /* ManagedSettings.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000003 /* ManagedSettings.framework */; };
 		4C0DA0012F9B000100000053 /* ManagedSettingsUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000004 /* ManagedSettingsUI.framework */; };
 		4C0DA0012F9B000100000058 /* ShieldConfiguration.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000050 /* ShieldConfiguration.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		4C0DA0012F9B000100000096 /* ShieldAction.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000090 /* ShieldAction.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		4C0DA0012F9B000100000092 /* ManagedSettings.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000003 /* ManagedSettings.framework */; };
-		4C0DA0012F9B000100000093 /* FamilyControls.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000002 /* FamilyControls.framework */; };
-		4C0DA0012F9B0001000000A5 /* DeviceActivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000001 /* DeviceActivity.framework */; };
-		4C0DA0012F9B000100000094 /* ScreenTimeSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000017 /* ScreenTimeSupport.swift */; };
-		4C0DA0012F9B000100000095 /* ScreenTimeSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000017 /* ScreenTimeSupport.swift */; };
-		4C0DA0012F9B0001000000A4 /* FamilyControls.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000002 /* FamilyControls.framework */; };
-		4C0DA0012F9B0001000000A6 /* DeviceActivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000001 /* DeviceActivity.framework */; };
 		4C0DA0012F9B000100000070 /* GameplayKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000005 /* GameplayKit.framework */; };
 		4C0DA0012F9B000100000071 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3A8DF99A2F89F2B900279855 /* SwiftUI.framework */; };
+		4C0DA0012F9B000100000072 /* ExtensionKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000006 /* ExtensionKit.framework */; };
+		4C0DA0012F9B000100000073 /* ExtensionFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000007 /* ExtensionFoundation.framework */; };
 		4C0DA0012F9B000100000080 /* DeviceActivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000001 /* DeviceActivity.framework */; };
 		4C0DA0012F9B000100000081 /* FamilyControls.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000002 /* FamilyControls.framework */; };
 		4C0DA0012F9B000100000082 /* ManagedSettings.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000003 /* ManagedSettings.framework */; };
+		4C0DA0012F9B000100000092 /* ManagedSettings.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000003 /* ManagedSettings.framework */; };
+		4C0DA0012F9B000100000093 /* FamilyControls.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000002 /* FamilyControls.framework */; };
+		4C0DA0012F9B000100000094 /* Shared/ScreenTimeSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000017 /* Shared/ScreenTimeSupport.swift */; };
+		4C0DA0012F9B000100000095 /* Shared/ScreenTimeSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000017 /* Shared/ScreenTimeSupport.swift */; };
+		4C0DA0012F9B000100000096 /* ShieldAction.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000090 /* ShieldAction.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		4C0DA0012F9B0001000000A4 /* FamilyControls.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000002 /* FamilyControls.framework */; };
+		4C0DA0012F9B0001000000A5 /* DeviceActivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000001 /* DeviceActivity.framework */; };
+		4C0DA0012F9B0001000000A6 /* DeviceActivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4C0DA0012F9B000100000001 /* DeviceActivity.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -125,14 +125,14 @@
 		4C0DA0012F9B000100000006 /* ExtensionKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ExtensionKit.framework; path = System/Library/Frameworks/ExtensionKit.framework; sourceTree = SDKROOT; };
 		4C0DA0012F9B000100000007 /* ExtensionFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ExtensionFoundation.framework; path = System/Library/Frameworks/ExtensionFoundation.framework; sourceTree = SDKROOT; };
 		4C0DA0012F9B000100000010 /* DeviceActivityMonitor.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = DeviceActivityMonitor.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		4C0DA0012F9B000100000011 /* DeviceActivityMonitor.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DeviceActivityMonitor/DeviceActivityMonitor.entitlements; sourceTree = "<group>"; };
-		4C0DA0012F9B000100000017 /* ScreenTimeSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/ScreenTimeSupport.swift; sourceTree = "<group>"; };
+		4C0DA0012F9B000100000011 /* DeviceActivityMonitor/DeviceActivityMonitor.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DeviceActivityMonitor/DeviceActivityMonitor.entitlements; sourceTree = "<group>"; };
+		4C0DA0012F9B000100000017 /* Shared/ScreenTimeSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/ScreenTimeSupport.swift; sourceTree = "<group>"; };
 		4C0DA0012F9B000100000030 /* DeviceActivityReport.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.extensionkit-extension"; includeInIndex = 0; path = DeviceActivityReport.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		4C0DA0012F9B000100000031 /* DeviceActivityReport.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DeviceActivityReport/DeviceActivityReport.entitlements; sourceTree = "<group>"; };
+		4C0DA0012F9B000100000031 /* DeviceActivityReport/DeviceActivityReport.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DeviceActivityReport/DeviceActivityReport.entitlements; sourceTree = "<group>"; };
 		4C0DA0012F9B000100000050 /* ShieldConfiguration.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShieldConfiguration.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		4C0DA0012F9B000100000051 /* ShieldConfiguration.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShieldConfiguration/ShieldConfiguration.entitlements; sourceTree = "<group>"; };
+		4C0DA0012F9B000100000051 /* ShieldConfiguration/ShieldConfiguration.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShieldConfiguration/ShieldConfiguration.entitlements; sourceTree = "<group>"; };
 		4C0DA0012F9B000100000090 /* ShieldAction.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShieldAction.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		4C0DA0012F9B000100000091 /* ShieldAction.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShieldAction/ShieldAction.entitlements; sourceTree = "<group>"; };
+		4C0DA0012F9B000100000091 /* ShieldAction/ShieldAction.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShieldAction/ShieldAction.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -142,13 +142,6 @@
 				Info.plist,
 			);
 			target = 3A8DF9952F89F2B900279855 /* Locked-WidgetExtension */;
-		};
-		4C0DA0012F9B0001000000B0 /* Exceptions for "Locked" folder in "Locked" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = 3A8DF8EC2F89D52F00279855 /* Locked */;
 		};
 		4C0DA0012F9B00010000001C /* Exceptions for "DeviceActivityMonitor" folder in "DeviceActivityMonitor" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
@@ -177,6 +170,13 @@
 				Info.plist,
 			);
 			target = 4C0DA0012F9B00010000009B /* ShieldAction */;
+		};
+		4C0DA0012F9B0001000000B0 /* Exceptions for "Locked" folder in "Locked" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 3A8DF8EC2F89D52F00279855 /* Locked */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -304,10 +304,10 @@
 			isa = PBXGroup;
 			children = (
 				3A31934A2F8F0FC30092411E /* Locked-WidgetExtension.entitlements */,
-				4C0DA0012F9B000100000011 /* DeviceActivityMonitor.entitlements */,
-				4C0DA0012F9B000100000031 /* DeviceActivityReport.entitlements */,
-				4C0DA0012F9B000100000051 /* ShieldConfiguration.entitlements */,
-				4C0DA0012F9B000100000091 /* ShieldAction.entitlements */,
+				4C0DA0012F9B000100000011 /* DeviceActivityMonitor/DeviceActivityMonitor.entitlements */,
+				4C0DA0012F9B000100000031 /* DeviceActivityReport/DeviceActivityReport.entitlements */,
+				4C0DA0012F9B000100000051 /* ShieldConfiguration/ShieldConfiguration.entitlements */,
+				4C0DA0012F9B000100000091 /* ShieldAction/ShieldAction.entitlements */,
 				3A8DF8EF2F89D52F00279855 /* Locked */,
 				3A8DF99C2F89F2B900279855 /* Locked-Widget */,
 				4C0DA0012F9B00010000001B /* DeviceActivityMonitor */,
@@ -317,7 +317,7 @@
 				3A8DF9972F89F2B900279855 /* Frameworks */,
 				3A8DF8EE2F89D52F00279855 /* Products */,
 				3AB6FF5F2F96CC9D00606D95 /* Logic.swift */,
-				4C0DA0012F9B000100000017 /* ScreenTimeSupport.swift */,
+				4C0DA0012F9B000100000017 /* Shared/ScreenTimeSupport.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -597,7 +597,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				3AB6FF602F96CC9F00606D95 /* Logic.swift in Sources */,
-				4C0DA0012F9B000100000024 /* ScreenTimeSupport.swift in Sources */,
+				4C0DA0012F9B000100000024 /* Shared/ScreenTimeSupport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -613,7 +613,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				4C0DA0012F9B000100000015 /* Logic.swift in Sources */,
-				4C0DA0012F9B000100000016 /* ScreenTimeSupport.swift in Sources */,
+				4C0DA0012F9B000100000016 /* Shared/ScreenTimeSupport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -621,7 +621,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				4C0DA0012F9B000100000036 /* ScreenTimeSupport.swift in Sources */,
+				4C0DA0012F9B000100000036 /* Shared/ScreenTimeSupport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -629,7 +629,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				4C0DA0012F9B000100000095 /* ScreenTimeSupport.swift in Sources */,
+				4C0DA0012F9B000100000095 /* Shared/ScreenTimeSupport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -637,7 +637,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				4C0DA0012F9B000100000094 /* ScreenTimeSupport.swift in Sources */,
+				4C0DA0012F9B000100000094 /* Shared/ScreenTimeSupport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1103,7 +1103,6 @@
 			};
 			name = Release;
 		};
-
 		4C0DA0012F9B00010000009F /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1221,7 +1220,6 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-
 		4C0DA0012F9B0001000000A1 /* Build configuration list for PBXNativeTarget "ShieldAction" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
