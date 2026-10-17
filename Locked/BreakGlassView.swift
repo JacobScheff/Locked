@@ -406,7 +406,7 @@ struct BreakGlassView: View {
                 paneLettering
                     .padding(18)
                     .blur(radius: letteringBreak * 1.2)
-                    .opacity(1 - letteringBreak * 0.4)
+                    .opacity(1 - Double(letteringBreak) * 0.4)
 
                 Canvas { context, canvasSize in
                     for crack in cracks {
