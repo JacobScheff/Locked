@@ -1,0 +1,38 @@
+# Xcode build output and per-user settings
+build/
+DerivedData/
+*.xcarchive
+*.xcresult
+*.ipa
+*.dSYM/
+*.dSYM.zip
+xcuserdata/
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
+.build/
+
+# Signing credentials and local configuration
+*.p12
+*.p8
+*.mobileprovision
+*.provisionprofile
+.env
+.env.*
+!.env.example
+*.local.xcconfig
+
+# Editor and operating-system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+*.swp
+*~
+
+# Local tooling and generated presentation artifacts
+/.codex-finalizer/
+/presentation_assets/
+/presentation_build/
+/presentation_output/

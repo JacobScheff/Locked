@@ -1,0 +1,41 @@
+name: Bug report
+description: Report an error or unexpected behavior in Locked.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For vulnerabilities, follow [SECURITY.md](https://github.com/JacobScheff/Locked/blob/main/SECURITY.md).
+        Remove names, school account details, passwords, cookies, and tokens from all text and attachments.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Include what you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Use synthetic coursework and explain the smallest sequence that reproduces the problem.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version or commit
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Device and iOS version
+      placeholder: iPhone model, iOS version, physical device or simulator
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Redacted screenshots, relevant logs, or Xcode version for build problems.
